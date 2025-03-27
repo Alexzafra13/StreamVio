@@ -1,0 +1,40 @@
+---
+import '../styles/global.css';
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="StreamVio - Servicio de streaming multimedia" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body class="bg-gray-900 text-white min-h-screen">
+    <header class="bg-gray-800 shadow-md">
+      <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+        <a href="/" class="text-2xl font-bold text-blue-500">StreamVio</a>
+        <nav>
+          <ul class="flex space-x-6">
+            <li><a href="/" class="hover:text-blue-400">Inicio</a></li>
+            <li><a href="#" class="hover:text-blue-400">Películas</a></li>
+            <li><a href="#" class="hover:text-blue-400">Series</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <slot />
+    <footer class="bg-gray-800 py-6 mt-12">
+      <div class="container mx-auto px-4 text-center text-gray-400">
+        <p>&copy; {new Date().getFullYear()} StreamVio. Todos los derechos reservados.</p>
+      </div>
+    </footer>
+  </body>
+</html>

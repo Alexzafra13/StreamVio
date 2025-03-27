@@ -1,0 +1,13 @@
+---
+import Layout from '../layouts/Layout.astro';
+import VideoList from '../components/VideoList';
+
+const title = 'StreamVio';
+---
+
+<Layout title={title}>
+  <main class="container mx-auto px-4 py-8">
+    <h1 class="text-4xl font-bold mb-8 text-center text-blue-500">Bienvenido a StreamVio</h1>
+    <VideoList client:load />
+  </main>
+</Layout>

@@ -1,0 +1,13 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import VideoPlayer from '../../components/VideoPlayer';
+
+const { id } = Astro.params;
+---
+
+<Layout title="Reproductor | StreamVio">
+  <main class="container mx-auto px-4 py-8">
+    <a href="/" class="inline-block mb-6 text-blue-500 hover:underline">&larr; Volver</a>
+    <VideoPlayer videoId={id} client:load />
+  </main>
+</Layout>
