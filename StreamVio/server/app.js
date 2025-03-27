@@ -1,9 +1,9 @@
+// server/app.js (modificar las rutas de videos)
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
-const path = require("path");
-const fs = require("fs");
+const db = require("./config/database");
 require("dotenv").config();
 
 // Crear aplicación Express
@@ -29,62 +29,37 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Ruta para obtener lista de videos (simulada por ahora)
+// Ruta para obtener lista de videos
 app.get("/api/videos", (req, res) => {
-  res.json([
-    {
-      id: 1,
-      title: "Big Buck Bunny",
-      description: "Video de prueba de formato abierto",
-      thumbnail:
-        "https://peach.blender.org/wp-content/uploads/title_anouncement.jpg",
-      duration: "09:56",
-      path: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4",
-    },
-    {
-      id: 2,
-      title: "Elephant Dream",
-      description: "Primer video abierto de Blender Foundation",
-      thumbnail:
-        "https://upload.wikimedia.org/wikipedia/commons/e/e8/Elephants_Dream_s5_both.jpg",
-      duration: "10:54",
-      path: "https://test-videos.co.uk/vids/elephantsdream/mp4/h264/720/Elephants_Dream_720_10s_1MB.mp4",
-    },
-  ]);
+  db.all("SELECT * FROM videos", [], (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Error al consultar la base de datos" });
+    }
+    res.json(rows);
+  });
+});
+
+// Ruta para obtener un video por su ID
+app.get("/api/videos/:id", (req, res) => {
+  const videoId = parseInt(req.params.id);
+  
+  db.get("SELECT * FROM videos WHERE id = ?", [videoId], (err, row) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Error al consultar la base de datos" });
+    }
+    
+    if (!row) {
+      return res.status(404).json({ message: "Video no encontrado" });
+    }
+    
+    res.json(row);
+  });
 });
 
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor StreamVio ejecutándose en el puerto ${PORT}`);
-});
-// Ruta para obtener un video por su ID
-app.get("/api/videos/:id", (req, res) => {
-  const videoId = parseInt(req.params.id);
-  const videos = [
-    {
-      id: 1,
-      title: "Big Buck Bunny",
-      description: "Video de prueba de formato abierto",
-      thumbnail: "https://peach.blender.org/wp-content/uploads/title_anouncement.jpg",
-      duration: "09:56",
-      path: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4",
-    },
-    {
-      id: 2,
-      title: "Elephant Dream",
-      description: "Primer video abierto de Blender Foundation",
-      thumbnail: "https://upload.wikimedia.org/wikipedia/commons/e/e8/Elephants_Dream_s5_both.jpg",
-      duration: "10:54",
-      path: "https://test-videos.co.uk/vids/elephantsdream/mp4/h264/720/Elephants_Dream_720_10s_1MB.mp4",
-    },
-  ];
-  
-  const video = videos.find(v => v.id === videoId);
-  
-  if (!video) {
-    return res.status(404).json({ message: "Video no encontrado" });
-  }
-  
-  res.json(video);
 });
