@@ -8,6 +8,7 @@ require("dotenv").config();
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
+// Importar estas rutas una vez implementadas
 const librariesRoutes = require("./routes/libraries");
 const mediaRoutes = require("./routes/media");
 // Importar middleware de autenticación
@@ -39,14 +40,9 @@ app.get("/api/health", (req, res) => {
 // Usar rutas de autenticación
 app.use("/api/auth", authRoutes);
 
-// Rutas protegidas con autenticación
-// Ejemplo de ruta protegida que requiere autenticación
-app.get("/api/profile", authMiddleware, (req, res) => {
-  res.json({
-    user: req.user,
-    message: "Datos del perfil obtenidos correctamente"
-  });
-});
+// Rutas protegidas
+app.use("/api/libraries", librariesRoutes);
+app.use("/api/media", mediaRoutes);
 
 // Ruta para obtener lista de videos (simulada por ahora)
 app.get("/api/videos", (req, res) => {
@@ -102,6 +98,9 @@ app.get("/api/videos/:id", (req, res) => {
   
   res.json(video);
 });
+
+// Directorio para archivos estáticos
+app.use('/thumbnails', express.static(path.join(__dirname, 'data/thumbnails')));
 
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
