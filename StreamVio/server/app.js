@@ -8,6 +8,8 @@ require("dotenv").config();
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
+const librariesRoutes = require("./routes/libraries");
+const mediaRoutes = require("./routes/media");
 // Importar middleware de autenticación
 const authMiddleware = require("./middleware/auth");
 

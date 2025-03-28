@@ -1,13 +1,85 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import VideoList from '../components/VideoList';
+import MediaBrowser from '../components/MediaBrowser';
 
-const title = 'StreamVio';
+const title = 'StreamVio - Tu plataforma de streaming personal';
 ---
 
 <Layout title={title}>
   <main class="container mx-auto px-4 py-8">
     <h1 class="text-4xl font-bold mb-8 text-center text-blue-500">Bienvenido a StreamVio</h1>
-    <VideoList client:load />
+    
+    <section class="max-w-6xl mx-auto mb-12">
+      <div class="bg-gray-800 rounded-lg p-8">
+        <h2 class="text-2xl font-semibold mb-4">Tu biblioteca multimedia personal</h2>
+        <p class="text-gray-300 mb-6">
+          StreamVio te permite organizar y disfrutar de todo tu contenido multimedia desde un solo lugar.
+          Películas, series, música y fotos, todo accesible desde cualquier dispositivo.
+        </p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div class="bg-gray-700 p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-2">Organiza</h3>
+            <p class="text-gray-400">
+              Crea bibliotecas personalizadas para cada tipo de contenido y mantén todo organizado.
+            </p>
+          </div>
+          
+          <div class="bg-gray-700 p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-2">Explora</h3>
+            <p class="text-gray-400">
+              Navega fácilmente por tu colección con metadatos detallados y miniaturas.
+            </p>
+          </div>
+          
+          <div class="bg-gray-700 p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-2">Disfruta</h3>
+            <p class="text-gray-400">
+              Reproduce tu contenido desde cualquier dispositivo, en cualquier momento.
+            </p>
+          </div>
+        </div>
+        
+        <div class="flex flex-wrap justify-center gap-4">
+          <a href="/bibliotecas" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition">
+            Gestionar bibliotecas
+          </a>
+          <a href="/media" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition">
+            Explorar contenido
+          </a>
+        </div>
+      </div>
+    </section>
+    
+    <section class="max-w-6xl mx-auto">
+      <h2 class="text-2xl font-semibold mb-6">Contenido reciente</h2>
+      <MediaBrowser client:load />
+    </section>
+    
+    <div id="unauthorized-content" class="hidden">
+      <section class="max-w-6xl mx-auto text-center py-12">
+        <h2 class="text-2xl font-semibold mb-4">Disfruta de todo tu contenido multimedia</h2>
+        <p class="text-gray-300 mb-8 max-w-2xl mx-auto">
+          Inicia sesión para empezar a organizar y disfrutar de tu biblioteca multimedia personal.
+        </p>
+        <a href="/auth" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition inline-block">
+          Iniciar sesión o crear cuenta
+        </a>
+      </section>
+    </div>
   </main>
 </Layout>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const token = localStorage.getItem('streamvio_token');
+    
+    // Si no hay token, mostrar contenido no autenticado
+    if (!token) {
+      document.querySelectorAll('section').forEach(section => {
+        section.classList.add('hidden');
+      });
+      document.getElementById('unauthorized-content').classList.remove('hidden');
+    }
+  });
+</script>
