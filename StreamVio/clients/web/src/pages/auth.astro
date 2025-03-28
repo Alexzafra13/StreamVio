@@ -1,0 +1,35 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { LoginForm, RegisterForm } from '../components/AuthForms';
+---
+
+<Layout title="Autenticación | StreamVio">
+  <main class="container mx-auto px-4 py-8">
+    <div class="max-w-4xl mx-auto mt-8">
+      <h1 class="text-4xl font-bold mb-8 text-center text-blue-500">Bienvenido a StreamVio</h1>
+      
+      <div class="grid md:grid-cols-2 gap-8">
+        <LoginForm client:load />
+        <RegisterForm client:load />
+      </div>
+      
+      <div class="text-center mt-8">
+        <a href="/" class="text-gray-400 hover:text-blue-400 transition">
+          Volver a página principal
+        </a>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  // Script que se ejecuta en el cliente
+  document.addEventListener('DOMContentLoaded', () => {
+    // Verificar si el usuario ya está autenticado
+    const token = localStorage.getItem('streamvio_token');
+    if (token) {
+      // Redirigir a la página principal si ya está autenticado
+      window.location.href = '/';
+    }
+  });
+</script>

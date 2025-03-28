@@ -1,0 +1,163 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Perfil de Usuario | StreamVio">
+  <main class="container mx-auto px-4 py-8">
+    <div class="max-w-4xl mx-auto mt-8">
+      <h1 class="text-4xl font-bold mb-8 text-center text-blue-500">Mi Perfil</h1>
+      
+      <div id="profile-content" class="bg-gray-800 rounded-lg shadow-lg p-8">
+        <div class="flex items-center justify-center mb-8">
+          <div class="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center text-3xl font-bold" id="avatar-placeholder">
+            <!-- La inicial se cargará con JavaScript -->
+          </div>
+        </div>
+        
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="bg-gray-700 p-4 rounded">
+            <h3 class="text-gray-400 text-sm mb-1">Nombre de usuario</h3>
+            <p id="username" class="text-xl"></p>
+          </div>
+          
+          <div class="bg-gray-700 p-4 rounded">
+            <h3 class="text-gray-400 text-sm mb-1">Email</h3>
+            <p id="email" class="text-xl"></p>
+          </div>
+          
+          <div class="bg-gray-700 p-4 rounded">
+            <h3 class="text-gray-400 text-sm mb-1">Miembro desde</h3>
+            <p id="created-at" class="text-xl"></p>
+          </div>
+          
+          <div class="bg-gray-700 p-4 rounded">
+            <h3 class="text-gray-400 text-sm mb-1">Plan de suscripción</h3>
+            <p class="text-xl">Plan Básico</p>
+          </div>
+        </div>
+        
+        <div class="mt-8 flex flex-wrap gap-4">
+          <button id="change-password-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded transition">
+            Cambiar Contraseña
+          </button>
+          
+          <button id="edit-profile-btn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded transition">
+            Editar Perfil
+          </button>
+        </div>
+      </div>
+      
+      <div id="unauthorized-message" class="hidden text-center py-8">
+        <h2 class="text-2xl text-red-500 mb-4">Acceso Restringido</h2>
+        <p class="mb-4">Debes iniciar sesión para acceder a esta página.</p>
+        <a href="/auth" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded inline-block transition">
+          Iniciar Sesión
+        </a>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  const API_URL = "http://localhost:3000";
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const token = localStorage.getItem('streamvio_token');
+    
+    // Si no hay token, mostrar mensaje de no autorizado
+    if (!token) {
+      document.getElementById('profile-content').classList.add('hidden');
+      document.getElementById('unauthorized-message').classList.remove('hidden');
+      return;
+    }
+    
+    try {
+      // Intentar obtener información del perfil
+      const userStr = localStorage.getItem('streamvio_user');
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        
+        // Mostrar información almacenada en localStorage
+        document.getElementById('username').textContent = userData.username || 'Usuario';
+        document.getElementById('email').textContent = userData.email || 'email@ejemplo.com';
+        document.getElementById('avatar-placeholder').textContent = userData.username ? userData.username.charAt(0).toUpperCase() : 'U';
+        
+        // Obtener información actualizada desde el servidor
+        const response = await fetch(`${API_URL}/api/auth/user`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const userProfile = await response.json();
+          
+          // Actualizar la información con los datos del servidor
+          document.getElementById('username').textContent = userProfile.username;
+          document.getElementById('email').textContent = userProfile.email;
+          document.getElementById('avatar-placeholder').textContent = userProfile.username.charAt(0).toUpperCase();
+          
+          // Formatear fecha
+          if (userProfile.created_at) {
+            const date = new Date(userProfile.created_at);
+            document.getElementById('created-at').textContent = date.toLocaleDateString('es-ES', {
+              day: '2-digit',
+              month: 'long',
+              year: 'numeric'
+            });
+          } else {
+            document.getElementById('created-at').textContent = 'Información no disponible';
+          }
+        }
+      } else {
+        // Si no hay datos en localStorage pero sí hay token,
+        // intentar obtener datos del servidor
+        const response = await fetch(`${API_URL}/api/auth/user`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const userProfile = await response.json();
+          document.getElementById('username').textContent = userProfile.username;
+          document.getElementById('email').textContent = userProfile.email;
+          document.getElementById('avatar-placeholder').textContent = userProfile.username.charAt(0).toUpperCase();
+          
+          // Formatear fecha
+          if (userProfile.created_at) {
+            const date = new Date(userProfile.created_at);
+            document.getElementById('created-at').textContent = date.toLocaleDateString('es-ES', {
+              day: '2-digit',
+              month: 'long',
+              year: 'numeric'
+            });
+          } else {
+            document.getElementById('created-at').textContent = 'Información no disponible';
+          }
+        } else {
+          throw new Error('Error al obtener datos del usuario');
+        }
+      }
+    } catch (error) {
+      console.error('Error obteniendo perfil:', error);
+      
+      // Si hay error de autenticación, limpiar token y mostrar mensaje
+      if (error.status === 401) {
+        localStorage.removeItem('streamvio_token');
+        localStorage.removeItem('streamvio_user');
+        document.getElementById('profile-content').classList.add('hidden');
+        document.getElementById('unauthorized-message').classList.remove('hidden');
+      }
+    }
+    
+    // Eventos de botones
+    document.getElementById('change-password-btn').addEventListener('click', () => {
+      alert('Funcionalidad de cambio de contraseña en desarrollo');
+    });
+    
+    document.getElementById('edit-profile-btn').addEventListener('click', () => {
+      alert('Funcionalidad de edición de perfil en desarrollo');
+    });
+  });
+</script>
