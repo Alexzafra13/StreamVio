@@ -1,10 +1,11 @@
+#include <node_api.h>
 #include <napi.h>
 #include <string>
 #include <memory>
 #include <functional>
 #include <unordered_map>
 #include <mutex>
-#include "transcoder/transcoder.h"
+#include "../../core/include/transcoder/transcoder.h"
 
 class TranscoderWrapper : public Napi::ObjectWrap<TranscoderWrapper> {
  public:
