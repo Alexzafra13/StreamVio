@@ -58,6 +58,15 @@ echo "Instalando dependencias del cliente web..."
 cd clients/web && npm install
 cd ../..
 
+# Configurar archivo .env para el cliente web
+echo "Configurando cliente web..."
+if [ ! -f clients/web/.env ]; then
+    echo "PUBLIC_API_URL=http://localhost:3000" > clients/web/.env
+    echo "✓ Archivo .env para cliente web creado"
+else
+    echo "✓ Archivo .env para cliente web ya existe"
+fi
+
 # Inicializar la base de datos
 echo ""
 echo "Inicializando la base de datos..."

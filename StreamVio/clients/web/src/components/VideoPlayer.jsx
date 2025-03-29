@@ -1,8 +1,9 @@
 // src/components/VideoPlayer.jsx
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import apiConfig from "../config/api";
 
-const API_URL = "http://localhost:3000";
+const API_URL = apiConfig.API_URL;
 
 function VideoPlayer({ videoId }) {
   const [video, setVideo] = useState(null);
@@ -25,8 +26,7 @@ function VideoPlayer({ videoId }) {
     fetchVideo();
   }, [videoId]);
 
-  if (loading)
-    return <div className="text-center py-8">Cargando video...</div>;
+  if (loading) return <div className="text-center py-8">Cargando video...</div>;
   if (error)
     return <div className="text-center py-8 text-red-500">{error}</div>;
   if (!video)
@@ -36,9 +36,9 @@ function VideoPlayer({ videoId }) {
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">{video.title}</h1>
       <div className="relative pb-[56.25%] bg-black rounded-lg overflow-hidden">
-        <video 
-          className="absolute inset-0 w-full h-full" 
-          controls 
+        <video
+          className="absolute inset-0 w-full h-full"
+          controls
           autoPlay
           src={video.path}
         >

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import apiConfig from "../config/api";
 
-const API_URL = "http://localhost:3000";
+const API_URL = apiConfig.API_URL;
 
 function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
   const [media, setMedia] = useState([]);

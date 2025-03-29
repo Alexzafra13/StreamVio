@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import apiConfig from "../config/api";
 
-const API_URL = "http://localhost:3000";
+const API_URL = apiConfig.API_URL;
 
 function LibrariesManager() {
   const [libraries, setLibraries] = useState([]);
@@ -9,10 +10,10 @@ function LibrariesManager() {
   const [error, setError] = useState(null);
   const [formVisible, setFormVisible] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    path: '',
-    type: 'movies',
-    scan_automatically: true
+    name: "",
+    path: "",
+    type: "movies",
+    scan_automatically: true,
   });
   const [editingId, setEditingId] = useState(null);
   const [scanningLibraries, setScanningLibraries] = useState([]);
@@ -21,7 +22,7 @@ function LibrariesManager() {
   // Cargar bibliotecas
   const fetchLibraries = async () => {
     try {
-      const token = localStorage.getItem('streamvio_token');
+      const token = localStorage.getItem("streamvio_token");
       if (!token) {
         setError("Debes iniciar sesión para acceder a esta función");
         setLoading(false);
@@ -30,15 +31,17 @@ function LibrariesManager() {
 
       const response = await axios.get(`${API_URL}/api/libraries`, {
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       setLibraries(response.data);
       setLoading(false);
     } catch (err) {
       console.error("Error al cargar bibliotecas:", err);
-      setError(err.response?.data?.message || "Error al cargar las bibliotecas");
+      setError(
+        err.response?.data?.message || "Error al cargar las bibliotecas"
+      );
       setLoading(false);
     }
   };
@@ -52,14 +55,14 @@ function LibrariesManager() {
     const { name, value, type, checked } = e.target;
     setFormData({
       ...formData,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === "checkbox" ? checked : value,
     });
-    
+
     // Limpiar error del campo
     if (formErrors[name]) {
       setFormErrors({
         ...formErrors,
-        [name]: null
+        [name]: null,
       });
     }
   };
@@ -67,19 +70,19 @@ function LibrariesManager() {
   // Validar formulario
   const validateForm = () => {
     const errors = {};
-    
+
     if (!formData.name.trim()) {
       errors.name = "El nombre es obligatorio";
     }
-    
+
     if (!formData.path.trim()) {
       errors.path = "La ruta es obligatoria";
     }
-    
-    if (!['movies', 'series', 'music', 'photos'].includes(formData.type)) {
+
+    if (!["movies", "series", "music", "photos"].includes(formData.type)) {
       errors.type = "Tipo de biblioteca no válido";
     }
-    
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -87,42 +90,48 @@ function LibrariesManager() {
   // Guardar biblioteca
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
-    
+
     try {
-      const token = localStorage.getItem('streamvio_token');
+      const token = localStorage.getItem("streamvio_token");
       if (!token) {
         setError("Debes iniciar sesión para realizar esta acción");
         return;
       }
-      
+
       if (editingId) {
         // Actualizar biblioteca existente
         await axios.put(`${API_URL}/api/libraries/${editingId}`, formData, {
           headers: {
-            Authorization: `Bearer ${token}`
-          }
+            Authorization: `Bearer ${token}`,
+          },
         });
-        
+
         // Actualizar lista local
-        setLibraries(libraries.map(lib => 
-          lib.id === editingId ? { ...lib, ...formData } : lib
-        ));
+        setLibraries(
+          libraries.map((lib) =>
+            lib.id === editingId ? { ...lib, ...formData } : lib
+          )
+        );
       } else {
         // Crear nueva biblioteca
-        const response = await axios.post(`${API_URL}/api/libraries`, formData, {
-          headers: {
-            Authorization: `Bearer ${token}`
+        const response = await axios.post(
+          `${API_URL}/api/libraries`,
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
           }
-        });
-        
+        );
+
         // Añadir a la lista local
         setLibraries([...libraries, response.data.library]);
       }
-      
+
       // Resetear formulario y cerrar
       resetForm();
       setFormVisible(false);
@@ -138,7 +147,7 @@ function LibrariesManager() {
       name: library.name,
       path: library.path,
       type: library.type,
-      scan_automatically: !!library.scan_automatically
+      scan_automatically: !!library.scan_automatically,
     });
     setEditingId(library.id);
     setFormVisible(true);
@@ -146,24 +155,30 @@ function LibrariesManager() {
 
   // Eliminar biblioteca
   const handleDelete = async (id) => {
-    if (!window.confirm("¿Estás seguro de que deseas eliminar esta biblioteca? Esta acción es irreversible.")) {
+    if (
+      !window.confirm(
+        "¿Estás seguro de que deseas eliminar esta biblioteca? Esta acción es irreversible."
+      )
+    ) {
       return;
     }
-    
+
     try {
-      const token = localStorage.getItem('streamvio_token');
-      
+      const token = localStorage.getItem("streamvio_token");
+
       await axios.delete(`${API_URL}/api/libraries/${id}`, {
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
-      
+
       // Eliminar de la lista local
-      setLibraries(libraries.filter(lib => lib.id !== id));
+      setLibraries(libraries.filter((lib) => lib.id !== id));
     } catch (err) {
       console.error("Error al eliminar biblioteca:", err);
-      setError(err.response?.data?.message || "Error al eliminar la biblioteca");
+      setError(
+        err.response?.data?.message || "Error al eliminar la biblioteca"
+      );
     }
   };
 
@@ -172,39 +187,42 @@ function LibrariesManager() {
     if (scanningLibraries.includes(id)) {
       return; // Ya se está escaneando
     }
-    
+
     try {
-      const token = localStorage.getItem('streamvio_token');
-      
+      const token = localStorage.getItem("streamvio_token");
+
       // Marcar como escaneando
       setScanningLibraries([...scanningLibraries, id]);
-      
-      await axios.post(`${API_URL}/api/libraries/${id}/scan`, {}, {
-        headers: {
-          Authorization: `Bearer ${token}`
+
+      await axios.post(
+        `${API_URL}/api/libraries/${id}/scan`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
-      });
-      
+      );
+
       // Programar una actualización después de un tiempo
       setTimeout(() => {
         fetchLibraries();
-        setScanningLibraries(scanningLibraries.filter(libId => libId !== id));
+        setScanningLibraries(scanningLibraries.filter((libId) => libId !== id));
       }, 3000);
-      
     } catch (err) {
       console.error("Error al iniciar escaneo:", err);
       setError(err.response?.data?.message || "Error al iniciar el escaneo");
-      setScanningLibraries(scanningLibraries.filter(libId => libId !== id));
+      setScanningLibraries(scanningLibraries.filter((libId) => libId !== id));
     }
   };
 
   // Resetear formulario
   const resetForm = () => {
     setFormData({
-      name: '',
-      path: '',
-      type: 'movies',
-      scan_automatically: true
+      name: "",
+      path: "",
+      type: "movies",
+      scan_automatically: true,
     });
     setEditingId(null);
     setFormErrors({});
@@ -224,7 +242,7 @@ function LibrariesManager() {
     <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-semibold">Bibliotecas de medios</h2>
-        <button 
+        <button
           onClick={() => {
             resetForm();
             setFormVisible(true);
@@ -238,10 +256,7 @@ function LibrariesManager() {
       {error && (
         <div className="bg-red-600 text-white p-4 rounded mb-6">
           {error}
-          <button 
-            onClick={() => setError(null)}
-            className="float-right"
-          >
+          <button onClick={() => setError(null)} className="float-right">
             &times;
           </button>
         </div>
@@ -250,9 +265,9 @@ function LibrariesManager() {
       {formVisible && (
         <div className="bg-gray-800 p-6 rounded-lg mb-6">
           <h3 className="text-xl font-semibold mb-4">
-            {editingId ? 'Editar biblioteca' : 'Añadir nueva biblioteca'}
+            {editingId ? "Editar biblioteca" : "Añadir nueva biblioteca"}
           </h3>
-          
+
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -263,14 +278,14 @@ function LibrariesManager() {
                   value={formData.name}
                   onChange={handleInputChange}
                   className={`w-full bg-gray-700 text-white border ${
-                    formErrors.name ? 'border-red-500' : 'border-gray-600'
+                    formErrors.name ? "border-red-500" : "border-gray-600"
                   } rounded p-3 focus:outline-none focus:border-blue-500`}
                 />
                 {formErrors.name && (
                   <p className="text-red-500 text-sm mt-1">{formErrors.name}</p>
                 )}
               </div>
-              
+
               <div>
                 <label className="block text-gray-300 mb-2">Ruta</label>
                 <input
@@ -280,14 +295,14 @@ function LibrariesManager() {
                   onChange={handleInputChange}
                   placeholder="/ruta/a/los/archivos"
                   className={`w-full bg-gray-700 text-white border ${
-                    formErrors.path ? 'border-red-500' : 'border-gray-600'
+                    formErrors.path ? "border-red-500" : "border-gray-600"
                   } rounded p-3 focus:outline-none focus:border-blue-500`}
                 />
                 {formErrors.path && (
                   <p className="text-red-500 text-sm mt-1">{formErrors.path}</p>
                 )}
               </div>
-              
+
               <div>
                 <label className="block text-gray-300 mb-2">Tipo</label>
                 <select
@@ -302,7 +317,7 @@ function LibrariesManager() {
                   <option value="photos">Fotos</option>
                 </select>
               </div>
-              
+
               <div className="flex items-center">
                 <input
                   type="checkbox"
@@ -312,12 +327,15 @@ function LibrariesManager() {
                   onChange={handleInputChange}
                   className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
                 />
-                <label htmlFor="scan_automatically" className="ml-2 text-gray-300">
+                <label
+                  htmlFor="scan_automatically"
+                  className="ml-2 text-gray-300"
+                >
                   Escanear automáticamente
                 </label>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3 mt-6">
               <button
                 type="button"
@@ -330,7 +348,7 @@ function LibrariesManager() {
                 type="submit"
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition"
               >
-                {editingId ? 'Actualizar' : 'Guardar'}
+                {editingId ? "Actualizar" : "Guardar"}
               </button>
             </div>
           </form>
@@ -349,8 +367,11 @@ function LibrariesManager() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          {libraries.map(library => (
-            <div key={library.id} className="bg-gray-800 rounded-lg overflow-hidden">
+          {libraries.map((library) => (
+            <div
+              key={library.id}
+              className="bg-gray-800 rounded-lg overflow-hidden"
+            >
               <div className="p-6">
                 <div className="flex justify-between items-start">
                   <div>
@@ -358,37 +379,53 @@ function LibrariesManager() {
                     <p className="text-gray-400 mt-1">{library.path}</p>
                     <div className="mt-2 flex items-center">
                       <span className="bg-blue-900 text-blue-200 text-xs px-2 py-1 rounded">
-                        {library.type === 'movies' && 'Películas'}
-                        {library.type === 'series' && 'Series'}
-                        {library.type === 'music' && 'Música'}
-                        {library.type === 'photos' && 'Fotos'}
+                        {library.type === "movies" && "Películas"}
+                        {library.type === "series" && "Series"}
+                        {library.type === "music" && "Música"}
+                        {library.type === "photos" && "Fotos"}
                       </span>
                       <span className="text-gray-400 text-sm ml-4">
                         {library.itemCount || 0} elementos
                       </span>
                     </div>
                   </div>
-                  
+
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleScan(library.id)}
                       disabled={scanningLibraries.includes(library.id)}
                       className={`flex items-center ${
                         scanningLibraries.includes(library.id)
-                          ? 'bg-green-800 cursor-wait'
-                          : 'bg-green-600 hover:bg-green-700'
+                          ? "bg-green-800 cursor-wait"
+                          : "bg-green-600 hover:bg-green-700"
                       } text-white px-3 py-1 rounded transition text-sm`}
                     >
                       {scanningLibraries.includes(library.id) ? (
                         <>
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          <svg
+                            className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
                           </svg>
                           Escaneando...
                         </>
                       ) : (
-                        'Escanear ahora'
+                        "Escanear ahora"
                       )}
                     </button>
                     <button

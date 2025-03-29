@@ -1,7 +1,8 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import axios from 'axios';
+import React, { createContext, useState, useEffect, useContext } from "react";
+import axios from "axios";
+import apiConfig from "../config/api";
 
-const API_URL = "http://localhost:3000";
+const API_URL = apiConfig.API_URL;
 
 // Crear el contexto
 const AuthContext = createContext(null);
@@ -18,37 +19,37 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Verificar si hay un token guardado
     const checkLoggedIn = async () => {
-      const token = localStorage.getItem('streamvio_token');
-      
+      const token = localStorage.getItem("streamvio_token");
+
       if (token) {
         try {
           // Configurar el token en los headers
-          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          
+          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
           // Intentar obtener información del usuario actual
           const response = await axios.get(`${API_URL}/api/auth/user`);
           setCurrentUser(response.data);
         } catch (error) {
           console.log("Token inválido o expirado:", error);
           // Si hay un error, limpiar el token
-          localStorage.removeItem('streamvio_token');
-          localStorage.removeItem('streamvio_user');
-          delete axios.defaults.headers.common['Authorization'];
+          localStorage.removeItem("streamvio_token");
+          localStorage.removeItem("streamvio_user");
+          delete axios.defaults.headers.common["Authorization"];
         }
       } else {
         // Intentar obtener información del usuario del localStorage (fallback)
-        const userStr = localStorage.getItem('streamvio_user');
+        const userStr = localStorage.getItem("streamvio_user");
         if (userStr) {
           try {
             const user = JSON.parse(userStr);
             setCurrentUser(user);
           } catch (e) {
             console.error("Error al parsear datos de usuario:", e);
-            localStorage.removeItem('streamvio_user');
+            localStorage.removeItem("streamvio_user");
           }
         }
       }
-      
+
       setLoading(false);
       setInitialized(true);
     };
@@ -59,25 +60,33 @@ export const AuthProvider = ({ children }) => {
   // Función para iniciar sesión
   const login = async (email, password) => {
     try {
-      const response = await axios.post(`${API_URL}/api/auth/login`, { email, password });
-      
+      const response = await axios.post(`${API_URL}/api/auth/login`, {
+        email,
+        password,
+      });
+
       // Guardar token y datos de usuario
-      localStorage.setItem('streamvio_token', response.data.token);
-      localStorage.setItem('streamvio_user', JSON.stringify({
-        id: response.data.userId,
-        username: response.data.username,
-        email: response.data.email
-      }));
-      
+      localStorage.setItem("streamvio_token", response.data.token);
+      localStorage.setItem(
+        "streamvio_user",
+        JSON.stringify({
+          id: response.data.userId,
+          username: response.data.username,
+          email: response.data.email,
+        })
+      );
+
       // Configurar axios para enviar el token en solicitudes futuras
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-      
+      axios.defaults.headers.common[
+        "Authorization"
+      ] = `Bearer ${response.data.token}`;
+
       setCurrentUser({
         id: response.data.userId,
         username: response.data.username,
-        email: response.data.email
+        email: response.data.email,
       });
-      
+
       return response.data;
     } catch (error) {
       throw error;
@@ -90,26 +99,31 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post(`${API_URL}/api/auth/register`, {
         username,
         email,
-        password
+        password,
       });
-      
+
       // Guardar token y datos de usuario
-      localStorage.setItem('streamvio_token', response.data.token);
-      localStorage.setItem('streamvio_user', JSON.stringify({
-        id: response.data.userId,
-        username: response.data.username,
-        email: response.data.email
-      }));
-      
+      localStorage.setItem("streamvio_token", response.data.token);
+      localStorage.setItem(
+        "streamvio_user",
+        JSON.stringify({
+          id: response.data.userId,
+          username: response.data.username,
+          email: response.data.email,
+        })
+      );
+
       // Configurar axios para enviar el token en solicitudes futuras
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-      
+      axios.defaults.headers.common[
+        "Authorization"
+      ] = `Bearer ${response.data.token}`;
+
       setCurrentUser({
         id: response.data.userId,
         username: response.data.username,
-        email: response.data.email
+        email: response.data.email,
       });
-      
+
       return response.data;
     } catch (error) {
       throw error;
@@ -119,12 +133,12 @@ export const AuthProvider = ({ children }) => {
   // Función para cerrar sesión
   const logout = () => {
     // Eliminar token y datos de usuario
-    localStorage.removeItem('streamvio_token');
-    localStorage.removeItem('streamvio_user');
-    
+    localStorage.removeItem("streamvio_token");
+    localStorage.removeItem("streamvio_user");
+
     // Eliminar el token de los headers
-    delete axios.defaults.headers.common['Authorization'];
-    
+    delete axios.defaults.headers.common["Authorization"];
+
     // Actualizar estado
     setCurrentUser(null);
   };
@@ -136,12 +150,8 @@ export const AuthProvider = ({ children }) => {
     initialized,
     login,
     register,
-    logout
+    logout,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import axios from 'axios';
+import React, { useState } from "react";
+import axios from "axios";
+import apiConfig from "../config/api";
 
-const API_URL = "http://localhost:3000";
+const API_URL = apiConfig.API_URL;
 
 export const LoginForm = ({ onLoginSuccess }) => {
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -24,18 +25,23 @@ export const LoginForm = ({ onLoginSuccess }) => {
 
     try {
       const response = await axios.post(`${API_URL}/api/auth/login`, formData);
-      
+
       // Guardar token en localStorage
-      localStorage.setItem('streamvio_token', response.data.token);
-      localStorage.setItem('streamvio_user', JSON.stringify({
-        id: response.data.userId,
-        username: response.data.username,
-        email: response.data.email
-      }));
+      localStorage.setItem("streamvio_token", response.data.token);
+      localStorage.setItem(
+        "streamvio_user",
+        JSON.stringify({
+          id: response.data.userId,
+          username: response.data.username,
+          email: response.data.email,
+        })
+      );
 
       // Configurar axios para enviar el token en solicitudes futuras
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-      
+      axios.defaults.headers.common[
+        "Authorization"
+      ] = `Bearer ${response.data.token}`;
+
       // Notificar éxito al componente padre
       if (onLoginSuccess) {
         onLoginSuccess(response.data);
@@ -43,8 +49,8 @@ export const LoginForm = ({ onLoginSuccess }) => {
     } catch (err) {
       console.error("Error de inicio de sesión:", err);
       setError(
-        err.response?.data?.message || 
-        "Error al iniciar sesión. Verifica tus credenciales."
+        err.response?.data?.message ||
+          "Error al iniciar sesión. Verifica tus credenciales."
       );
     } finally {
       setLoading(false);
@@ -53,17 +59,19 @@ export const LoginForm = ({ onLoginSuccess }) => {
 
   return (
     <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md mx-auto">
-      <h2 className="text-2xl font-bold text-blue-500 mb-6 text-center">Iniciar Sesión</h2>
-      
+      <h2 className="text-2xl font-bold text-blue-500 mb-6 text-center">
+        Iniciar Sesión
+      </h2>
+
       {error && (
-        <div className="bg-red-600 text-white p-3 rounded mb-4">
-          {error}
-        </div>
+        <div className="bg-red-600 text-white p-3 rounded mb-4">{error}</div>
       )}
 
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label htmlFor="email" className="block text-gray-300 mb-2">Email</label>
+          <label htmlFor="email" className="block text-gray-300 mb-2">
+            Email
+          </label>
           <input
             type="email"
             id="email"
@@ -76,7 +84,9 @@ export const LoginForm = ({ onLoginSuccess }) => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="password" className="block text-gray-300 mb-2">Contraseña</label>
+          <label htmlFor="password" className="block text-gray-300 mb-2">
+            Contraseña
+          </label>
           <input
             type="password"
             id="password"
@@ -91,7 +101,9 @@ export const LoginForm = ({ onLoginSuccess }) => {
         <button
           type="submit"
           disabled={loading}
-          className={`w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+          className={`w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition ${
+            loading ? "opacity-70 cursor-not-allowed" : ""
+          }`}
         >
           {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
         </button>
@@ -102,10 +114,10 @@ export const LoginForm = ({ onLoginSuccess }) => {
 
 export const RegisterForm = ({ onRegisterSuccess }) => {
   const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
+    username: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -117,7 +129,7 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Validar que las contraseñas coinciden
     if (formData.password !== formData.confirmPassword) {
       setError("Las contraseñas no coinciden");
@@ -130,19 +142,27 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
     try {
       // Enviar solo username, email y password (sin confirmPassword)
       const { confirmPassword, ...registerData } = formData;
-      const response = await axios.post(`${API_URL}/api/auth/register`, registerData);
-      
+      const response = await axios.post(
+        `${API_URL}/api/auth/register`,
+        registerData
+      );
+
       // Guardar token en localStorage
-      localStorage.setItem('streamvio_token', response.data.token);
-      localStorage.setItem('streamvio_user', JSON.stringify({
-        id: response.data.userId,
-        username: response.data.username,
-        email: response.data.email
-      }));
+      localStorage.setItem("streamvio_token", response.data.token);
+      localStorage.setItem(
+        "streamvio_user",
+        JSON.stringify({
+          id: response.data.userId,
+          username: response.data.username,
+          email: response.data.email,
+        })
+      );
 
       // Configurar axios para enviar el token en solicitudes futuras
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-      
+      axios.defaults.headers.common[
+        "Authorization"
+      ] = `Bearer ${response.data.token}`;
+
       // Notificar éxito al componente padre
       if (onRegisterSuccess) {
         onRegisterSuccess(response.data);
@@ -150,8 +170,8 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
     } catch (err) {
       console.error("Error de registro:", err);
       setError(
-        err.response?.data?.message || 
-        "Error al registrar la cuenta. Intenta con otro email o nombre de usuario."
+        err.response?.data?.message ||
+          "Error al registrar la cuenta. Intenta con otro email o nombre de usuario."
       );
     } finally {
       setLoading(false);
@@ -160,17 +180,19 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
 
   return (
     <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md mx-auto">
-      <h2 className="text-2xl font-bold text-blue-500 mb-6 text-center">Crear Cuenta</h2>
-      
+      <h2 className="text-2xl font-bold text-blue-500 mb-6 text-center">
+        Crear Cuenta
+      </h2>
+
       {error && (
-        <div className="bg-red-600 text-white p-3 rounded mb-4">
-          {error}
-        </div>
+        <div className="bg-red-600 text-white p-3 rounded mb-4">{error}</div>
       )}
 
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label htmlFor="username" className="block text-gray-300 mb-2">Nombre de usuario</label>
+          <label htmlFor="username" className="block text-gray-300 mb-2">
+            Nombre de usuario
+          </label>
           <input
             type="text"
             id="username"
@@ -183,7 +205,9 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
         </div>
 
         <div className="mb-4">
-          <label htmlFor="registerEmail" className="block text-gray-300 mb-2">Email</label>
+          <label htmlFor="registerEmail" className="block text-gray-300 mb-2">
+            Email
+          </label>
           <input
             type="email"
             id="registerEmail"
@@ -196,7 +220,12 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
         </div>
 
         <div className="mb-4">
-          <label htmlFor="registerPassword" className="block text-gray-300 mb-2">Contraseña</label>
+          <label
+            htmlFor="registerPassword"
+            className="block text-gray-300 mb-2"
+          >
+            Contraseña
+          </label>
           <input
             type="password"
             id="registerPassword"
@@ -210,7 +239,9 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="confirmPassword" className="block text-gray-300 mb-2">Confirmar Contraseña</label>
+          <label htmlFor="confirmPassword" className="block text-gray-300 mb-2">
+            Confirmar Contraseña
+          </label>
           <input
             type="password"
             id="confirmPassword"
@@ -226,7 +257,9 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
         <button
           type="submit"
           disabled={loading}
-          className={`w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+          className={`w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition ${
+            loading ? "opacity-70 cursor-not-allowed" : ""
+          }`}
         >
           {loading ? "Creando cuenta..." : "Crear Cuenta"}
         </button>
