@@ -10,14 +10,15 @@
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
-        "../../core/include"
+        "../../core/include",
+        "../vendor/ffmpeg/include"
       ],
       "libraries": [
-        "-lavcodec",
-        "-lavformat",
-        "-lavutil",
-        "-lswscale",
-        "-lavfilter"
+        "../vendor/ffmpeg/lib/avcodec.lib",
+        "../vendor/ffmpeg/lib/avformat.lib",
+        "../vendor/ffmpeg/lib/avutil.lib",
+        "../vendor/ffmpeg/lib/swscale.lib",
+        "../vendor/ffmpeg/lib/avfilter.lib"
       ],
       "dependencies": [
         "<!(node -p \"require('node-addon-api').gyp\")"

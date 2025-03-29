@@ -1,11 +1,10 @@
-#include <node_api.h>
 #include <napi.h>
 #include <string>
 #include <memory>
 #include <functional>
 #include <unordered_map>
 #include <mutex>
-#include "../../core/include/transcoder/transcoder.h"
+#include "transcoder/transcoder.h"
 
 class TranscoderWrapper : public Napi::ObjectWrap<TranscoderWrapper> {
  public:
@@ -199,14 +198,16 @@ Napi::Value TranscoderWrapper::StartTranscode(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(env, result);
   } catch (const std::exception& e) {
     // Si hay un error, liberar el recurso ThreadSafeFunction
-    if (!tsfn.IsEmpty()) {
-      std::lock_guard<std::mutex> lock(callbackMutex);
-      auto it = progressCallbacks.find(outputPath);
-      if (it != progressCallbacks.end()) {
-        it->second.Release();
-        progressCallbacks.erase(it);
-      }
-    }
+    // Aquí está la línea problemática - Cambiado para verificar si tsfn es válido
+    // Si hay un error, liberar el recurso ThreadSafeFunction
+    if (info.Length() >= 4 && info[3].IsFunction()) {
+  std::lock_guard<std::mutex> lock(callbackMutex);
+  auto it = progressCallbacks.find(outputPath);
+  if (it != progressCallbacks.end()) {
+    it->second.Release();
+    progressCallbacks.erase(it);
+  }
+}
     
     Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
     return env.Null();
