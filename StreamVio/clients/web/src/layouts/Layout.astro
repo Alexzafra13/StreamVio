@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import Navigation from '../components/Navigation';
+import { AuthProvider } from '../context/AuthContext';
 
 interface Props {
   title: string;
@@ -20,13 +21,15 @@ const { title } = Astro.props;
     <title>{title}</title>
   </head>
   <body class="bg-gray-900 text-white min-h-screen">
-    <Navigation client:load />
-    <slot />
-    <footer class="bg-gray-800 py-6 mt-12">
-      <div class="container mx-auto px-4 text-center text-gray-400">
-        <p>&copy; {new Date().getFullYear()} StreamVio. Todos los derechos reservados.</p>
-      </div>
-    </footer>
+    <AuthProvider client:load>
+      <Navigation client:load />
+      <slot />
+      <footer class="bg-gray-800 py-6 mt-12">
+        <div class="container mx-auto px-4 text-center text-gray-400">
+          <p>&copy; {new Date().getFullYear()} StreamVio. Todos los derechos reservados.</p>
+        </div>
+      </footer>
+    </AuthProvider>
 
     <script>
       // Script para manejar la autenticación en todas las páginas
@@ -43,6 +46,18 @@ const { title } = Astro.props;
             return originalFetch(input, init);
           };
         }
+
+        // Escuchar eventos de autenticación
+        window.addEventListener('streamvio-auth-change', () => {
+          const newToken = localStorage.getItem('streamvio_token');
+          if (!newToken && token) {
+            // El usuario cerró sesión, recargar la página
+            window.location.reload();
+          } else if (newToken && !token) {
+            // El usuario inició sesión, recargar la página
+            window.location.reload();
+          }
+        });
       });
     </script>
   </body>
