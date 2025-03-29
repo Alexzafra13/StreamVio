@@ -12,7 +12,6 @@ EXPORTS
     av_buffersink_get_sample_aspect_ratio
     av_buffersink_get_sample_rate
     av_buffersink_get_samples
-    av_buffersink_get_side_data
     av_buffersink_get_time_base
     av_buffersink_get_type
     av_buffersink_get_w
@@ -40,8 +39,8 @@ EXPORTS
     avfilter_graph_free
     avfilter_graph_get_filter
     avfilter_graph_parse
-    avfilter_graph_parse2
     avfilter_graph_parse_ptr
+    avfilter_graph_parse2
     avfilter_graph_queue_command
     avfilter_graph_request_oldest
     avfilter_graph_segment_apply

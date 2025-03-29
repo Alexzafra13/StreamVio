@@ -18,7 +18,6 @@ EXPORTS
     av_aes_size
     av_ambient_viewing_environment_alloc
     av_ambient_viewing_environment_create_side_data
-    av_amf_to_av_format
     av_append_path_component
     av_asprintf
     av_assert0_fpu
@@ -33,7 +32,6 @@ EXPORTS
     av_audio_fifo_size
     av_audio_fifo_space
     av_audio_fifo_write
-    av_av_to_amf_format
     av_base64_decode
     av_base64_encode
     av_basename
@@ -118,14 +116,6 @@ EXPORTS
     av_color_transfer_name
     av_compare_mod
     av_compare_ts
-    av_container_fifo_alloc
-    av_container_fifo_alloc_avframe
-    av_container_fifo_can_read
-    av_container_fifo_drain
-    av_container_fifo_free
-    av_container_fifo_peek
-    av_container_fifo_read
-    av_container_fifo_write
     av_content_light_metadata_alloc
     av_content_light_metadata_create_side_data
     av_cpu_count
@@ -135,13 +125,10 @@ EXPORTS
     av_crc_get_table
     av_crc_init
     av_csp_approximate_trc_gamma
-    av_csp_itu_eotf
-    av_csp_itu_eotf_inv
     av_csp_luma_coeffs_from_avcsp
     av_csp_primaries_desc_from_id
     av_csp_primaries_id_from_desc
     av_csp_trc_func_from_id
-    av_csp_trc_func_inv_from_id
     av_d2q
     av_default_get_category
     av_default_item_name
@@ -176,9 +163,9 @@ EXPORTS
     av_dynamic_hdr_plus_to_t35
     av_dynamic_hdr_vivid_alloc
     av_dynamic_hdr_vivid_create_side_data
-    av_dynarray2_add
     av_dynarray_add
     av_dynarray_add_nofree
+    av_dynarray2_add
     av_encryption_info_add_side_data
     av_encryption_info_alloc
     av_encryption_info_clone
@@ -251,7 +238,6 @@ EXPORTS
     av_frame_side_data_name
     av_frame_side_data_new
     av_frame_side_data_remove
-    av_frame_side_data_remove_by_props
     av_frame_unref
     av_free
     av_freep
@@ -346,14 +332,11 @@ EXPORTS
     av_image_fill_pointers
     av_image_get_buffer_size
     av_image_get_linesize
-    av_int2i
     av_int_list_length_for_size
+    av_int2i
     av_lfg_init
     av_lfg_init_from_data
     av_log
-    av_log2
-    av_log2_16bit
-    av_log2_i
     av_log_default_callback
     av_log_format_line
     av_log_format_line2
@@ -363,6 +346,9 @@ EXPORTS
     av_log_set_callback
     av_log_set_flags
     av_log_set_level
+    av_log2
+    av_log2_16bit
+    av_log2_i
     av_lzo1x_decode
     av_malloc
     av_malloc_array
@@ -432,8 +418,8 @@ EXPORTS
     av_opt_set_defaults
     av_opt_set_defaults2
     av_opt_set_dict
-    av_opt_set_dict2
     av_opt_set_dict_val
+    av_opt_set_dict2
     av_opt_set_double
     av_opt_set_from_string
     av_opt_set_image_size
@@ -469,15 +455,6 @@ EXPORTS
     av_reallocp
     av_reallocp_array
     av_reduce
-    av_refstruct_alloc_ext_c
-    av_refstruct_exclusive
-    av_refstruct_pool_alloc
-    av_refstruct_pool_alloc_ext_c
-    av_refstruct_pool_get
-    av_refstruct_ref
-    av_refstruct_ref_c
-    av_refstruct_replace
-    av_refstruct_unref
     av_rescale
     av_rescale_delta
     av_rescale_q
@@ -496,16 +473,16 @@ EXPORTS
     av_samples_get_buffer_size
     av_samples_set_silence
     av_set_options_string
-    av_sha512_alloc
-    av_sha512_final
-    av_sha512_init
-    av_sha512_size
-    av_sha512_update
     av_sha_alloc
     av_sha_final
     av_sha_init
     av_sha_size
     av_sha_update
+    av_sha512_alloc
+    av_sha512_final
+    av_sha512_init
+    av_sha512_size
+    av_sha512_update
     av_shr_i
     av_size_mult
     av_small_strptime

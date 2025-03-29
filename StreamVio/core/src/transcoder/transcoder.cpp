@@ -1,73 +1,103 @@
-// StreamVio/core/include/transcoder/transcoder.h
-#pragma once
-
-#include <string>
-#include <vector>
-#include <map>
-#include <functional>
+// StreamVio/core/src/transcoder/transcoder.cpp
+#include "transcoder/transcoder.h"
+#include <iostream>
+#include <fstream>
 
 namespace StreamVio {
 
-struct TranscodeOptions {
-    std::string outputFormat;
-    int videoBitrate = 0;     // En kbps, 0 = usar bitrate original
-    int audioBitrate = 0;     // En kbps, 0 = usar bitrate original
-    int width = 0;            // 0 = mantener resolución original
-    int height = 0;           // 0 = mantener resolución original
-    std::string videoCodec;   // Vacío = usar codec por defecto para el formato
-    std::string audioCodec;   // Vacío = usar codec por defecto para el formato
-    bool enableHardwareAcceleration = true;
-};
+Transcoder::Transcoder() : initialized(false) {
+    std::cout << "Transcoder constructor called" << std::endl;
+}
 
-struct MediaInfo {
-    std::string path;
-    std::string format;
-    long duration;        // En milisegundos
-    int width;
-    int height;
-    std::string videoCodec;
-    int videoBitrate;     // En kbps
-    std::string audioCodec;
-    int audioBitrate;     // En kbps
-    int audioChannels;
-    int audioSampleRate;  // En Hz
-    std::map<std::string, std::string> metadata;
-};
+Transcoder::~Transcoder() {
+    std::cout << "Transcoder destructor called" << std::endl;
+}
 
-class Transcoder {
-public:
-    Transcoder();
-    ~Transcoder();
+bool Transcoder::initialize() {
+    initialized = true;
+    return true;
+}
 
-    // Inicializa el transcodificador
-    bool initialize();
-    
-    // Obtiene información de un archivo multimedia
-    MediaInfo getMediaInfo(const std::string& inputPath);
-    
-    // Inicia la transcodificación de forma asíncrona
-    bool startTranscode(const std::string& inputPath, 
-                       const std::string& outputPath,
-                       const TranscodeOptions& options,
-                       std::function<void(int)> progressCallback);
-    
-    // Cancela una transcodificación en curso
-    bool cancelTranscode(const std::string& outputPath);
-    
-    // Comprueba el estado de una transcodificación
-    int getTranscodeProgress(const std::string& outputPath);
-    
-    // Crea una miniatura a partir de un archivo de video
-    bool generateThumbnail(const std::string& inputPath, 
-                          const std::string& outputPath,
-                          int timeOffsetMs = 0,
-                          int width = 320,
-                          int height = 180);
+MediaInfo Transcoder::getMediaInfo(const std::string& inputPath) {
+    MediaInfo info;
+    info.path = inputPath;
+    info.format = "mp4";
+    info.duration = 60000;
+    info.width = 1280;
+    info.height = 720;
+    info.videoCodec = "h264";
+    info.videoBitrate = 1500;
+    info.audioCodec = "aac";
+    info.audioBitrate = 128;
+    info.audioChannels = 2;
+    info.audioSampleRate = 44100;
+    return info;
+}
 
-private:
-    // Implementación interna
-    class Impl;
-    Impl* pImpl;
-};
+bool Transcoder::startTranscode(const std::string& inputPath, 
+                               const std::string& outputPath,
+                               const TranscodeOptions& options,
+                               std::function<void(int)> progressCallback) {
+    // Verificar si el archivo de entrada existe
+    std::ifstream file(inputPath);
+    if (!file.good()) {
+        std::cerr << "Input file not found: " << inputPath << std::endl;
+        return false;
+    }
+    
+    // Inicializar el progreso
+    progressMap[outputPath] = 0;
+    
+    // Simular progreso rápido para pruebas
+    if (progressCallback) {
+        progressCallback(0);  // Inicio
+        progressCallback(50); // Medio
+        progressCallback(100); // Completo
+    }
+    
+    // Marcar como completado
+    progressMap[outputPath] = 100;
+    
+    // Crear un archivo de salida vacío para simular la transcodificación
+    std::ofstream outFile(outputPath);
+    outFile << "StreamVio simulated output file" << std::endl;
+    outFile.close();
+    
+    return true;
+}
+
+bool Transcoder::cancelTranscode(const std::string& outputPath) {
+    // Marcar como completo (lo que efectivamente termina la simulación)
+    progressMap[outputPath] = 100;
+    return true;
+}
+
+int Transcoder::getTranscodeProgress(const std::string& outputPath) {
+    auto it = progressMap.find(outputPath);
+    if (it != progressMap.end()) {
+        return it->second;
+    }
+    return -1; // No encontrado
+}
+
+bool Transcoder::generateThumbnail(const std::string& inputPath, 
+                                 const std::string& outputPath,
+                                 int timeOffsetMs,
+                                 int width,
+                                 int height) {
+    // Verificar si el archivo de entrada existe
+    std::ifstream file(inputPath);
+    if (!file.good()) {
+        std::cerr << "Input file not found: " << inputPath << std::endl;
+        return false;
+    }
+    
+    // Crear un archivo de imagen vacío para simular la miniatura
+    std::ofstream outFile(outputPath);
+    outFile << "StreamVio simulated thumbnail file" << std::endl;
+    outFile.close();
+    
+    return true;
+}
 
 } // namespace StreamVio

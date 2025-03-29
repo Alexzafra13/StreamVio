@@ -21,7 +21,6 @@ EXPORTS
     av_codec_is_decoder
     av_codec_is_encoder
     av_codec_iterate
-    av_container_fifo_alloc_avpacket
     av_cpb_properties_alloc
     av_d3d11va_alloc_context
     av_dct_calc

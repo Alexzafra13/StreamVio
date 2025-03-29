@@ -38,7 +38,7 @@ class Transcoder {
 public:
     Transcoder();
     ~Transcoder();
-
+    
     // Inicializa el transcodificador
     bool initialize();
     
@@ -46,7 +46,7 @@ public:
     MediaInfo getMediaInfo(const std::string& inputPath);
     
     // Inicia la transcodificación de forma asíncrona
-    bool startTranscode(const std::string& inputPath, 
+    bool startTranscode(const std::string& inputPath,
                        const std::string& outputPath,
                        const TranscodeOptions& options,
                        std::function<void(int)> progressCallback);
@@ -58,16 +58,14 @@ public:
     int getTranscodeProgress(const std::string& outputPath);
     
     // Crea una miniatura a partir de un archivo de video
-    bool generateThumbnail(const std::string& inputPath, 
+    bool generateThumbnail(const std::string& inputPath,
                           const std::string& outputPath,
                           int timeOffsetMs = 0,
                           int width = 320,
                           int height = 180);
-
 private:
-    // Implementación interna
-    class Impl;
-    Impl* pImpl;
+    bool initialized;
+    std::map<std::string, int> progressMap;
 };
 
 } // namespace StreamVio
