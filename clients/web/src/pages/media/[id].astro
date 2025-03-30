@@ -3,6 +3,20 @@ import Layout from '../../layouts/Layout.astro';
 import MediaViewer from '../../components/MediaViewer';
 import TranscodingManager from '../../components/TranscodingManager';
 
+// Implementar getStaticPaths para rutas dinámicas
+export async function getStaticPaths() {
+  // Esta función proporcionará rutas estáticas para la compilación
+  // Creamos al menos una ruta para que Astro no muestre error
+  return [
+    { params: { id: 'placeholder' } }
+  ];
+  
+  // En un escenario real, podrías consultar tu API para obtener todos los IDs:
+  // const response = await fetch('http://localhost:3000/api/media');
+  // const data = await response.json();
+  // return data.items.map(item => ({ params: { id: item.id.toString() } }));
+}
+
 const { id } = Astro.params;
 ---
 

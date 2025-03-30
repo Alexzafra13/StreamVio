@@ -1,7 +1,11 @@
 // clients/web/src/config/api.js
 const API_URL =
   import.meta.env.PUBLIC_API_URL ||
-  window.location.origin.replace(/:\d+$/, "") + ":3000";
+  (typeof window !== "undefined"
+    ? window.location.origin.replace(/:\d+$/, "") + ":3000"
+    : "http://localhost:3000");
+
+console.log("API URL configurada:", API_URL);
 
 export default {
   API_URL,

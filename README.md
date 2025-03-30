@@ -36,6 +36,7 @@ chmod +x setup.sh
 ```
 
 Este script realizará automáticamente todos los pasos necesarios:
+
 - Verificar e instalar las dependencias necesarias (Node.js, FFmpeg)
 - Configurar la estructura de directorios
 - Inicializar la base de datos con un usuario administrador predeterminado
@@ -56,7 +57,8 @@ Una vez completada la instalación, la aplicación estará lista para usar.
 Por razones de seguridad, StreamVio viene con un usuario administrador predeterminado que requiere cambiar la contraseña en el primer inicio de sesión:
 
 1. Accede a la interfaz web e inicia sesión con:
-   - **Usuario**: admin
+
+   - **Usuario**: admin@streamvio.local
    - **Contraseña**: admin
 
 2. Se te solicitará cambiar la contraseña inmediatamente. Elige una contraseña segura.
@@ -73,6 +75,7 @@ StreamVio incluye un sistema avanzado de transcodificación con:
 - **Generación de miniaturas y storyboards**: Para previsualización de contenido
 
 Para transcodificar un elemento multimedia:
+
 1. Navega a la página de detalles del elemento
 2. En el panel lateral, selecciona un perfil de calidad
 3. Haz clic en "Iniciar Transcodificación" o "Crear Streaming Adaptativo (HLS)"
