@@ -1,137 +1,343 @@
 #!/bin/bash
-# StreamVio setup script
-# Este script configura el entorno completo para StreamVio en un servidor
-
-echo "==== StreamVio Server Setup ===="
-echo ""
+# StreamVio - Script de instalación mejorado
+# Este script instala y configura StreamVio en sistemas Linux
 
 # Colores para mejor legibilidad
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Función para instalar dependencias en sistemas basados en Debian
-install_deps_debian() {
-    echo -e "${YELLOW}Instalando dependencias con apt...${NC}"
-    sudo apt-get update
-    sudo apt-get install -y nodejs npm ffmpeg sqlite3 
-    
-    # Instalar Node.js más reciente si la versión actual es menor que 14
-    NODE_VER=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VER" -lt 14 ]; then
-        echo -e "${YELLOW}Actualizando Node.js a la versión LTS...${NC}"
-        sudo npm install -g n
-        sudo n lts
-        # Reiniciar PATH para usar la nueva versión de Node
-        PATH="$PATH"
-    fi
-    
-    # Instalar PM2 globalmente para gestión de servicios
-    sudo npm install -g pm2
+# Archivo de log para registrar todo el proceso
+LOG_FILE="streamvio-install.log"
+ERROR_LOG="streamvio-errors.log"
+
+# Función para registrar mensajes en el log
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+    echo -e "$1"
 }
 
-# Función para instalar dependencias en sistemas basados en Red Hat
-install_deps_redhat() {
-    echo -e "${YELLOW}Instalando dependencias con yum/dnf...${NC}"
-    sudo yum install -y nodejs npm ffmpeg sqlite
-    
-    # Instalar Node.js más reciente si la versión actual es menor que 14
-    NODE_VER=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VER" -lt 14 ]; then
-        echo -e "${YELLOW}Actualizando Node.js a la versión LTS...${NC}"
-        sudo npm install -g n
-        sudo n lts
-        # Reiniciar PATH para usar la nueva versión de Node
-        PATH="$PATH"
-    fi
-    
-    # Instalar PM2 globalmente para gestión de servicios
-    sudo npm install -g pm2
+# Función para registrar errores
+log_error() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: $1" >> "$ERROR_LOG"
+    echo -e "${RED}ERROR: $1${NC}"
 }
 
-# Detectar sistema operativo y instalar dependencias
-detect_os_and_install() {
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if [ -f /etc/debian_version ]; then
-            install_deps_debian
-        elif [ -f /etc/redhat-release ]; then
-            install_deps_redhat
-        else
-            echo -e "${RED}No se pudo determinar la distribución Linux.${NC}"
-            echo "Intentando instalar Node.js, FFmpeg y SQLite manualmente..."
-            sudo npm install -g n
-            sudo n lts
-            # Instalar PM2 globalmente
-            sudo npm install -g pm2
-        fi
-    else
-        echo -e "${RED}Sistema operativo no soportado para instalación automática de dependencias.${NC}"
-        echo "Este script está optimizado para servidores Linux."
-        read -p "¿Deseas continuar con la instalación manual? (s/n): " continue_manual
-        if [[ $continue_manual != "s" ]]; then
+# Función para comprobar el resultado del último comando
+check_result() {
+    if [ $? -ne 0 ]; then
+        log_error "$1"
+        if [ "$2" = "fatal" ]; then
+            log_error "Error fatal. Abortando instalación."
+            echo -e "\n${RED}=============================================${NC}"
+            echo -e "${RED}La instalación ha fallado. Revisa el archivo $ERROR_LOG para más detalles.${NC}"
+            echo -e "${RED}=============================================${NC}"
             exit 1
         fi
+        return 1
+    else
+        log "$1 - ${GREEN}OK${NC}"
+        return 0
     fi
 }
+
+# Función para mostrar el progreso de la instalación
+progress_bar() {
+    local total=$1
+    local current=$2
+    local width=50
+    local percent=$((current*100/total))
+    local completed=$((width*current/total))
+    local remaining=$((width-completed))
+    
+    printf "\r[${GREEN}"
+    for ((i=0; i<completed; i++)); do printf "#"; done
+    printf "${NC}"
+    for ((i=0; i<remaining; i++)); do printf "."; done
+    printf "] %d%%" "$percent"
+    
+    if [ "$current" -eq "$total" ]; then
+        printf "\n"
+    fi
+}
+
+# Función para mostrar resumen al finalizar
+show_summary() {
+    local error_count=$(wc -l < "$ERROR_LOG")
+    
+    echo -e "\n${BLUE}=================== RESUMEN DE INSTALACIÓN ===================${NC}"
+    if [ "$error_count" -gt 0 ]; then
+        echo -e "${YELLOW}Instalación completada con $error_count advertencias/errores.${NC}"
+        echo -e "${YELLOW}Revisa $ERROR_LOG para más detalles.${NC}"
+    else
+        echo -e "${GREEN}¡Instalación completada exitosamente sin errores!${NC}"
+    fi
+    
+    echo -e "\n${GREEN}StreamVio está disponible en:${NC}"
+    echo -e "  - Interfaz web: ${GREEN}http://$SERVER_IP:4321${NC}"
+    echo -e "  - API: ${GREEN}http://$SERVER_IP:3000${NC}"
+    
+    echo -e "\n${YELLOW}Credenciales de acceso inicial:${NC}"
+    echo -e "  - Usuario: ${YELLOW}admin${NC}"
+    echo -e "  - Contraseña: ${YELLOW}admin${NC}"
+    echo -e "${YELLOW}Se te pedirá cambiar la contraseña en el primer inicio de sesión.${NC}"
+    
+    echo -e "\n${BLUE}Para gestionar los servicios:${NC}"
+    echo -e "  sudo systemctl start|stop|restart streamvio-backend"
+    echo -e "  sudo systemctl start|stop|restart streamvio-frontend"
+    echo -e "\n${BLUE}Logs:${NC}"
+    echo -e "  sudo journalctl -u streamvio-backend"
+    echo -e "  sudo journalctl -u streamvio-frontend"
+    echo -e "${BLUE}=================== FIN DEL RESUMEN ===================${NC}"
+}
+
+# Crear archivos de log
+> "$LOG_FILE"
+> "$ERROR_LOG"
+
+# Inicio del script
+echo -e "${BLUE}=======================================================${NC}"
+echo -e "${BLUE}       StreamVio - Asistente de Instalación            ${NC}"
+echo -e "${BLUE}=======================================================${NC}\n"
+
+log "Iniciando instalación de StreamVio..."
+
+# Verificar requisitos previos
+log "Paso 1/8: ${YELLOW}Verificando requisitos del sistema...${NC}"
 
 # Verificar si se está ejecutando como root o con sudo
-check_permissions() {
-    if [ "$EUID" -ne 0 ]; then
-        echo -e "${YELLOW}NOTA: No se está ejecutando con privilegios de administrador.${NC}"
-        echo "Algunas operaciones pueden requerir contraseña de administrador."
-    fi
-}
+if [ "$EUID" -ne 0 ]; then
+    log_error "Este script debe ejecutarse con privilegios de administrador (sudo)."
+    echo -e "${YELLOW}Por favor, ejecuta el script de la siguiente manera:${NC}"
+    echo -e "  sudo ./$(basename "$0")"
+    exit 1
+fi
 
-# Obtener la IP del servidor
-get_server_ip() {
-    # Intentar obtener la IP pública
-    PUBLIC_IP=$(curl -s ifconfig.me)
-    # Intentar obtener la IP local si la pública falla
-    if [ -z "$PUBLIC_IP" ]; then
-        # Intentar con hostname -I para obtener la primera IP
-        LOCAL_IP=$(hostname -I | awk '{print $1}')
-        if [ -z "$LOCAL_IP" ]; then
-            # Último recurso: usar 127.0.0.1
-            SERVER_IP="localhost"
-        else
-            SERVER_IP=$LOCAL_IP
-        fi
+# Verificar si la distribución es compatible
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS_NAME=$ID
+    OS_VERSION=$VERSION_ID
+    log "Sistema operativo detectado: $OS_NAME $OS_VERSION"
+else
+    OS_NAME="unknown"
+    log_error "No se pudo detectar la distribución Linux"
+fi
+
+# Comprobar Node.js
+if command -v node &> /dev/null; then
+    NODE_VERSION=$(node -v | cut -d'v' -f2)
+    log "Node.js detectado: v$NODE_VERSION"
+    
+    NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1)
+    if [ "$NODE_MAJOR" -lt 14 ]; then
+        log_error "La versión de Node.js es menor que la recomendada (v14+). Se procederá a actualizarla."
+        INSTALL_NODE=true
+    fi
+else
+    log_error "Node.js no está instalado. Se procederá a instalarlo."
+    INSTALL_NODE=true
+fi
+
+# Comprobar FFmpeg
+if command -v ffmpeg &> /dev/null; then
+    FFMPEG_VERSION=$(ffmpeg -version | head -n1 | awk '{print $3}')
+    log "FFmpeg detectado: $FFMPEG_VERSION"
+else
+    log_error "FFmpeg no está instalado. Se procederá a instalarlo."
+    INSTALL_FFMPEG=true
+fi
+
+# Comprobar SQLite
+if command -v sqlite3 &> /dev/null; then
+    SQLITE_VERSION=$(sqlite3 --version | awk '{print $1}')
+    log "SQLite detectado: $SQLITE_VERSION"
+else
+    log_error "SQLite no está instalado. Se procederá a instalarlo."
+    INSTALL_SQLITE=true
+fi
+
+# Comprobar PM2
+if command -v pm2 &> /dev/null; then
+    PM2_VERSION=$(pm2 --version)
+    log "PM2 detectado: $PM2_VERSION"
+else
+    log_error "PM2 no está instalado. Se procederá a instalarlo."
+    INSTALL_PM2=true
+fi
+
+# Detectar IP del servidor
+log "Paso 2/8: ${YELLOW}Detectando IP del servidor...${NC}"
+PUBLIC_IP=$(curl -s ifconfig.me)
+if [ -z "$PUBLIC_IP" ]; then
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+    if [ -z "$LOCAL_IP" ]; then
+        SERVER_IP="localhost"
+        log_error "No se pudo detectar una IP válida. Se usará 'localhost'"
     else
-        SERVER_IP=$PUBLIC_IP
+        SERVER_IP=$LOCAL_IP
+        log "IP local detectada: $SERVER_IP"
+    fi
+else
+    SERVER_IP=$PUBLIC_IP
+    log "IP pública detectada: $SERVER_IP"
+fi
+
+# Instalar dependencias necesarias
+log "Paso 3/8: ${YELLOW}Instalando dependencias del sistema...${NC}"
+progress_bar 4 1
+
+# Actualizar repositorios
+if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
+    apt-get update -y >> "$LOG_FILE" 2>&1
+    check_result "Actualización de repositorios"
+    
+    if [ "$INSTALL_NODE" = true ]; then
+        log "Instalando Node.js..."
+        curl -fsSL https://deb.nodesource.com/setup_16.x | bash - >> "$LOG_FILE" 2>&1
+        apt-get install -y nodejs >> "$LOG_FILE" 2>&1
+        check_result "Instalación de Node.js" "fatal"
     fi
     
-    echo "Dirección IP detectada: $SERVER_IP"
-}
-
-# Función para configurar puertos y firewall
-configure_firewall() {
-    echo -e "${YELLOW}Configurando el firewall...${NC}"
-    
-    if command -v ufw &> /dev/null; then
-        # Si está usando UFW (Ubuntu, Debian)
-        sudo ufw allow 3000/tcp  # API
-        sudo ufw allow 4321/tcp  # Cliente web
-        sudo ufw status
-        echo -e "${GREEN}✓ Puertos 3000 y 4321 abiertos en UFW${NC}"
-    elif command -v firewall-cmd &> /dev/null; then
-        # Si está usando FirewallD (CentOS, Fedora)
-        sudo firewall-cmd --permanent --add-port=3000/tcp
-        sudo firewall-cmd --permanent --add-port=4321/tcp
-        sudo firewall-cmd --reload
-        echo -e "${GREEN}✓ Puertos 3000 y 4321 abiertos en FirewallD${NC}"
-    else
-        echo -e "${YELLOW}No se pudo detectar un firewall compatible.${NC}"
-        echo "Asegúrate de abrir manualmente los puertos 3000 (API) y 4321 (Cliente web)."
+    if [ "$INSTALL_FFMPEG" = true ]; then
+        log "Instalando FFmpeg..."
+        apt-get install -y ffmpeg >> "$LOG_FILE" 2>&1
+        check_result "Instalación de FFmpeg" "fatal"
     fi
-}
-
-# Función para crear servicio systemd para la aplicación
-create_systemd_service() {
-    echo -e "${YELLOW}Configurando StreamVio como servicio del sistema...${NC}"
     
-    # Crear archivo de servicio para el backend
-    cat > /tmp/streamvio-backend.service << EOF
+    if [ "$INSTALL_SQLITE" = true ]; then
+        log "Instalando SQLite..."
+        apt-get install -y sqlite3 >> "$LOG_FILE" 2>&1
+        check_result "Instalación de SQLite" "fatal"
+    fi
+    
+    if [ "$INSTALL_PM2" = true ]; then
+        log "Instalando PM2..."
+        npm install -g pm2 >> "$LOG_FILE" 2>&1
+        check_result "Instalación de PM2" "fatal"
+    fi
+    
+elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "fedora" ]; then
+    yum update -y >> "$LOG_FILE" 2>&1
+    check_result "Actualización de repositorios"
+    
+    if [ "$INSTALL_NODE" = true ]; then
+        log "Instalando Node.js..."
+        curl -fsSL https://rpm.nodesource.com/setup_16.x | bash - >> "$LOG_FILE" 2>&1
+        yum install -y nodejs >> "$LOG_FILE" 2>&1
+        check_result "Instalación de Node.js" "fatal"
+    fi
+    
+    if [ "$INSTALL_FFMPEG" = true ]; then
+        log "Instalando FFmpeg..."
+        yum install -y ffmpeg >> "$LOG_FILE" 2>&1
+        check_result "Instalación de FFmpeg" "fatal"
+    fi
+    
+    if [ "$INSTALL_SQLITE" = true ]; then
+        log "Instalando SQLite..."
+        yum install -y sqlite >> "$LOG_FILE" 2>&1
+        check_result "Instalación de SQLite" "fatal"
+    fi
+    
+    if [ "$INSTALL_PM2" = true ]; then
+        log "Instalando PM2..."
+        npm install -g pm2 >> "$LOG_FILE" 2>&1
+        check_result "Instalación de PM2" "fatal"
+    fi
+else
+    log_error "Distribución no soportada automáticamente. Intentando instalación genérica."
+    
+    if [ "$INSTALL_PM2" = true ]; then
+        log "Instalando PM2..."
+        npm install -g pm2 >> "$LOG_FILE" 2>&1
+        check_result "Instalación de PM2" "fatal"
+    fi
+fi
+
+progress_bar 4 2
+
+# Crear directorios necesarios
+log "Paso 4/8: ${YELLOW}Configurando directorios...${NC}"
+mkdir -p server/data/thumbnails server/data/transcoded server/public/assets >> "$LOG_FILE" 2>&1
+check_result "Creación de directorios"
+progress_bar 4 3
+
+# Configurar firewall
+log "Paso 5/8: ${YELLOW}Configurando firewall...${NC}"
+if command -v ufw &> /dev/null; then
+    # Si está usando UFW (Ubuntu, Debian)
+    ufw allow 3000/tcp >> "$LOG_FILE" 2>&1
+    ufw allow 4321/tcp >> "$LOG_FILE" 2>&1
+    check_result "Configuración de puertos en UFW"
+elif command -v firewall-cmd &> /dev/null; then
+    # Si está usando FirewallD (CentOS, Fedora)
+    firewall-cmd --permanent --add-port=3000/tcp >> "$LOG_FILE" 2>&1
+    firewall-cmd --permanent --add-port=4321/tcp >> "$LOG_FILE" 2>&1
+    firewall-cmd --reload >> "$LOG_FILE" 2>&1
+    check_result "Configuración de puertos en FirewallD"
+else
+    log_error "No se detectó un firewall compatible. Asegúrate de abrir manualmente los puertos 3000 (API) y 4321 (Cliente web)."
+fi
+progress_bar 4 4
+
+# Instalar dependencias de la aplicación
+log "Paso 6/8: ${YELLOW}Instalando dependencias de la aplicación...${NC}"
+log "Instalando dependencias del servidor..."
+cd server
+npm install --production >> "../$LOG_FILE" 2>&1
+check_result "Instalación de dependencias del servidor" "fatal"
+cd ..
+
+log "Instalando dependencias del cliente web..."
+cd clients/web
+npm install >> "../../$LOG_FILE" 2>&1
+check_result "Instalación de dependencias del cliente web" "fatal"
+cd ../..
+
+# Configurar archivos .env
+log "Paso 7/8: ${YELLOW}Configurando archivos de entorno...${NC}"
+if [ ! -f server/.env ]; then
+    cp server/.env.example server/.env 2>/dev/null || touch server/.env
+    
+    # Configurar variables de entorno para producción
+    cat > server/.env << EOF
+PORT=3000
+NODE_ENV=production
+CORS_ORIGINS=http://$SERVER_IP:4321
+JWT_SECRET=$(openssl rand -hex 32)
+DB_PATH=./data/streamvio.db
+EOF
+    check_result "Creación del archivo .env del servidor"
+else
+    log "El archivo .env del servidor ya existe, se mantiene la configuración actual"
+fi
+
+# Configurar .env del cliente
+echo "PUBLIC_API_URL=http://$SERVER_IP:3000" > clients/web/.env
+check_result "Creación del archivo .env del cliente"
+
+# Compilar el frontend
+log "Compilando el frontend para producción..."
+cd clients/web
+npm run build >> "../../$LOG_FILE" 2>&1
+check_result "Compilación del frontend" "fatal"
+cd ../..
+
+# Inicializar la base de datos
+log "Inicializando la base de datos..."
+cd server
+npm run init-db >> "../$LOG_FILE" 2>&1
+check_result "Inicialización de la base de datos" "fatal"
+cd ..
+
+# Configurar servicios systemd
+log "Paso 8/8: ${YELLOW}Configurando servicios del sistema...${NC}"
+
+# Crear archivo de servicio para el backend
+cat > /tmp/streamvio-backend.service << EOF
 [Unit]
 Description=StreamVio Backend Server
 After=network.target
@@ -149,8 +355,8 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-    # Crear archivo de servicio para el frontend
-    cat > /tmp/streamvio-frontend.service << EOF
+# Crear archivo de servicio para el frontend
+cat > /tmp/streamvio-frontend.service << EOF
 [Unit]
 Description=StreamVio Frontend Server
 After=network.target streamvio-backend.service
@@ -168,211 +374,49 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-    # Copiar archivos de servicio al directorio de systemd
-    sudo cp /tmp/streamvio-backend.service /etc/systemd/system/
-    sudo cp /tmp/streamvio-frontend.service /etc/systemd/system/
-    
-    # Recargar systemd
-    sudo systemctl daemon-reload
-    
-    # Habilitar servicios para arranque automático
-    sudo systemctl enable streamvio-backend.service
-    sudo systemctl enable streamvio-frontend.service
-    
-    echo -e "${GREEN}✓ Servicios configurados para arranque automático${NC}"
-}
+# Copiar archivos de servicio al directorio de systemd
+cp /tmp/streamvio-backend.service /etc/systemd/system/
+cp /tmp/streamvio-frontend.service /etc/systemd/system/
+check_result "Configuración de servicios systemd"
 
-# Función para compilar el frontend para producción
-build_frontend() {
-    echo -e "${YELLOW}Compilando el frontend para producción...${NC}"
-    
-    # Actualizar el archivo .env con la API URL
-    echo "PUBLIC_API_URL=http://$SERVER_IP:3000" > clients/web/.env
-    
-    # Cambiar al directorio del cliente web
-    cd clients/web
-    
-    # Compilar el frontend
-    npm run build
-    
-    # Volver al directorio principal
-    cd ../..
-    
-    echo -e "${GREEN}✓ Frontend compilado para producción${NC}"
-}
+# Recargar systemd
+systemctl daemon-reload
+check_result "Recarga de systemd"
 
-# Función para iniciar los servicios
-start_services() {
-    echo -e "${YELLOW}Iniciando servicios de StreamVio...${NC}"
-    
-    # Iniciar servicios
-    sudo systemctl start streamvio-backend.service
-    sudo systemctl start streamvio-frontend.service
-    
-    # Verificar estado
-    echo "Estado del backend:"
-    sudo systemctl status streamvio-backend.service --no-pager
-    
-    echo "Estado del frontend:"
-    sudo systemctl status streamvio-frontend.service --no-pager
-    
-    echo -e "${GREEN}✓ Servicios iniciados correctamente${NC}"
-}
-
-# Mostrar mensaje con información de acceso
-show_access_info() {
-    echo -e "\n${GREEN}===== StreamVio instalado correctamente =====${NC}"
-    echo -e "\nPuedes acceder a StreamVio de las siguientes formas:"
-    echo -e "- Interfaz web: ${GREEN}http://$SERVER_IP:4321${NC}"
-    echo -e "- API: ${GREEN}http://$SERVER_IP:3000${NC}"
-    echo -e "\nLos servicios se iniciarán automáticamente cuando el servidor arranque."
-    echo -e "\nPara gestionar los servicios manualmente:"
-    echo "  sudo systemctl start|stop|restart streamvio-backend"
-    echo "  sudo systemctl start|stop|restart streamvio-frontend"
-    echo -e "\nPara ver los logs:"
-    echo "  sudo journalctl -u streamvio-backend"
-    echo "  sudo journalctl -u streamvio-frontend"
-    echo -e "\n¡Gracias por usar StreamVio!\n"
-}
-
-# Inicio del script principal
-check_permissions
-
-# Verificar requisitos
-echo -e "${YELLOW}Verificando requisitos...${NC}"
-
-# Verificar Node.js
-if ! command -v node &> /dev/null; then
-    echo -e "${RED}Node.js no está instalado.${NC}"
-    read -p "¿Deseas instalar Node.js automáticamente? (s/n): " install_node
-    if [[ $install_node == "s" ]]; then
-        detect_os_and_install
-    else
-        echo "Por favor, instala Node.js (v14 o superior) manualmente antes de continuar."
-        exit 1
-    fi
-else
-    NODE_VERSION=$(node -v | cut -d'v' -f2)
-    NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1)
-    echo -e "${GREEN}✓ Node.js detectado: v$NODE_VERSION${NC}"
-    
-    # Verificar si la versión es inferior a 14
-    if [ "$NODE_MAJOR" -lt 14 ]; then
-        echo -e "${RED}La versión de Node.js es menor que la recomendada (v14+).${NC}"
-        read -p "¿Deseas actualizar Node.js automáticamente? (s/n): " update_node
-        if [[ $update_node == "s" ]]; then
-            detect_os_and_install
-        else
-            echo -e "${YELLOW}Continuando con Node.js v$NODE_VERSION. Pueden surgir problemas de compatibilidad.${NC}"
-        fi
-    fi
-fi
-
-# Verificar FFmpeg
-if ! command -v ffmpeg &> /dev/null; then
-    echo -e "${RED}FFmpeg no está instalado.${NC}"
-    read -p "¿Deseas instalar FFmpeg automáticamente? (s/n): " install_ffmpeg
-    if [[ $install_ffmpeg == "s" ]]; then
-        detect_os_and_install
-    else
-        echo -e "${YELLOW}⚠ ADVERTENCIA: FFmpeg es necesario para la transcodificación de vídeo.${NC}"
-        echo "  Algunas funciones estarán limitadas sin FFmpeg."
-        read -p "Presiona ENTER para continuar de todos modos..." continue_anyway
-    fi
-else
-    FFMPEG_VERSION=$(ffmpeg -version | head -n1 | awk '{print $3}')
-    echo -e "${GREEN}✓ FFmpeg detectado: $FFMPEG_VERSION${NC}"
-fi
-
-# Verificar SQLite
-if ! command -v sqlite3 &> /dev/null; then
-    echo -e "${RED}SQLite no está instalado.${NC}"
-    read -p "¿Deseas instalar SQLite automáticamente? (s/n): " install_sqlite
-    if [[ $install_sqlite == "s" ]]; then
-        detect_os_and_install
-    else
-        echo -e "${YELLOW}⚠ ADVERTENCIA: SQLite es necesario para la base de datos.${NC}"
-        echo "  La aplicación puede fallar sin SQLite."
-        read -p "Presiona ENTER para continuar de todos modos..." continue_anyway
-    fi
-else
-    SQLITE_VERSION=$(sqlite3 --version | awk '{print $1}')
-    echo -e "${GREEN}✓ SQLite detectado: $SQLITE_VERSION${NC}"
-fi
-
-# Verificar PM2
-if ! command -v pm2 &> /dev/null; then
-    echo -e "${RED}PM2 no está instalado.${NC}"
-    read -p "¿Deseas instalar PM2 automáticamente? (s/n): " install_pm2
-    if [[ $install_pm2 == "s" ]]; then
-        echo -e "${YELLOW}Instalando PM2 globalmente...${NC}"
-        sudo npm install -g pm2
-    else
-        echo -e "${YELLOW}⚠ ADVERTENCIA: PM2 es necesario para ejecutar StreamVio como servicio.${NC}"
-        read -p "Presiona ENTER para continuar de todos modos..." continue_anyway
-    fi
-else
-    PM2_VERSION=$(pm2 --version)
-    echo -e "${GREEN}✓ PM2 detectado: $PM2_VERSION${NC}"
-fi
-
-# Obtener IP del servidor
-get_server_ip
-
-# Crear directorios de datos si no existen
-echo ""
-echo -e "${YELLOW}Creando estructura de directorios...${NC}"
-
-mkdir -p server/data/thumbnails
-mkdir -p server/data/transcoded
-mkdir -p server/public/assets
-
-echo -e "${GREEN}✓ Estructura de directorios creada${NC}"
-
-# Copiar archivos de configuración
-echo ""
-echo -e "${YELLOW}Configurando archivos de entorno...${NC}"
-
-if [ ! -f server/.env ]; then
-    cp server/.env.example server/.env
-    # Configurar variables de entorno para producción
-    sed -i "s|PORT=3000|PORT=3000|g" server/.env
-    sed -i "s|NODE_ENV=development|NODE_ENV=production|g" server/.env
-    sed -i "s|CORS_ORIGINS=http://localhost:4321|CORS_ORIGINS=http://$SERVER_IP:4321|g" server/.env
-    sed -i "s|JWT_SECRET=tu_clave_secreta_para_jwt_aqui_cambiala_en_produccion|JWT_SECRET=$(openssl rand -hex 32)|g" server/.env
-    echo -e "${GREEN}✓ Archivo .env creado y configurado para producción${NC}"
-else
-    echo -e "${GREEN}✓ Archivo .env ya existe${NC}"
-fi
-
-# Configurar puertos y firewall
-configure_firewall
-
-# Instalar dependencias
-echo ""
-echo -e "${YELLOW}Instalando dependencias del servidor...${NC}"
-cd server && npm install --production
-cd ..
-
-echo ""
-echo -e "${YELLOW}Instalando dependencias del cliente web...${NC}"
-cd clients/web && npm install
-cd ../..
-
-# Compilar el frontend para producción
-build_frontend
-
-# Inicializar la base de datos
-echo ""
-echo -e "${YELLOW}Inicializando la base de datos...${NC}"
-cd server && npm run init-db
-cd ..
-
-# Configurar servicios systemd
-create_systemd_service
+# Habilitar servicios para arranque automático
+systemctl enable streamvio-backend.service >> "$LOG_FILE" 2>&1
+systemctl enable streamvio-frontend.service >> "$LOG_FILE" 2>&1
+check_result "Habilitación de servicios para arranque automático"
 
 # Iniciar servicios
-start_services
+log "Iniciando servicios de StreamVio..."
+systemctl start streamvio-backend.service
+check_result "Inicio del servicio backend"
+systemctl start streamvio-frontend.service
+check_result "Inicio del servicio frontend"
 
-# Mostrar información de acceso
-show_access_info
+# Verificar que los servicios están funcionando
+if systemctl is-active --quiet streamvio-backend.service; then
+    log "Servicio backend: ${GREEN}ACTIVO${NC}"
+else
+    log_error "Servicio backend: NO ESTÁ ACTIVO"
+fi
+
+if systemctl is-active --quiet streamvio-frontend.service; then
+    log "Servicio frontend: ${GREEN}ACTIVO${NC}"
+else
+    log_error "Servicio frontend: NO ESTÁ ACTIVO"
+fi
+
+# Verificar conectividad a los servicios
+log "Verificando conectividad a la API..."
+if curl -s "http://localhost:3000/api/health" | grep -q "ok"; then
+    log "API de StreamVio: ${GREEN}ACCESIBLE${NC}"
+else
+    log_error "API de StreamVio: NO ACCESIBLE. Verifica los logs con 'journalctl -u streamvio-backend'"
+fi
+
+# Mostrar resumen final
+show_summary
+
+log "Instalación completada. ¡Disfruta de StreamVio!"
