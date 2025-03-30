@@ -11,6 +11,7 @@ const authRoutes = require("./routes/auth");
 const librariesRoutes = require("./routes/libraries");
 const mediaRoutes = require("./routes/media");
 const adminRoutes = require("./routes/admin");
+const transcodingRoutes = require("./routes/transcoding");
 
 // Importar middleware de autenticación
 const authMiddleware = require("./middleware/auth");
@@ -46,6 +47,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/libraries", librariesRoutes);
 app.use("/api/media", mediaRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/transcoding", transcodingRoutes);
 
 // Ruta para verificar si un usuario es administrador
 app.get("/api/auth/verify-admin", authMiddleware, async (req, res) => {
@@ -76,3 +78,65 @@ app.get("/api/auth/verify-admin", authMiddleware, async (req, res) => {
     });
   }
 });
+
+// Configurar directorio de datos para servir archivos estáticos
+const dataDir = path.join(__dirname, "data");
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+// Servir archivos estáticos desde el directorio data con autenticación
+app.use("/data", authMiddleware, express.static(dataDir));
+
+// Inicializar y configurar el transcodificador
+const enhancedTranscoder = require("./services/enhancedTranscoderService");
+
+// Escuchar eventos del transcodificador para logging
+enhancedTranscoder.on("jobStarted", (data) => {
+  console.log(
+    `Trabajo de transcodificación iniciado: ${data.jobId} para media ${data.mediaId}`
+  );
+});
+
+enhancedTranscoder.on("jobCompleted", (data) => {
+  console.log(
+    `Trabajo de transcodificación completado: ${data.jobId}, archivo: ${data.outputPath}`
+  );
+});
+
+enhancedTranscoder.on("jobFailed", (data) => {
+  console.error(
+    `Trabajo de transcodificación fallido: ${data.jobId}, error: ${data.error}`
+  );
+});
+
+// Manejar errores 404
+app.use((req, res, next) => {
+  res.status(404).json({
+    error: "Ruta no encontrada",
+    message: `La ruta ${req.originalUrl} no existe en este servidor`,
+  });
+});
+
+// Manejar errores globales
+app.use((err, req, res, next) => {
+  console.error("Error en la aplicación:", err);
+  res.status(500).json({
+    error: "Error interno del servidor",
+    message:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : "Ocurrió un error inesperado",
+  });
+});
+
+// Configurar el puerto
+const PORT = process.env.PORT || 3000;
+
+// Iniciar el servidor
+app.listen(PORT, () => {
+  console.log(`Servidor StreamVio ejecutándose en el puerto ${PORT}`);
+  console.log(`API disponible en http://localhost:${PORT}`);
+});
+
+module.exports = app;

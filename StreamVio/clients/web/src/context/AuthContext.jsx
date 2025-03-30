@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
+import PasswordChangeModal from "../components/PasswordChangeModal";
 
 const API_URL = apiConfig.API_URL;
 
@@ -15,6 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
+  const [requirePasswordChange, setRequirePasswordChange] = useState(false);
 
   useEffect(() => {
     // Verificar si hay un token guardado
@@ -25,6 +27,24 @@ export const AuthProvider = ({ children }) => {
         try {
           // Configurar el token en los headers
           axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+          // Verificar si se requiere cambio de contraseña
+          try {
+            const passwordCheckResponse = await axios.get(
+              `${API_URL}/api/auth/check-password-change`
+            );
+            setRequirePasswordChange(
+              passwordCheckResponse.data.requirePasswordChange
+            );
+          } catch (passwordCheckError) {
+            // Si hay un error 403 con requirePasswordChange, significa que se necesita cambiar la contraseña
+            if (
+              passwordCheckError.response?.status === 403 &&
+              passwordCheckError.response?.data?.requirePasswordChange
+            ) {
+              setRequirePasswordChange(true);
+            }
+          }
 
           // Intentar obtener información del usuario actual
           const response = await axios.get(`${API_URL}/api/auth/user`);
@@ -87,6 +107,11 @@ export const AuthProvider = ({ children }) => {
         email: response.data.email,
       });
 
+      // Verificar si se requiere cambio de contraseña
+      if (response.data.requirePasswordChange) {
+        setRequirePasswordChange(true);
+      }
+
       return response.data;
     } catch (error) {
       throw error;
@@ -141,6 +166,12 @@ export const AuthProvider = ({ children }) => {
 
     // Actualizar estado
     setCurrentUser(null);
+    setRequirePasswordChange(false);
+  };
+
+  // Función para manejar el cambio de contraseña completo
+  const handlePasswordChangeComplete = () => {
+    setRequirePasswordChange(false);
   };
 
   // Valor del contexto
@@ -148,10 +179,18 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     loading,
     initialized,
+    requirePasswordChange,
     login,
     register,
     logout,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {requirePasswordChange && (
+        <PasswordChangeModal onComplete={handlePasswordChangeComplete} />
+      )}
+      {children}
+    </AuthContext.Provider>
+  );
 };

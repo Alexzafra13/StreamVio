@@ -1,0 +1,130 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import MediaViewer from '../../components/MediaViewer';
+import TranscodingManager from '../../components/TranscodingManager';
+
+const { id } = Astro.params;
+---
+
+<Layout title="Detalles del Medio | StreamVio">
+  <main class="container mx-auto px-4 py-8">
+    <div class="max-w-6xl mx-auto">
+      <a href="/media" class="inline-block mb-6 text-blue-500 hover:underline">&larr; Volver a la biblioteca</a>
+      
+      <div id="media-container" class="grid md:grid-cols-3 gap-8">
+        <!-- Columna izquierda: Reproductor/Visor -->
+        <div class="md:col-span-2">
+          <MediaViewer mediaId={id} client:load />
+        </div>
+        
+        <!-- Columna derecha: Info y Transcodificación -->
+        <div>
+          <div id="media-info" class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-bold mb-4" id="media-title">Cargando...</h2>
+            <div id="media-details" class="text-gray-400">
+              <p class="my-1" id="media-type"></p>
+              <p class="my-1" id="media-resolution"></p>
+              <p class="my-1" id="media-duration"></p>
+              <p class="my-1" id="media-size"></p>
+            </div>
+          </div>
+          
+          <!-- Opciones de Transcodificación -->
+          <TranscodingManager mediaId={id} client:load />
+        </div>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  // Script del cliente para cargar datos
+  const mediaId = document.location.pathname.split('/').pop();
+  const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+  
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Verificar autenticación
+    const token = localStorage.getItem('streamvio_token');
+    if (!token) {
+      window.location.href = '/auth?redirect=' + encodeURIComponent(window.location.pathname);
+      return;
+    }
+    
+    try {
+      // Cargar datos del medio
+      const response = await fetch(`${API_URL}/api/media/${mediaId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Error al cargar datos del medio');
+      }
+      
+      const mediaData = await response.json();
+      
+      // Actualizar UI con datos
+      document.getElementById('media-title').textContent = mediaData.title || 'Sin título';
+      document.getElementById('media-type').textContent = formatMediaType(mediaData.type);
+      
+      if (mediaData.width && mediaData.height) {
+        document.getElementById('media-resolution').textContent = `Resolución: ${mediaData.width}x${mediaData.height}`;
+      }
+      
+      if (mediaData.duration) {
+        document.getElementById('media-duration').textContent = `Duración: ${formatDuration(mediaData.duration)}`;
+      }
+      
+      if (mediaData.size) {
+        document.getElementById('media-size').textContent = `Tamaño: ${formatSize(mediaData.size)}`;
+      }
+      
+      // Actualizar título de la página
+      document.title = `${mediaData.title} | StreamVio`;
+    } catch (error) {
+      console.error('Error al cargar datos:', error);
+    }
+  });
+  
+  // Función para formatear tipo de medio
+  function formatMediaType(type) {
+    const types = {
+      'movie': 'Película',
+      'series': 'Serie',
+      'episode': 'Episodio',
+      'music': 'Música',
+      'photo': 'Foto'
+    };
+    
+    return types[type] || type;
+  }
+  
+  // Función para formatear duración
+  function formatDuration(seconds) {
+    if (!seconds) return 'Desconocida';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${remainingSeconds}s`;
+    } else {
+      return `${minutes}m ${remainingSeconds}s`;
+    }
+  }
+  
+  // Función para formatear tamaño
+  function formatSize(bytes) {
+    if (!bytes) return 'Desconocido';
+    
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    if (bytes === 0) return '0 B';
+    
+    const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)), 10);
+    if (i === 0) return `${bytes} ${sizes[i]}`;
+    
+    return `${(bytes / 1024 ** i).toFixed(2)} ${sizes[i]}`;
+  }
+</script>

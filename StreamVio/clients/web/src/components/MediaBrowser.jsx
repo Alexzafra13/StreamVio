@@ -338,7 +338,7 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
                     {item.year && <span>{item.year}</span>}
                   </div>
                   <a
-                    href={`/player/${item.id}`}
+                    href={`/media/${item.id}`}
                     className="mt-3 inline-block w-full text-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
                   >
                     {item.type === "movie" || item.type === "episode"

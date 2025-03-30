@@ -1,13 +1,12 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import VideoPlayer from '../../components/VideoPlayer';
-
+// Esta página redirige de la antigua URL /player/[id] a la nueva URL /media/[id]
 const { id } = Astro.params;
 ---
 
-<Layout title="Reproductor | StreamVio">
-  <main class="container mx-auto px-4 py-8">
-    <a href="/" class="inline-block mb-6 text-blue-500 hover:underline">&larr; Volver</a>
-    <VideoPlayer videoId={id} client:load />
-  </main>
-</Layout>
+<meta http-equiv="refresh" content={`0;url=/media/${id}`}>
+
+<script>
+  // En caso de que la redirección por meta no funcione
+  const id = document.location.pathname.split('/').pop();
+  window.location.href = `/media/${id}`;
+</script>
