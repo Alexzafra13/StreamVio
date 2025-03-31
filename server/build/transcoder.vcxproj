@@ -11,7 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{2434EBE9-D696-41EB-451B-36C0C666C564}</ProjectGuid>
+    <ProjectGuid>{BB882597-9BDF-414D-31DB-6291CF601F6A}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>transcoder</RootNamespace>
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
@@ -48,7 +48,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\include\node;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\src;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\config;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\openssl\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\uv\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\zlib;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\v8\include;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\node_modules\node-addon-api;..\..\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\include\node;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\src;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\config;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\openssl\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\uv\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\zlib;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\v8\include;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\node_modules\node-addon-api;..\..\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/Zc:__cplusplus -std:c++20 /Zm2000 %(AdditionalOptions)</AdditionalOptions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <BufferSecurityCheck>true</BufferSecurityCheck>
@@ -84,13 +84,13 @@
       <TargetMachine>MachineX64</TargetMachine>
     </Link>
     <ResourceCompile>
-      <AdditionalIncludeDirectories>C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\include\node;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\src;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\config;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\openssl\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\uv\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\zlib;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\v8\include;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\node_modules\node-addon-api;..\..\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\include\node;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\src;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\config;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\openssl\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\uv\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\zlib;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\v8\include;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\node_modules\node-addon-api;..\..\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NODE_GYP_MODULE_NAME=transcoder;USING_UV_SHARED=1;USING_V8_SHARED=1;V8_DEPRECATION_WARNINGS=1;_GLIBCXX_USE_CXX11_ABI=1;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_HAS_EXCEPTIONS=0;NOMINMAX;OPENSSL_NO_PINSHARED;OPENSSL_THREADS;NAPI_DISABLE_CPP_EXCEPTIONS;BUILDING_NODE_EXTENSION;HOST_BINARY=&quot;node.exe&quot;;DEBUG;_DEBUG;%(PreprocessorDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\include\node;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\src;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\config;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\openssl\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\uv\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\zlib;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\v8\include;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\node_modules\node-addon-api;..\..\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\include\node;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\src;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\config;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\openssl\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\uv\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\zlib;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\v8\include;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\node_modules\node-addon-api;..\..\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/Zc:__cplusplus -std:c++20 /Zm2000 %(AdditionalOptions)</AdditionalOptions>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
@@ -129,7 +129,7 @@
       <TargetMachine>MachineX64</TargetMachine>
     </Link>
     <ResourceCompile>
-      <AdditionalIncludeDirectories>C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\include\node;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\src;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\config;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\openssl\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\uv\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\zlib;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\v8\include;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\node_modules\node-addon-api;..\..\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\include\node;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\src;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\config;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\openssl\openssl\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\uv\include;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\zlib;C:\Users\Alejandro\AppData\Local\node-gyp\Cache\22.14.0\deps\v8\include;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\node_modules\node-addon-api;..\..\core\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NODE_GYP_MODULE_NAME=transcoder;USING_UV_SHARED=1;USING_V8_SHARED=1;V8_DEPRECATION_WARNINGS=1;_GLIBCXX_USE_CXX11_ABI=1;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_HAS_EXCEPTIONS=0;NOMINMAX;OPENSSL_NO_PINSHARED;OPENSSL_THREADS;NAPI_DISABLE_CPP_EXCEPTIONS;BUILDING_NODE_EXTENSION;HOST_BINARY=&quot;node.exe&quot;;%(PreprocessorDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
   </ItemDefinitionGroup>
@@ -143,11 +143,11 @@
     <ClCompile Include="..\..\core\src\transcoder\transcoder.cpp">
       <ObjectFileName>$(IntDir)\core\src\transcoder\transcoder.obj</ObjectFileName>
     </ClCompile>
-    <ClCompile Include="C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\node_modules\node-gyp\src\win_delay_load_hook.cc"/>
+    <ClCompile Include="C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\node_modules\node-gyp\src\win_delay_load_hook.cc"/>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="node_modules\node-addon-api\nothing.vcxproj">
-      <Project>{AF62BA6F-96D2-70E5-E6FF-FFAA380DD671}</Project>
+      <Project>{16063B2E-F7DC-E587-73C0-2D37AF1FE259}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>

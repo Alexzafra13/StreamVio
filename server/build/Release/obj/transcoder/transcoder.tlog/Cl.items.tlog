@@ -1,3 +1,3 @@
-C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\native\transcoder_binding.cc;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\build\Release\obj\transcoder\native\transcoder_binding.obj
-C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\core\src\transcoder\transcoder.cpp;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\build\Release\obj\transcoder\core\src\transcoder\transcoder.obj
-C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\node_modules\node-gyp\src\win_delay_load_hook.cc;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\StreamVio\server\build\Release\obj\transcoder\win_delay_load_hook.obj
+C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\native\transcoder_binding.cc;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\build\Release\obj\transcoder\native\transcoder_binding.obj
+C:\Users\Alejandro\Desktop\Proyecto\StreamVio\core\src\transcoder\transcoder.cpp;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\build\Release\obj\transcoder\core\src\transcoder\transcoder.obj
+C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\node_modules\node-gyp\src\win_delay_load_hook.cc;C:\Users\Alejandro\Desktop\Proyecto\StreamVio\server\build\Release\obj\transcoder\win_delay_load_hook.obj

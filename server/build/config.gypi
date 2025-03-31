@@ -458,7 +458,7 @@
     "globalconfig": "C:\\Users\\Alejandro\\AppData\\Roaming\\npm\\etc\\npmrc",
     "global_prefix": "C:\\Users\\Alejandro\\AppData\\Roaming\\npm",
     "init_module": "C:\\Users\\Alejandro\\.npm-init.js",
-    "local_prefix": "C:\\Users\\Alejandro\\Desktop\\Proyecto\\StreamVio\\StreamVio\\server",
+    "local_prefix": "C:\\Users\\Alejandro\\Desktop\\Proyecto\\StreamVio\\server",
     "node_gyp": "C:\\Program Files\\nodejs\\node_modules\\npm\\node_modules\\node-gyp\\bin\\node-gyp.js",
     "npm_version": "10.9.2",
     "prefix": "C:\\Users\\Alejandro\\AppData\\Roaming\\npm",
