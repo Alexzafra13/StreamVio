@@ -6,8 +6,15 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "init-db": "node ./scripts/db-init.js"
+    "test": "jest --config jest.config.js --testPathPattern=tests/unit",
+    "test:integration": "jest --config jest.config.js --testPathPattern=tests/integration",
+    "test:api": "jest --config jest.config.js --testPathPattern=tests/api",
+    "test:performance": "jest --config jest.config.js --testPathPattern=tests/performance --runInBand",
+    "test:all": "jest --config jest.config.js",
+    "test:coverage": "jest --config jest.config.js --coverage",
+    "init-db": "node ./scripts/db-init.js",
+    "init-db:test": "NODE_ENV=test node ./scripts/db-init.js",
+    "init-db:test-data": "NODE_ENV=test node ./scripts/db-init.js && node ./scripts/load-test-data.js"
   },
   "keywords": [
     "streaming",
@@ -32,7 +39,9 @@
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "node-gyp": "^11.1.0",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "supertest": "^6.3.4"
   }
 }
