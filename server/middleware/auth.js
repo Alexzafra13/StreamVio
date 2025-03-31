@@ -28,24 +28,32 @@ const authMiddleware = async (req, res, next) => {
     // Agregar la información del usuario al objeto request
     req.user = decoded;
 
-    // Verificar si el usuario debe cambiar su contraseña
-    // Excluimos la propia ruta de cambio de contraseña y la verificación
-    if (
-      req.path !== "/api/auth/change-password" &&
-      req.path !== "/api/auth/check-password-change"
-    ) {
+    // Verificar si la tabla users tiene la columna force_password_change
+    try {
+      // Primero, verificar si el usuario existe
       const user = await db.asyncGet(
-        "SELECT force_password_change FROM users WHERE id = ?",
+        "SELECT * FROM users WHERE id = ?",
         [decoded.id]
       );
 
-      if (user && user.force_password_change === 1) {
-        return res.status(403).json({
-          error: "Cambio de contraseña requerido",
-          message: "Debes cambiar tu contraseña antes de continuar",
-          requirePasswordChange: true,
-        });
+      if (user) {
+        // Verificar si la columna existe en el objeto user
+        if (user.hasOwnProperty('force_password_change') && 
+            user.force_password_change === 1 &&
+            req.path !== "/api/auth/change-password" &&
+            req.path !== "/api/auth/check-password-change") {
+          
+          return res.status(403).json({
+            error: "Cambio de contraseña requerido",
+            message: "Debes cambiar tu contraseña antes de continuar",
+            requirePasswordChange: true,
+          });
+        }
       }
+    } catch (userCheckError) {
+      // Si hay un error al verificar el usuario, simplemente continuamos
+      // Esto evita problemas con la columna faltante
+      console.log("Aviso: Error al verificar estado de usuario:", userCheckError.message);
     }
 
     // Continuar con la siguiente función en la cadena de middleware

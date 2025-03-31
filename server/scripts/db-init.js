@@ -6,6 +6,7 @@
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 const fs = require("fs");
+const bcrypt = require("bcrypt");
 require("dotenv").config();
 
 // Definir la ruta de la base de datos
@@ -49,6 +50,28 @@ const db = new sqlite3.Database(dbPath, (err) => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`);
+
+      // Añadir la columna force_password_change si no existe
+      db.get("PRAGMA table_info(users)", (err, rows) => {
+        if (err) {
+          console.error("Error al verificar la estructura de la tabla users:", err);
+          return;
+        }
+        
+        // Comprobar si la columna force_password_change existe
+        const hasColumn = rows.some(row => row.name === "force_password_change");
+        
+        if (!hasColumn) {
+          console.log("Añadiendo columna force_password_change a la tabla users...");
+          db.run("ALTER TABLE users ADD COLUMN force_password_change BOOLEAN DEFAULT 0", (alterErr) => {
+            if (alterErr) {
+              console.error("Error al añadir la columna force_password_change:", alterErr);
+            } else {
+              console.log("Columna force_password_change añadida con éxito.");
+            }
+          });
+        }
+      });
 
       // Tabla de configuraciones globales
       db.run(`CREATE TABLE IF NOT EXISTS settings (
@@ -174,6 +197,29 @@ const db = new sqlite3.Database(dbPath, (err) => {
           ('thumbnail_generation', '1', 'Generar miniaturas automáticamente'),
           ('metadata_language', 'es', 'Idioma preferido para metadatos')
         `);
+
+        // Crear usuario admin por defecto
+        const createAdminUser = async () => {
+          try {
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash("admin", salt);
+            
+            db.run(`INSERT INTO users (username, email, password, is_admin, force_password_change) 
+                   VALUES (?, ?, ?, ?, ?)`,
+                   ["admin", "admin@streamvio.local", hashedPassword, 1, 1],
+                   (err) => {
+                     if (err) {
+                       console.error("Error al crear usuario admin:", err.message);
+                     } else {
+                       console.log("Usuario admin creado con éxito");
+                     }
+                   });
+          } catch (error) {
+            console.error("Error al generar hash de contraseña:", error);
+          }
+        };
+        
+        createAdminUser();
       }
 
       // Confirmar transacción

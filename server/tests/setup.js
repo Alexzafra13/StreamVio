@@ -85,6 +85,7 @@ beforeAll(async () => {
       email TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL,
       is_admin BOOLEAN DEFAULT 0,
+      force_password_change BOOLEAN DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
