@@ -1,8 +1,10 @@
 // server/tests/unit/transcoderService.test.js
 const fs = require("fs");
 const path = require("path");
-const { promisify } = require("util");
 const enhancedTranscoder = require("../../services/enhancedTranscoderService");
+
+// Crear un mock para execAsync que podamos controlar en cada test
+const mockExecAsync = jest.fn();
 
 // Mockear fs para no realizar operaciones reales en archivos
 jest.mock("fs", () => ({
@@ -17,16 +19,19 @@ jest.mock("fs", () => ({
 // Mockear exec para no ejecutar comandos reales
 jest.mock("util", () => ({
   ...jest.requireActual("util"),
-  promisify: jest.fn(() => jest.fn()),
+  promisify: jest.fn(() => mockExecAsync),
 }));
 
 describe("TranscoderService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    
     // Configurar que los archivos "existen" para las pruebas
     fs.existsSync.mockImplementation((path) => {
       // Simular que el transcodificador no existe para forzar FFprobe
-      if (path.includes("transcodificador")) return false;
+      if (path.includes("transcodificador") || path.includes("streamvio_transcoder")) {
+        return false;
+      }
       return true;
     });
   });
@@ -34,8 +39,7 @@ describe("TranscoderService", () => {
   describe("getMediaInfo", () => {
     test("debería devolver información del archivo multimedia con FFprobe", async () => {
       // Configurar el mock para simular la ejecución del comando ffprobe
-      const mockExecAsync = promisify(jest.fn());
-      mockExecAsync.mockResolvedValue({
+      mockExecAsync.mockResolvedValueOnce({
         stdout: JSON.stringify({
           format: {
             duration: "120.5",
@@ -61,11 +65,13 @@ describe("TranscoderService", () => {
         }),
       });
 
-      // Aplicar el mock
-      promisify.mockReturnValue(mockExecAsync);
-
       // Ejecutar el método a probar
       const info = await enhancedTranscoder.getMediaInfo("/path/to/test.mp4");
+
+      // Verificar que se llamó al comando correcto
+      expect(mockExecAsync).toHaveBeenCalledWith(
+        expect.stringContaining("ffprobe")
+      );
 
       // Verificar el resultado
       expect(info).toEqual(
@@ -98,12 +104,19 @@ describe("TranscoderService", () => {
 
   describe("generateThumbnail", () => {
     test("debería generar una miniatura correctamente con FFmpeg", async () => {
-      // Configurar el mock para simular la ejecución del comando ffmpeg
-      const mockExecAsync = promisify(jest.fn());
-      mockExecAsync.mockResolvedValue({ stdout: "", stderr: "" });
+      // Configurar los mocks necesarios
+      fs.existsSync.mockImplementation((path) => {
+        // El archivo de entrada existe, el transcodificador no
+        if (path.includes("transcodificador") || path.includes("streamvio_transcoder")) {
+          return false;
+        }
+        // La miniatura también existe después de crearla
+        return true;
+      });
 
-      // Aplicar el mock
-      promisify.mockReturnValue(mockExecAsync);
+      // Configurar el mock para simular la ejecución del comando ffmpeg
+      mockExecAsync.mockResolvedValueOnce({ stdout: "", stderr: "" }); // Para 'ffmpeg -version'
+      mockExecAsync.mockResolvedValueOnce({ stdout: "", stderr: "" }); // Para el comando ffmpeg principal
 
       // Ejecutar el método a probar
       const thumbnailPath = await enhancedTranscoder.generateThumbnail(
@@ -112,9 +125,8 @@ describe("TranscoderService", () => {
       );
 
       // Verificar que se llamó al ejecutable con los parámetros correctos
-      expect(mockExecAsync).toHaveBeenCalledTimes(1);
       expect(mockExecAsync).toHaveBeenCalledWith(
-        expect.stringContaining(`ffmpeg`)
+        expect.stringContaining("ffmpeg")
       );
 
       // Verificar la ruta de la miniatura
