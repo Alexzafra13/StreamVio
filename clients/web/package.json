@@ -19,8 +19,8 @@
     "@astrojs/react": "^4.2.2",
     "astro": "^5.5.5",
     "axios": "^1.8.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@astrojs/tailwind": "^6.0.2",
@@ -28,8 +28,8 @@
     "@testing-library/jest-dom": "^6.2.0",
     "@testing-library/react": "^15.0.0",
     "@testing-library/user-event": "^14.5.2",
-    "@types/react": "^19.0.12",
-    "@types/react-dom": "^19.0.4",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.1",
     "happy-dom": "^13.3.8",
     "jsdom": "^24.0.0",

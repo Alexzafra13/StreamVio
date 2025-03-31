@@ -1,5 +1,13 @@
 ---
 // Esta página redirige de la antigua URL /player/[id] a la nueva URL /media/[id]
+
+// Generar una única ruta para mantener compatibilidad con la estructura
+export function getStaticPaths() {
+  return [
+    { params: { id: 'placeholder' } }
+  ];
+}
+
 const { id } = Astro.params;
 ---
 
