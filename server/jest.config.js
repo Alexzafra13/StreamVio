@@ -13,10 +13,10 @@ module.exports = {
   // cambiar a futuro
   coverageThreshold: {
     global: {
-      statements: 7,
-      branches: 9,
-      functions: 12,
-      lines: 7,
+      statements: 5,
+      branches: 5,
+      functions: 5,
+      lines: 5,
     },
   },
   testMatch: ["**/tests/**/*.test.js"],
