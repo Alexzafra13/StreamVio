@@ -10,10 +10,6 @@ jobs:
   server-tests:
     runs-on: ubuntu-latest
 
-    services:
-      sqlite:
-        image: keinos/sqlite3
-
     strategy:
       matrix:
         node-version: [16.x, 18.x]
@@ -28,6 +24,11 @@ jobs:
           cache: "npm"
           cache-dependency-path: server/package-lock.json
 
+      - name: Install SQLite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlite3
+
       - name: Install FFmpeg
         run: |
           sudo apt-get update
@@ -40,6 +41,7 @@ jobs:
 
       - name: Initialize database
         run: |
+          mkdir -p server/data
           cd server
           npm run init-db:test
 

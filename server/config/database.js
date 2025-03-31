@@ -2,6 +2,7 @@
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 const fs = require("fs");
+const isTestEnvironment = process.env.NODE_ENV === "test";
 
 // Definir la ruta de la base de datos desde variables de entorno o usar ruta por defecto
 const dbPath = process.env.DB_PATH
@@ -23,6 +24,13 @@ if (!fs.existsSync(dbDir)) {
     process.exit(1);
   }
 }
+
+// Definir la ruta de la base de datos
+dbPath = isTestEnvironment
+  ? ":memory:"
+  : process.env.DB_PATH
+  ? path.resolve(process.env.DB_PATH)
+  : path.resolve(__dirname, "../data/streamvio.db");
 
 // Función para habilitar soporte de fechas en SQLite
 const enableDatetimeFunctions = (db) => {
