@@ -5,25 +5,34 @@ const fs = require("fs");
 const isTestEnvironment = process.env.NODE_ENV === "test";
 
 // Definir la ruta de la base de datos desde variables de entorno o usar ruta por defecto
-const dbPath = process.env.DB_PATH
+let dbPath = process.env.DB_PATH
   ? path.resolve(process.env.DB_PATH)
   : path.resolve(__dirname, "../data/streamvio.db");
 
-// Asegurarse de que el directorio existe
-const dbDir = path.dirname(dbPath);
-console.log(`Intentando acceder/crear directorio de BD: ${dbDir}`);
-if (!fs.existsSync(dbDir)) {
-  try {
-    fs.mkdirSync(dbDir, { recursive: true });
-    console.log(`Directorio de base de datos creado: ${dbDir}`);
-  } catch (err) {
-    console.error(
-      `Error al crear directorio para la base de datos: ${err.message}`
-    );
-    // Usar una ubicación alternativa como último recurso
-    process.exit(1);
+// Para entorno de pruebas, usar base de datos en memoria
+if (isTestEnvironment) {
+  dbPath = ":memory:";
+}
+
+// Asegurarse de que el directorio existe (solo para bases de datos de archivo)
+if (dbPath !== ":memory:") {
+  const dbDir = path.dirname(dbPath);
+  console.log(`Intentando acceder/crear directorio de BD: ${dbDir}`);
+
+  if (!fs.existsSync(dbDir)) {
+    try {
+      fs.mkdirSync(dbDir, { recursive: true });
+      console.log(`Directorio de base de datos creado: ${dbDir}`);
+    } catch (err) {
+      console.error(
+        `Error al crear directorio para la base de datos: ${err.message}`
+      );
+      process.exit(1);
+    }
   }
 }
+
+// Resto del código sigue igual...
 
 // Definir la ruta de la base de datos
 dbPath = isTestEnvironment
