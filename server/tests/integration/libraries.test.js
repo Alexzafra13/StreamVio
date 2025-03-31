@@ -1,6 +1,6 @@
 // server/tests/integration/libraries.test.js
 const request = require('supertest');
-const app = require('../../app');
+const app = require('../../app'); // Solo importa la app, no inicia el servidor
 const db = require('../../config/database');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
@@ -102,11 +102,6 @@ describe('API de Bibliotecas', () => {
     
     // Eliminar bibliotecas de prueba
     await db.asyncRun("DELETE FROM libraries WHERE name LIKE 'Test Library%'");
-    
-    // Cerrar la conexión a la base de datos
-    await new Promise((resolve) => {
-      db.close(resolve);
-    });
   });
   
   // Crear una biblioteca para pruebas

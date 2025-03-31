@@ -1,3 +1,5 @@
+// Modificación de app.js para separar la creación de la app y el inicio del servidor
+
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -130,13 +132,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Configurar el puerto
-const PORT = process.env.PORT || 3000;
+// IMPORTANTE: Solo iniciar el servidor si este archivo se ejecuta directamente,
+// no cuando se importa para tests
+if (require.main === module) {
+  // Configurar el puerto
+  const PORT = process.env.PORT || 3000;
 
-// Iniciar el servidor
-app.listen(PORT, () => {
-  console.log(`Servidor StreamVio ejecutándose en el puerto ${PORT}`);
-  console.log(`API disponible en http://localhost:${PORT}`);
-});
+  // Iniciar el servidor
+  app.listen(PORT, () => {
+    console.log(`Servidor StreamVio ejecutándose en el puerto ${PORT}`);
+    console.log(`API disponible en http://localhost:${PORT}`);
+  });
+}
 
 module.exports = app;

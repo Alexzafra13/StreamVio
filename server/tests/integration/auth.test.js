@@ -1,6 +1,6 @@
 // server/tests/integration/auth.test.js
 const request = require('supertest');
-const app = require('../../app');
+const app = require('../../app'); // Solo importa la app, no inicia el servidor
 const db = require('../../config/database');
 const bcrypt = require('bcrypt');
 
@@ -44,11 +44,6 @@ describe('API de Autenticación', () => {
       'DELETE FROM users WHERE email = ?',
       ['test_integration@example.com']
     );
-    
-    // Cerrar la conexión a la base de datos
-    await new Promise((resolve) => {
-      db.close(resolve);
-    });
   });
   
   // Prueba de registro de usuario

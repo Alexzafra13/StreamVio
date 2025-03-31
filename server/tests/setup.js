@@ -28,6 +28,10 @@ global.generateTestToken = (
   });
 };
 
+// Importamos el servidor para pruebas
+const app = require("../app");
+let server;
+
 // Mock para servicios externos o módulos del sistema
 jest.mock("../services/transcoderService", () => {
   // Implementar mock del servicio de transcodificación
@@ -72,7 +76,7 @@ jest.mock("../services/transcoderService", () => {
   };
 });
 
-// Inicializar y limpiar entre tests (opcional)
+// Inicializar y limpiar entre tests
 beforeAll(async () => {
   // Inicializar base de datos para tests
   const db = require("../config/database");
@@ -94,6 +98,10 @@ beforeAll(async () => {
   // Añadir más tablas según sea necesario...
 
   console.log("Base de datos de prueba inicializada");
+  
+  // Iniciar el servidor para pruebas
+  const PORT = process.env.PORT || 3001;
+  server = app.listen(PORT);
 });
 
 afterAll(async () => {
@@ -102,6 +110,9 @@ afterAll(async () => {
 
   // Cerrar conexión a la base de datos
   await new Promise((resolve) => db.close(resolve));
+  
+  // Cerrar el servidor
+  await new Promise(resolve => server.close(resolve));
 
   console.log("Recursos de prueba liberados");
 });
