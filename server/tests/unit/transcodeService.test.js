@@ -1,4 +1,3 @@
-// server/tests/unit/transcoderService.test.js
 const fs = require("fs");
 const path = require("path");
 const { promisify } = require("util");
@@ -97,11 +96,11 @@ describe("TranscoderService", () => {
         5
       );
 
-      // Verificar que se llamó al ejecutable con los parámetros correctos
-      expect(mockExecAsync).toHaveBeenCalled();
+      // Verificar que se llamó al ejecutable
+      expect(mockExecAsync).toHaveBeenCalledTimes(1);
+
+      // Verificar la ruta de la miniatura
       expect(thumbnailPath).toContain("_thumb.jpg");
     });
   });
-
-  // Puedes añadir más tests para otros métodos como createHLSStream, startTranscodeJob, etc.
 });
