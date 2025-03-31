@@ -1,4 +1,3 @@
-// server/services/enhancedTranscoderService.js
 const path = require("path");
 const fs = require("fs");
 const { promisify } = require("util");
@@ -105,21 +104,60 @@ class EnhancedTranscoderService {
 
       // Verificar si el transcodificador nativo está disponible
       if (fs.existsSync(this.transcoderBinPath)) {
-        // Usar el transcodificador nativo
-        const { stdout } = await execAsync(
-          `${this.transcoderBinPath} info "${filePath}"`
-        );
+        try {
+          // Usar comando directo del transcodificador
+          const { stdout } = await execAsync(
+            `${this.transcoderBinPath} info "${filePath}"`
+          );
 
-        return this.parseNativeTranscoderOutput(stdout, filePath);
+          // Verificar que stdout no esté vacío
+          if (!stdout) {
+            throw new Error("No se pudo obtener información del archivo");
+          }
+
+          // Parsear la salida
+          return this.parseNativeTranscoderOutput(stdout, filePath);
+        } catch (error) {
+          console.error(
+            `Error con transcodificador nativo para ${filePath}:`,
+            error
+          );
+
+          // Intentar método alternativo (FFprobe)
+          return this.getMediaInfoWithFfprobe(filePath);
+        }
       } else {
-        // Alternativa: Usar FFprobe
-        return await this.getMediaInfoWithFfprobe(filePath);
+        // Método alternativo usando FFprobe
+        return this.getMediaInfoWithFfprobe(filePath);
       }
     } catch (error) {
       console.error(`Error al obtener información de ${filePath}:`, error);
       throw new Error(
         `No se pudo obtener información del archivo: ${error.message}`
       );
+    }
+  }
+
+  // Método de respaldo para obtener información con FFprobe
+  async getMediaInfoWithFfprobe(filePath) {
+    try {
+      const { stdout } = await execAsync(
+        `ffprobe -v quiet -print_format json -show_format -show_streams "${filePath}"`
+      );
+
+      if (!stdout) {
+        throw new Error(
+          "No se pudo obtener información del archivo con FFprobe"
+        );
+      }
+
+      const ffprobeData = JSON.parse(stdout);
+
+      // Parsear la salida de FFprobe
+      return this.parseFFprobeOutput(ffprobeData, filePath);
+    } catch (error) {
+      console.error(`Error con FFprobe para ${filePath}:`, error);
+      throw error;
     }
   }
 
@@ -180,6 +218,56 @@ class EnhancedTranscoderService {
           i++;
         }
       }
+    }
+
+    return info;
+  }
+
+  // Parsear la salida de FFprobe
+  parseFFprobeOutput(ffprobeData, filePath) {
+    const info = {
+      path: filePath,
+      format: ffprobeData.format?.format_name || "unknown",
+      duration: Math.floor(
+        parseFloat(ffprobeData.format?.duration || 0) * 1000
+      ),
+      width: 0,
+      height: 0,
+      videoCodec: "",
+      videoBitrate: 0,
+      audioCodec: "",
+      audioBitrate: 0,
+      audioChannels: 0,
+      audioSampleRate: 0,
+      metadata: ffprobeData.format?.tags || {},
+    };
+
+    // Buscar streams de video y audio
+    const videoStream = ffprobeData.streams.find(
+      (stream) => stream.codec_type === "video"
+    );
+    const audioStream = ffprobeData.streams.find(
+      (stream) => stream.codec_type === "audio"
+    );
+
+    if (videoStream) {
+      info.width = videoStream.width || 0;
+      info.height = videoStream.height || 0;
+      info.videoCodec = videoStream.codec_name || "";
+      info.videoBitrate = videoStream.bit_rate
+        ? parseInt(videoStream.bit_rate) / 1000
+        : 0;
+    }
+
+    if (audioStream) {
+      info.audioCodec = audioStream.codec_name || "";
+      info.audioChannels = audioStream.channels || 0;
+      info.audioBitrate = audioStream.bit_rate
+        ? parseInt(audioStream.bit_rate) / 1000
+        : 0;
+      info.audioSampleRate = audioStream.sample_rate
+        ? parseInt(audioStream.sample_rate)
+        : 0;
     }
 
     return info;
