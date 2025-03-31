@@ -18,8 +18,8 @@ const mockExecAsync = jest.fn();
 jest.mock("util", () => {
   return {
     ...jest.requireActual("util"),
-    promisify: jest.fn().mockImplementation((fn) => {
-      if (fn.name === "exec") return mockExecAsync;
+    promisify: jest.fn((fn) => {
+      if (fn && fn.name === "exec") return mockExecAsync;
       return jest.requireActual("util").promisify(fn);
     }),
   };
@@ -33,11 +33,19 @@ describe("TranscoderService", () => {
     jest.clearAllMocks();
     
     // Configurar que los archivos "existen" por defecto para las pruebas
-    fs.existsSync.mockImplementation(() => true);
+    fs.existsSync.mockReturnValue(true);
   });
 
   describe("getMediaInfo", () => {
     test("debería devolver información del archivo multimedia con FFprobe", async () => {
+      // Configurar que el transcodificador no existe
+      fs.existsSync.mockImplementation((path) => {
+        if (path.includes("streamvio_transcoder")) {
+          return false;
+        }
+        return true;
+      });
+
       // Configurar el mock para simular la ejecución del comando ffprobe
       mockExecAsync.mockResolvedValueOnce({
         stdout: JSON.stringify({
@@ -93,7 +101,7 @@ describe("TranscoderService", () => {
 
     test("debería manejar errores si el archivo no existe", async () => {
       // Simular que el archivo no existe
-      fs.existsSync.mockReturnValueOnce(false);
+      fs.existsSync.mockReturnValue(false);
 
       // Verificar que se produce una excepción
       await expect(
@@ -104,6 +112,14 @@ describe("TranscoderService", () => {
 
   describe("generateThumbnail", () => {
     test("debería generar una miniatura correctamente con FFmpeg", async () => {
+      // Configurar que el transcodificador no existe pero el archivo sí
+      fs.existsSync.mockImplementation((path) => {
+        if (path.includes("streamvio_transcoder")) {
+          return false;
+        }
+        return true;
+      });
+
       // Configurar el mock para simular la ejecución del comando ffmpeg
       mockExecAsync.mockResolvedValueOnce({ stdout: "", stderr: "" }); // Para 'ffmpeg -version'
       mockExecAsync.mockResolvedValueOnce({ stdout: "", stderr: "" }); // Para el comando ffmpeg principal
@@ -125,7 +141,7 @@ describe("TranscoderService", () => {
 
     test("debería manejar errores al generar miniatura", async () => {
       // Simular que el archivo no existe
-      fs.existsSync.mockReturnValueOnce(false);
+      fs.existsSync.mockReturnValue(false);
 
       // Verificar que se produce una excepción
       await expect(
