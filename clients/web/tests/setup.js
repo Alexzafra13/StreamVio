@@ -185,3 +185,13 @@ global.testData = {
     },
   ],
 };
+
+// Polyfill para crypto.getRandomValues
+if (typeof global.crypto !== "object") {
+  global.crypto = {};
+}
+if (typeof global.crypto.getRandomValues !== "function") {
+  global.crypto.getRandomValues = function getRandomValues(array) {
+    return require("crypto").randomFillSync(array);
+  };
+}

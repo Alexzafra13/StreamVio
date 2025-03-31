@@ -1,19 +1,19 @@
-// clients/web/tests/e2e/userFlow.test.js
-const { test, expect } = require("@playwright/test");
+// clients/web/tests/e2e/useFlow.test.js
+const { test, expect } = require('@playwright/test');
 
-test.describe("Flujo completo de usuario", () => {
-  test("desde registro hasta reproducción de contenido", async ({ page }) => {
-    // 1. Visitar la página principal
-    await page.goto("http://localhost:4321/");
+// En lugar de test.describe, usa simplemente test
+test('Flujo completo de usuario - desde registro hasta reproducción de contenido', async ({ page }) => {
+  // 1. Visitar la página principal
+  await page.goto("http://localhost:4321/");
 
-    // Verificar que estamos en la página de inicio
-    await expect(page.locator("h1")).toContainText("Bienvenido a StreamVio");
+  // Verificar que estamos en la página de inicio
+  await expect(page.locator("h1")).toContainText("Bienvenido a StreamVio");
 
-    // 2. Ir a la página de autenticación
-    await page.click("text=Iniciar Sesión");
+  // 2. Ir a la página de autenticación
+  await page.click("text=Iniciar Sesión");
 
-    // Verificar que estamos en la página de autenticación
-    await expect(page).toHaveURL(/.*\/auth/);
+  // Verificar que estamos en la página de autenticación
+  await expect(page).toHaveURL(/.*\/auth/);
 
     // 3. Registrar un nuevo usuario (con email único para evitar conflictos)
     const uniqueEmail = `test_${Date.now()}@example.com`;

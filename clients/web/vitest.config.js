@@ -7,10 +7,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./tests/setup.js"],
-    include: [
-      "./src/**/*.{test,spec}.{js,jsx}",
-      "./tests/unit/**/*.{test,spec}.{js,jsx}",
-    ],
-    exclude: ["./tests/e2e/**/*", "node_modules"],
+
+    deps: {
+      inline: ["module-requiring-crypto"],
+    },
   },
 });
