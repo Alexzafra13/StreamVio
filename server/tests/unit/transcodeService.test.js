@@ -1,10 +1,6 @@
 // server/tests/unit/transcoderService.test.js
 const fs = require("fs");
 const path = require("path");
-const enhancedTranscoder = require("../../services/enhancedTranscoderService");
-
-// Crear un mock para execAsync que podamos controlar en cada test
-const mockExecAsync = jest.fn();
 
 // Mockear fs para no realizar operaciones reales en archivos
 jest.mock("fs", () => ({
@@ -16,11 +12,20 @@ jest.mock("fs", () => ({
   writeFileSync: jest.fn(),
 }));
 
+// Crear un mock para execAsync que podamos controlar en cada test
+const mockExecAsync = jest.fn();
+
 // Mockear exec para no ejecutar comandos reales
-jest.mock("util", () => ({
-  ...jest.requireActual("util"),
-  promisify: jest.fn(() => mockExecAsync),
-}));
+// Importante: Siempre defina los mocks antes de importar el módulo que los usa
+jest.mock("util", () => {
+  return {
+    ...jest.requireActual("util"),
+    promisify: jest.fn().mockImplementation(() => mockExecAsync),
+  };
+});
+
+// Importar el módulo después de definir los mocks
+const enhancedTranscoder = require("../../services/enhancedTranscoderService");
 
 describe("TranscoderService", () => {
   beforeEach(() => {
