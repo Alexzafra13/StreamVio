@@ -14,6 +14,7 @@ const librariesRoutes = require("./routes/libraries");
 const mediaRoutes = require("./routes/media");
 const adminRoutes = require("./routes/admin");
 const transcodingRoutes = require("./routes/transcoding");
+const metadataRoutes = require("./routes/metadata");
 
 // Importar middleware de autenticación
 const authMiddleware = require("./middleware/auth");
@@ -50,6 +51,7 @@ app.use("/api/libraries", librariesRoutes);
 app.use("/api/media", mediaRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/transcoding", transcodingRoutes);
+app.use("/api/metadata", metadataRoutes);
 
 // Ruta para verificar si un usuario es administrador
 app.get("/api/auth/verify-admin", authMiddleware, async (req, res) => {

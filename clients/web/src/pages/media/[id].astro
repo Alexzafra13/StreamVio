@@ -2,6 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import MediaViewer from '../../components/MediaViewer';
 import TranscodingManager from '../../components/TranscodingManager';
+import MetadataFinder from '../../components/MetadataFinder';
 
 // Implementar getStaticPaths para rutas dinámicas
 export async function getStaticPaths() {
@@ -40,11 +41,27 @@ const { id } = Astro.params;
               <p class="my-1" id="media-resolution"></p>
               <p class="my-1" id="media-duration"></p>
               <p class="my-1" id="media-size"></p>
+              <div id="media-additional" class="mt-3 pt-3 border-t border-gray-700 hidden">
+                <p class="my-1" id="media-year"></p>
+                <p class="my-1" id="media-genre"></p>
+                <p class="my-1" id="media-director"></p>
+                <p class="my-1" id="media-actors"></p>
+                <p class="my-1" id="media-rating"></p>
+              </div>
             </div>
           </div>
           
           <!-- Opciones de Transcodificación -->
           <TranscodingManager mediaId={id} client:load />
+          
+          <!-- Buscador de Metadatos (solo para películas) -->
+          <div id="metadata-container" class="mt-6 hidden">
+            <MetadataFinder 
+              mediaId={id} 
+              mediaType="movie"
+              client:load 
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -55,6 +72,7 @@ const { id } = Astro.params;
   // Script del cliente para cargar datos
   const mediaId = document.location.pathname.split('/').pop();
   const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+  let mediaType = '';
   
   document.addEventListener('DOMContentLoaded', async () => {
     // Verificar autenticación
@@ -77,8 +95,9 @@ const { id } = Astro.params;
       }
       
       const mediaData = await response.json();
+      mediaType = mediaData.type;
       
-      // Actualizar UI con datos
+      // Actualizar UI con datos básicos
       document.getElementById('media-title').textContent = mediaData.title || 'Sin título';
       document.getElementById('media-type').textContent = formatMediaType(mediaData.type);
       
@@ -94,11 +113,64 @@ const { id } = Astro.params;
         document.getElementById('media-size').textContent = `Tamaño: ${formatSize(mediaData.size)}`;
       }
       
+      // Actualizar metadatos adicionales si existen
+      const additionalContainer = document.getElementById('media-additional');
+      let hasAdditionalInfo = false;
+      
+      if (mediaData.year) {
+        document.getElementById('media-year').textContent = `Año: ${mediaData.year}`;
+        hasAdditionalInfo = true;
+      }
+      
+      if (mediaData.genre) {
+        document.getElementById('media-genre').textContent = `Género: ${mediaData.genre}`;
+        hasAdditionalInfo = true;
+      }
+      
+      if (mediaData.director) {
+        document.getElementById('media-director').textContent = `Director: ${mediaData.director}`;
+        hasAdditionalInfo = true;
+      }
+      
+      if (mediaData.actors) {
+        document.getElementById('media-actors').textContent = `Reparto: ${mediaData.actors}`;
+        hasAdditionalInfo = true;
+      }
+      
+      if (mediaData.rating) {
+        document.getElementById('media-rating').textContent = `Puntuación: ${mediaData.rating}/10`;
+        hasAdditionalInfo = true;
+      }
+      
+      // Mostrar sección de metadatos adicionales si hay información
+      if (hasAdditionalInfo) {
+        additionalContainer.classList.remove('hidden');
+      }
+      
       // Actualizar título de la página
       document.title = `${mediaData.title} | StreamVio`;
+      
+      // Mostrar componente de búsqueda de metadatos solo si es película
+      if (mediaData.type === 'movie') {
+        const metadataContainer = document.getElementById('metadata-container');
+        metadataContainer.classList.remove('hidden');
+        
+        // Pasar el título al componente de metadatos
+        const metadataFinder = document.querySelector('astro-island[component-url*="MetadataFinder"]');
+        if (metadataFinder) {
+          // Establecer atributo de título para el componente
+          metadataFinder.setAttribute('mediaTitle', mediaData.title);
+        }
+      }
     } catch (error) {
       console.error('Error al cargar datos:', error);
     }
+  });
+  
+  // Escuchar eventos de actualización de metadatos
+  window.addEventListener('metadata-applied', () => {
+    // Recargar la página para mostrar los metadatos actualizados
+    window.location.reload();
   });
   
   // Función para formatear tipo de medio
