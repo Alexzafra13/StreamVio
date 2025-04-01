@@ -12,6 +12,7 @@ function AdminFirstLogin({ onComplete }) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
@@ -53,7 +54,7 @@ function AdminFirstLogin({ onComplete }) {
       }
 
       // Llamada a la nueva ruta de API para la configuración inicial del admin
-      await axios.post(
+      const response = await axios.post(
         `${API_URL}/api/auth/setup-admin`,
         {
           email: formData.email,
@@ -68,6 +69,16 @@ function AdminFirstLogin({ onComplete }) {
         }
       );
 
+      // Guardar el nuevo token recibido del servidor
+      if (response.data.token) {
+        localStorage.setItem("streamvio_token", response.data.token);
+
+        // Actualizar también las cabeceras para futuras solicitudes
+        axios.defaults.headers.common[
+          "Authorization"
+        ] = `Bearer ${response.data.token}`;
+      }
+
       // Actualizar el email en el localStorage
       const userStr = localStorage.getItem("streamvio_user");
       if (userStr) {
@@ -76,17 +87,25 @@ function AdminFirstLogin({ onComplete }) {
         localStorage.setItem("streamvio_user", JSON.stringify(userData));
       }
 
-      // Notificar que se completó la configuración
-      if (onComplete) {
-        onComplete();
-      }
+      // Mostrar mensaje de éxito brevemente
+      setSuccess(true);
+
+      // Esperar un poco para que el usuario vea el mensaje de éxito
+      setTimeout(() => {
+        // Notificar que se completó la configuración
+        if (onComplete) {
+          onComplete(formData.email);
+        }
+
+        // Redirigir al dashboard o página principal
+        window.location.href = "/";
+      }, 1500);
     } catch (err) {
       console.error("Error al configurar cuenta admin:", err);
       setError(
         err.response?.data?.message ||
           "Error al configurar la cuenta de administrador"
       );
-    } finally {
       setLoading(false);
     }
   };
@@ -110,6 +129,12 @@ function AdminFirstLogin({ onComplete }) {
           <div className="bg-red-600 text-white p-3 rounded mb-4">{error}</div>
         )}
 
+        {success && (
+          <div className="bg-green-600 text-white p-3 rounded mb-4">
+            ¡Configuración exitosa! Redireccionando...
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label htmlFor="email" className="block text-gray-300 mb-2">
@@ -124,6 +149,7 @@ function AdminFirstLogin({ onComplete }) {
               className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
               required
               placeholder="tu@email.com"
+              disabled={loading || success}
             />
           </div>
 
@@ -140,6 +166,7 @@ function AdminFirstLogin({ onComplete }) {
               className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
               required
               minLength="6"
+              disabled={loading || success}
             />
           </div>
 
@@ -159,17 +186,22 @@ function AdminFirstLogin({ onComplete }) {
               className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
               required
               minLength="6"
+              disabled={loading || success}
             />
           </div>
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || success}
             className={`w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition ${
-              loading ? "opacity-70 cursor-not-allowed" : ""
+              loading || success ? "opacity-70 cursor-not-allowed" : ""
             }`}
           >
-            {loading ? "Procesando..." : "Configurar cuenta de administrador"}
+            {loading
+              ? "Procesando..."
+              : success
+              ? "¡Completado!"
+              : "Configurar cuenta de administrador"}
           </button>
         </form>
       </div>

@@ -247,8 +247,6 @@ router.post("/change-password", authMiddleware, async (req, res) => {
   }
 });
 
-// Rutas existentes
-
 /**
  * @route   POST /api/auth/setup-admin
  * @desc    Configura el primer inicio de sesión del administrador con email y contraseña personalizados
@@ -334,16 +332,55 @@ router.post("/setup-admin", authMiddleware, async (req, res) => {
       { expiresIn: "24h" }
     );
 
+    // Responder con el token actualizado y más información
     res.json({
       message: "Configuración de administrador completada exitosamente",
       email,
       token,
+      userId,
+      username: user.username,
+      isAdmin: true,
     });
   } catch (error) {
     console.error("Error en configuración de admin:", error);
     res.status(500).json({
       error: "Error del servidor",
       message: "Error al procesar la configuración de administrador",
+    });
+  }
+});
+
+/**
+ * @route   GET /api/auth/check-password-change
+ * @desc    Verificar si el usuario requiere cambio de contraseña
+ * @access  Private
+ */
+router.get("/check-password-change", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Obtener estado de force_password_change
+    const user = await db.asyncGet(
+      "SELECT force_password_change, username FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        error: "Usuario no encontrado",
+        message: "No se encontró el usuario",
+      });
+    }
+
+    res.json({
+      requirePasswordChange: user.force_password_change === 1,
+      isAdmin: user.username === "admin",
+    });
+  } catch (error) {
+    console.error("Error al verificar estado de contraseña:", error);
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al verificar estado de contraseña",
     });
   }
 });

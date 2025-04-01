@@ -72,14 +72,52 @@ const title = 'StreamVio - Tu plataforma de streaming personal';
 
 <script>
   document.addEventListener('DOMContentLoaded', () => {
-    const token = localStorage.getItem('streamvio_token');
+    const checkAuth = () => {
+      const token = localStorage.getItem('streamvio_token');
+      const userString = localStorage.getItem('streamvio_user');
+      
+      try {
+        // Si hay token y datos de usuario, mostrar contenido autenticado
+        if (token && userString) {
+          const user = JSON.parse(userString);
+          
+          // Verificar si el usuario tiene datos válidos
+          if (user && user.username) {
+            // Mostrar contenido para usuarios autenticados
+            document.querySelectorAll('section').forEach(section => {
+              section.classList.remove('hidden');
+            });
+            document.getElementById('unauthorized-content').classList.add('hidden');
+            
+            // Puedes personalizar mensajes de bienvenida aquí
+            const welcomeTitle = document.querySelector('h1');
+            if (welcomeTitle) {
+              welcomeTitle.textContent = `Bienvenido a StreamVio, ${user.username}`;
+            }
+            
+            return;
+          }
+        }
+        
+        // Si llegamos aquí, no hay una sesión válida
+        document.querySelectorAll('section').forEach(section => {
+          section.classList.add('hidden');
+        });
+        document.getElementById('unauthorized-content').classList.remove('hidden');
+      } catch (error) {
+        console.error('Error verificando autenticación:', error);
+        // En caso de error, mostrar contenido no autenticado
+        document.querySelectorAll('section').forEach(section => {
+          section.classList.add('hidden');
+        });
+        document.getElementById('unauthorized-content').classList.remove('hidden');
+      }
+    };
     
-    // Si no hay token, mostrar contenido no autenticado
-    if (!token) {
-      document.querySelectorAll('section').forEach(section => {
-        section.classList.add('hidden');
-      });
-      document.getElementById('unauthorized-content').classList.remove('hidden');
-    }
+    // Verificar al cargar la página
+    checkAuth();
+    
+    // También escuchar por cambios en la autenticación
+    window.addEventListener('streamvio-auth-change', checkAuth);
   });
 </script>
