@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
 
@@ -13,6 +13,41 @@ function AdminFirstLogin({ onComplete }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+
+  // Verificar al cargar el componente que realmente estamos en el caso del primer login
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        const token = localStorage.getItem("streamvio_token");
+        if (!token) return;
+
+        const response = await axios.get(
+          `${API_URL}/api/auth/check-password-change`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (!response.data.isAdmin || !response.data.requirePasswordChange) {
+          console.log(
+            "No es admin o no requiere cambio de contraseña",
+            response.data
+          );
+          // Si no es admin o no requiere cambio, notificar al componente padre
+          if (onComplete) {
+            onComplete();
+          }
+        } else {
+          console.log("Admin first login confirmed");
+        }
+      } catch (error) {
+        console.error("Error checking admin status:", error);
+        setError("Error al verificar el estado de administrador");
+      }
+    };
+
+    checkAdminStatus();
+  }, [onComplete]);
 
   const handleChange = (e) => {
     setFormData({
@@ -53,7 +88,9 @@ function AdminFirstLogin({ onComplete }) {
         throw new Error("No hay sesión activa");
       }
 
-      // Llamada a la nueva ruta de API para la configuración inicial del admin
+      console.log("Enviando datos para configuración inicial del admin");
+
+      // Llamada a la ruta de API para la configuración inicial del admin
       const response = await axios.post(
         `${API_URL}/api/auth/setup-admin`,
         {
@@ -68,6 +105,8 @@ function AdminFirstLogin({ onComplete }) {
           },
         }
       );
+
+      console.log("Configuración exitosa del admin", response.data);
 
       // Guardar el nuevo token recibido del servidor
       if (response.data.token) {
@@ -89,6 +128,7 @@ function AdminFirstLogin({ onComplete }) {
 
       // Mostrar mensaje de éxito brevemente
       setSuccess(true);
+      setLoading(false);
 
       // Esperar un poco para que el usuario vea el mensaje de éxito
       setTimeout(() => {
@@ -96,9 +136,6 @@ function AdminFirstLogin({ onComplete }) {
         if (onComplete) {
           onComplete(formData.email);
         }
-
-        // Redirigir al dashboard o página principal
-        window.location.href = "/";
       }, 1500);
     } catch (err) {
       console.error("Error al configurar cuenta admin:", err);

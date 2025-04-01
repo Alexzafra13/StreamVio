@@ -31,6 +31,7 @@ export const AuthProvider = ({ children }) => {
         id: userData.id,
         username: userData.username,
         email: userData.email,
+        isAdmin: userData.is_admin === 1,
       })
     );
 
@@ -39,7 +40,38 @@ export const AuthProvider = ({ children }) => {
       id: userData.id,
       username: userData.username,
       email: userData.email,
+      isAdmin: userData.is_admin === 1,
     });
+  };
+
+  // Verificar si se requiere cambio de contraseña
+  const checkPasswordChangeRequired = async (token) => {
+    try {
+      const response = await axios.get(
+        `${API_URL}/api/auth/check-password-change`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.data.requirePasswordChange) {
+        // Si es admin, mostrar el formulario específico de admin
+        if (response.data.isAdmin) {
+          setIsAdminFirstLogin(true);
+          setRequirePasswordChange(false);
+          console.log("Admin first login detected - showing setup modal");
+        } else {
+          // Para usuarios normales
+          setRequirePasswordChange(true);
+          setIsAdminFirstLogin(false);
+        }
+      } else {
+        setRequirePasswordChange(false);
+        setIsAdminFirstLogin(false);
+      }
+    } catch (error) {
+      console.error("Error checking password change requirement:", error);
+    }
   };
 
   // Efecto para verificar autenticación al cargar
@@ -59,18 +91,8 @@ export const AuthProvider = ({ children }) => {
           // Guardar datos del usuario
           updateUserData(response.data);
 
-          // Verificar si es admin y requiere cambio de contraseña
-          if (
-            response.data.username === "admin" &&
-            response.data.force_password_change === 1
-          ) {
-            setIsAdminFirstLogin(true);
-            setRequirePasswordChange(false); // No mostrar el modal regular de cambio de contraseña
-          }
-          // Verificar si se requiere cambio de contraseña (para otros usuarios)
-          else if (response.data.force_password_change === 1) {
-            setRequirePasswordChange(true);
-          }
+          // Verificar estado de cambio de contraseña
+          await checkPasswordChangeRequired(token);
         } catch (error) {
           console.log("Token inválido o expirado:", error);
           // Si hay un error, limpiar el token
@@ -116,6 +138,7 @@ export const AuthProvider = ({ children }) => {
         id: response.data.userId,
         username: response.data.username,
         email: response.data.email,
+        isAdmin: response.data.isAdmin,
       });
 
       // Configurar axios para enviar el token en solicitudes futuras
@@ -123,17 +146,8 @@ export const AuthProvider = ({ children }) => {
         "Authorization"
       ] = `Bearer ${response.data.token}`;
 
-      // Verificar si es admin y requiere cambio de contraseña
-      if (
-        response.data.username === "admin" &&
-        response.data.requirePasswordChange
-      ) {
-        setIsAdminFirstLogin(true);
-      }
-      // Verificar si se requiere cambio de contraseña (para otros usuarios)
-      else if (response.data.requirePasswordChange) {
-        setRequirePasswordChange(true);
-      }
+      // Verificar inmediatamente si requiere cambio de contraseña
+      await checkPasswordChangeRequired(response.data.token);
 
       return response.data;
     } catch (error) {
@@ -252,10 +266,10 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {requirePasswordChange && (
+      {initialized && requirePasswordChange && (
         <PasswordChangeModal onComplete={handlePasswordChangeComplete} />
       )}
-      {isAdminFirstLogin && (
+      {initialized && isAdminFirstLogin && (
         <AdminFirstLogin onComplete={handleAdminSetupComplete} />
       )}
       {children}

@@ -248,6 +248,48 @@ router.post("/change-password", authMiddleware, async (req, res) => {
 });
 
 /**
+ * @route   GET /api/auth/check-password-change
+ * @desc    Verificar si el usuario requiere cambio de contraseña
+ * @access  Private
+ */
+router.get("/check-password-change", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Obtener estado de force_password_change, is_admin y otros campos relevantes
+    const user = await db.asyncGet(
+      "SELECT username, email, is_admin, force_password_change, created_at FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        error: "Usuario no encontrado",
+        message: "No se encontró el usuario",
+      });
+    }
+
+    // Determinar si es el primer inicio de sesión de admin
+    const isAdminFirstLogin =
+      user.username === "admin" && user.force_password_change === 1;
+
+    res.json({
+      requirePasswordChange: user.force_password_change === 1,
+      isAdmin: user.username === "admin" || user.is_admin === 1,
+      isAdminFirstLogin: isAdminFirstLogin,
+      username: user.username,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error("Error al verificar estado de contraseña:", error);
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al verificar estado de contraseña",
+    });
+  }
+});
+
+/**
  * @route   POST /api/auth/setup-admin
  * @desc    Configura el primer inicio de sesión del administrador con email y contraseña personalizados
  * @access  Private (solo admin)
@@ -261,6 +303,15 @@ router.post("/setup-admin", authMiddleware, async (req, res) => {
     return res.status(400).json({
       error: "Datos incompletos",
       message: "Se requiere email y nueva contraseña",
+    });
+  }
+
+  // Validar formato de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({
+      error: "Email inválido",
+      message: "Por favor, proporciona un email válido",
     });
   }
 
@@ -287,6 +338,11 @@ router.post("/setup-admin", authMiddleware, async (req, res) => {
       });
     }
 
+    console.log(
+      "Procesando configuración inicial de administrador para userId:",
+      userId
+    );
+
     // Verificar que el email no esté ya en uso por otro usuario
     const existingUser = await db.asyncGet(
       "SELECT id FROM users WHERE email = ? AND id != ?",
@@ -306,7 +362,8 @@ router.post("/setup-admin", authMiddleware, async (req, res) => {
       currentPassword,
       user.password
     );
-    if (!isPasswordValid) {
+    if (!isPasswordValid && currentPassword !== "admin") {
+      // Permitir "admin" como contraseña default
       return res.status(401).json({
         error: "Contraseña incorrecta",
         message: "La contraseña actual es incorrecta",
@@ -324,6 +381,8 @@ router.post("/setup-admin", authMiddleware, async (req, res) => {
        WHERE id = ?`,
       [email, hashedPassword, userId]
     );
+
+    console.log("Administrador configurado correctamente:", userId);
 
     // Generar un nuevo token JWT con el nuevo email
     const token = jwt.sign(
@@ -346,41 +405,6 @@ router.post("/setup-admin", authMiddleware, async (req, res) => {
     res.status(500).json({
       error: "Error del servidor",
       message: "Error al procesar la configuración de administrador",
-    });
-  }
-});
-
-/**
- * @route   GET /api/auth/check-password-change
- * @desc    Verificar si el usuario requiere cambio de contraseña
- * @access  Private
- */
-router.get("/check-password-change", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    // Obtener estado de force_password_change
-    const user = await db.asyncGet(
-      "SELECT force_password_change, username FROM users WHERE id = ?",
-      [userId]
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        error: "Usuario no encontrado",
-        message: "No se encontró el usuario",
-      });
-    }
-
-    res.json({
-      requirePasswordChange: user.force_password_change === 1,
-      isAdmin: user.username === "admin",
-    });
-  } catch (error) {
-    console.error("Error al verificar estado de contraseña:", error);
-    res.status(500).json({
-      error: "Error del servidor",
-      message: "Error al verificar estado de contraseña",
     });
   }
 });

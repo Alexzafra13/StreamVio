@@ -1,96 +1,249 @@
-const jwt = require("jsonwebtoken");
-const db = require("../config/database");
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import apiConfig from "../config/api";
 
-/**
- * Middleware de autenticación para verificar tokens JWT
- */
-const authMiddleware = async (req, res, next) => {
-  // Obtener el token del header Authorization
-  const authHeader = req.headers.authorization;
+const API_URL = apiConfig.API_URL;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({
-      error: "Acceso no autorizado",
-      message: "Se requiere token de autenticación",
-    });
-  }
+function AdminFirstLogin({ onComplete }) {
+  const [formData, setFormData] = useState({
+    email: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
 
-  // Extraer el token de la cabecera
-  const token = authHeader.split(" ")[1];
+  // Verificar al cargar el componente que realmente estamos en el caso del primer login
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        const token = localStorage.getItem("streamvio_token");
+        if (!token) return;
 
-  try {
-    // Verificar y decodificar el token
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || "streamvio_secret_key"
-    );
+        const response = await axios.get(
+          `${API_URL}/api/auth/check-password-change`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
 
-    // Agregar la información del usuario al objeto request
-    req.user = decoded;
-
-    // Verificar si la tabla users tiene la columna force_password_change
-    try {
-      // Primero, verificar si el usuario existe
-      const user = await db.asyncGet("SELECT * FROM users WHERE id = ?", [
-        decoded.id,
-      ]);
-
-      if (user) {
-        // Rutas que deberían ser accesibles incluso cuando se requiere cambio de contraseña
-        const allowedPathsWithPasswordChange = [
-          "/api/auth/change-password",
-          "/api/auth/check-password-change",
-          "/api/auth/user",
-          "/api/auth/setup-admin", // Nueva ruta para configuración inicial de admin
-        ];
-
-        const currentPath = req.path;
-        const isAllowedPath =
-          allowedPathsWithPasswordChange.includes(currentPath);
-
-        // Verificar si es el admin en primer inicio
-        const isAdminFirstLogin =
-          user.username === "admin" &&
-          user.force_password_change === 1 &&
-          currentPath === "/api/auth/setup-admin";
-
-        // Permitir acceso si es la ruta de configuración inicial de admin
-        if (isAdminFirstLogin) {
-          return next();
+        if (!response.data.isAdmin || !response.data.requirePasswordChange) {
+          console.log(
+            "No es admin o no requiere cambio de contraseña",
+            response.data
+          );
+          // Si no es admin o no requiere cambio, notificar al componente padre
+          if (onComplete) {
+            onComplete();
+          }
+        } else {
+          console.log("Admin first login confirmed");
         }
-
-        // Verificar si la columna existe en el objeto user y bloquear rutas no permitidas
-        if (
-          user.hasOwnProperty("force_password_change") &&
-          user.force_password_change === 1 &&
-          !isAllowedPath
-        ) {
-          return res.status(403).json({
-            error: "Cambio de contraseña requerido",
-            message: "Debes cambiar tu contraseña antes de continuar",
-            requirePasswordChange: true,
-          });
-        }
+      } catch (error) {
+        console.error("Error checking admin status:", error);
+        setError("Error al verificar el estado de administrador");
       }
-    } catch (userCheckError) {
-      // Si hay un error al verificar el usuario, simplemente continuamos
-      // Esto evita problemas con la columna faltante
-      console.log(
-        "Aviso: Error al verificar estado de usuario:",
-        userCheckError.message
-      );
+    };
+
+    checkAdminStatus();
+  }, [onComplete]);
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+    setError(null);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // Validar que las contraseñas coincidan
+    if (formData.newPassword !== formData.confirmPassword) {
+      setError("Las contraseñas no coinciden");
+      return;
     }
 
-    // Continuar con la siguiente función en la cadena de middleware
-    next();
-  } catch (error) {
-    console.error("Error al verificar token:", error);
+    // Validar longitud mínima
+    if (formData.newPassword.length < 6) {
+      setError("La nueva contraseña debe tener al menos 6 caracteres");
+      return;
+    }
 
-    return res.status(401).json({
-      error: "Token inválido",
-      message: "El token de autenticación ha expirado o es inválido",
-    });
-  }
-};
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError("Por favor, introduce un email válido");
+      return;
+    }
 
-module.exports = authMiddleware;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = localStorage.getItem("streamvio_token");
+      if (!token) {
+        throw new Error("No hay sesión activa");
+      }
+
+      console.log("Enviando datos para configuración inicial del admin");
+
+      // Llamada a la ruta de API para la configuración inicial del admin
+      const response = await axios.post(
+        `${API_URL}/api/auth/setup-admin`,
+        {
+          email: formData.email,
+          newPassword: formData.newPassword,
+          // Pasamos la contraseña original como verificación
+          currentPassword: "admin",
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      console.log("Configuración exitosa del admin", response.data);
+
+      // Guardar el nuevo token recibido del servidor
+      if (response.data.token) {
+        localStorage.setItem("streamvio_token", response.data.token);
+
+        // Actualizar también las cabeceras para futuras solicitudes
+        axios.defaults.headers.common[
+          "Authorization"
+        ] = `Bearer ${response.data.token}`;
+      }
+
+      // Actualizar el email en el localStorage
+      const userStr = localStorage.getItem("streamvio_user");
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        userData.email = formData.email;
+        localStorage.setItem("streamvio_user", JSON.stringify(userData));
+      }
+
+      // Mostrar mensaje de éxito brevemente
+      setSuccess(true);
+      setLoading(false);
+
+      // Esperar un poco para que el usuario vea el mensaje de éxito
+      setTimeout(() => {
+        // Notificar que se completó la configuración
+        if (onComplete) {
+          onComplete(formData.email);
+        }
+      }, 1500);
+    } catch (err) {
+      console.error("Error al configurar cuenta admin:", err);
+      setError(
+        err.response?.data?.message ||
+          "Error al configurar la cuenta de administrador"
+      );
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+      <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-6 text-center text-blue-500">
+          Configuración Inicial de Administrador
+        </h2>
+
+        <div className="bg-blue-900 text-white p-4 rounded mb-4">
+          <p className="font-semibold">¡Bienvenido a StreamVio!</p>
+          <p className="text-sm">
+            Este es el primer inicio de sesión. Por favor, configura tu cuenta
+            de administrador con tu email y contraseña personales.
+          </p>
+        </div>
+
+        {error && (
+          <div className="bg-red-600 text-white p-3 rounded mb-4">{error}</div>
+        )}
+
+        {success && (
+          <div className="bg-green-600 text-white p-3 rounded mb-4">
+            ¡Configuración exitosa! Redireccionando...
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label htmlFor="email" className="block text-gray-300 mb-2">
+              Email
+            </label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
+              required
+              placeholder="tu@email.com"
+              disabled={loading || success}
+            />
+          </div>
+
+          <div className="mb-4">
+            <label htmlFor="newPassword" className="block text-gray-300 mb-2">
+              Nueva Contraseña
+            </label>
+            <input
+              type="password"
+              id="newPassword"
+              name="newPassword"
+              value={formData.newPassword}
+              onChange={handleChange}
+              className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
+              required
+              minLength="6"
+              disabled={loading || success}
+            />
+          </div>
+
+          <div className="mb-6">
+            <label
+              htmlFor="confirmPassword"
+              className="block text-gray-300 mb-2"
+            >
+              Confirmar Contraseña
+            </label>
+            <input
+              type="password"
+              id="confirmPassword"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
+              required
+              minLength="6"
+              disabled={loading || success}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || success}
+            className={`w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition ${
+              loading || success ? "opacity-70 cursor-not-allowed" : ""
+            }`}
+          >
+            {loading
+              ? "Procesando..."
+              : success
+              ? "¡Completado!"
+              : "Configurar cuenta de administrador"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default AdminFirstLogin;
