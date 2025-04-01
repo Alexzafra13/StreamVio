@@ -131,10 +131,21 @@ router.get("/:id", async (req, res) => {
       [mediaId]
     );
 
-    if (!mediaItem) {
+    if (!mediaItem || !mediaItem.file_path) {
       return res.status(404).json({
         error: "No encontrado",
-        message: "Elemento multimedia no encontrado",
+        message: "Archivo multimedia no encontrado",
+      });
+    }
+
+    // Normalizar la ruta del archivo (convertir barras invertidas a barras normales)
+    const filePath = mediaItem.file_path.replace(/\\/g, "/");
+
+    // Verificar que el archivo existe
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        error: "Archivo no encontrado",
+        message: "El archivo físico no existe en el sistema",
       });
     }
 

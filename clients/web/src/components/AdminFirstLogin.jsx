@@ -28,6 +28,8 @@ function AdminFirstLogin({ onComplete }) {
           }
         );
 
+        console.log("Admin status check response:", response.data);
+
         if (!response.data.isAdmin || !response.data.requirePasswordChange) {
           console.log(
             "No es admin o no requiere cambio de contraseña",
@@ -59,6 +61,7 @@ function AdminFirstLogin({ onComplete }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log("Form submitted", formData);
 
     // Validar que las contraseñas coincidan
     if (formData.newPassword !== formData.confirmPassword) {
