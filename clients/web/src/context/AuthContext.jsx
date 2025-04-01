@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
 import PasswordChangeModal from "../components/PasswordChangeModal";
+import AdminFirstLogin from "../components/AdminFirstLogin";
 
 const API_URL = apiConfig.API_URL;
 
@@ -17,6 +18,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
   const [requirePasswordChange, setRequirePasswordChange] = useState(false);
+  const [isAdminFirstLogin, setIsAdminFirstLogin] = useState(false);
 
   useEffect(() => {
     // Verificar si hay un token guardado
@@ -28,27 +30,22 @@ export const AuthProvider = ({ children }) => {
           // Configurar el token en los headers
           axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-          // Verificar si se requiere cambio de contraseña
-          try {
-            const passwordCheckResponse = await axios.get(
-              `${API_URL}/api/auth/check-password-change`
-            );
-            setRequirePasswordChange(
-              passwordCheckResponse.data.requirePasswordChange
-            );
-          } catch (passwordCheckError) {
-            // Si hay un error 403 con requirePasswordChange, significa que se necesita cambiar la contraseña
-            if (
-              passwordCheckError.response?.status === 403 &&
-              passwordCheckError.response?.data?.requirePasswordChange
-            ) {
-              setRequirePasswordChange(true);
-            }
-          }
-
           // Intentar obtener información del usuario actual
           const response = await axios.get(`${API_URL}/api/auth/user`);
           setCurrentUser(response.data);
+
+          // Verificar si es admin y requiere cambio de contraseña
+          if (
+            response.data.username === "admin" &&
+            response.data.force_password_change === 1
+          ) {
+            setIsAdminFirstLogin(true);
+            setRequirePasswordChange(false); // No mostrar el modal regular de cambio de contraseña
+          }
+          // Verificar si se requiere cambio de contraseña (para otros usuarios)
+          else if (response.data.force_password_change === 1) {
+            setRequirePasswordChange(true);
+          }
         } catch (error) {
           console.log("Token inválido o expirado:", error);
           // Si hay un error, limpiar el token
@@ -107,8 +104,15 @@ export const AuthProvider = ({ children }) => {
         email: response.data.email,
       });
 
-      // Verificar si se requiere cambio de contraseña
-      if (response.data.requirePasswordChange) {
+      // Verificar si es admin y requiere cambio de contraseña
+      if (
+        response.data.username === "admin" &&
+        response.data.requirePasswordChange
+      ) {
+        setIsAdminFirstLogin(true);
+      }
+      // Verificar si se requiere cambio de contraseña (para otros usuarios)
+      else if (response.data.requirePasswordChange) {
         setRequirePasswordChange(true);
       }
 
@@ -167,11 +171,24 @@ export const AuthProvider = ({ children }) => {
     // Actualizar estado
     setCurrentUser(null);
     setRequirePasswordChange(false);
+    setIsAdminFirstLogin(false);
   };
 
   // Función para manejar el cambio de contraseña completo
   const handlePasswordChangeComplete = () => {
     setRequirePasswordChange(false);
+  };
+
+  // Función para manejar la configuración inicial de admin completa
+  const handleAdminSetupComplete = (newEmail) => {
+    setIsAdminFirstLogin(false);
+    // Actualizar email del usuario en el estado si cambió
+    if (newEmail && currentUser) {
+      setCurrentUser({
+        ...currentUser,
+        email: newEmail,
+      });
+    }
   };
 
   // Valor del contexto
@@ -180,6 +197,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     initialized,
     requirePasswordChange,
+    isAdminFirstLogin,
     login,
     register,
     logout,
@@ -189,6 +207,9 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={value}>
       {requirePasswordChange && (
         <PasswordChangeModal onComplete={handlePasswordChangeComplete} />
+      )}
+      {isAdminFirstLogin && (
+        <AdminFirstLogin onComplete={handleAdminSetupComplete} />
       )}
       {children}
     </AuthContext.Provider>

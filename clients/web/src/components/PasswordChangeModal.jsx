@@ -13,6 +13,7 @@ function PasswordChangeModal({ onComplete }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
 
   useEffect(() => {
     const checkIfAdmin = async () => {
@@ -25,6 +26,21 @@ function PasswordChangeModal({ onComplete }) {
           const userData = JSON.parse(userStr);
           if (userData.username === "admin") {
             setIsAdmin(true);
+
+            // Verificar si es primer inicio de sesión
+            try {
+              const response = await axios.get(`${API_URL}/api/auth/user`, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+
+              if (response.data && response.data.force_password_change === 1) {
+                setIsFirstLogin(true);
+              }
+            } catch (err) {
+              console.error("Error al verificar estado de usuario:", err);
+            }
           }
         }
       } catch (err) {
@@ -67,6 +83,13 @@ function PasswordChangeModal({ onComplete }) {
         throw new Error("No hay sesión activa");
       }
 
+      // Para el primer inicio de sesión del admin, podemos enviar una contraseña temporal
+      // solo para cumplir con la validación del backend (que luego la ignorará)
+      if (isAdmin && isFirstLogin && formData.currentPassword === "") {
+        console.log("Primer inicio de sesión de admin detectado");
+        formData.currentPassword = "admin";
+      }
+
       await axios.post(`${API_URL}/api/auth/change-password`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -79,7 +102,15 @@ function PasswordChangeModal({ onComplete }) {
       }
     } catch (err) {
       console.error("Error al cambiar contraseña:", err);
-      setError(err.response?.data?.message || "Error al cambiar la contraseña");
+      if (isAdmin && isFirstLogin && err.response?.status === 401) {
+        setError(
+          "Error al cambiar la contraseña. Intenta usar 'admin' como contraseña actual para este primer inicio de sesión."
+        );
+      } else {
+        setError(
+          err.response?.data?.message || "Error al cambiar la contraseña"
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -92,12 +123,15 @@ function PasswordChangeModal({ onComplete }) {
           Cambio de Contraseña Requerido
         </h2>
 
-        {isAdmin && (
+        {isAdmin && isFirstLogin && (
           <div className="bg-blue-900 text-white p-4 rounded mb-4">
             <p className="font-semibold">Usuario Administrador</p>
             <p className="text-sm">
               Este es tu primer acceso con el usuario admin. Por seguridad,
               debes cambiar la contraseña predeterminada.
+            </p>
+            <p className="text-sm mt-2">
+              Usa la contraseña inicial "admin" como contraseña actual.
             </p>
           </div>
         )}
@@ -122,6 +156,11 @@ function PasswordChangeModal({ onComplete }) {
               onChange={handleChange}
               className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
               required
+              placeholder={
+                isAdmin && isFirstLogin
+                  ? "Usa 'admin' como contraseña actual"
+                  : ""
+              }
             />
           </div>
 

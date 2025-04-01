@@ -31,18 +31,40 @@ const authMiddleware = async (req, res, next) => {
     // Verificar si la tabla users tiene la columna force_password_change
     try {
       // Primero, verificar si el usuario existe
-      const user = await db.asyncGet(
-        "SELECT * FROM users WHERE id = ?",
-        [decoded.id]
-      );
+      const user = await db.asyncGet("SELECT * FROM users WHERE id = ?", [
+        decoded.id,
+      ]);
 
       if (user) {
-        // Verificar si la columna existe en el objeto user
-        if (user.hasOwnProperty('force_password_change') && 
-            user.force_password_change === 1 &&
-            req.path !== "/api/auth/change-password" &&
-            req.path !== "/api/auth/check-password-change") {
-          
+        // Rutas que deberían ser accesibles incluso cuando se requiere cambio de contraseña
+        const allowedPathsWithPasswordChange = [
+          "/api/auth/change-password",
+          "/api/auth/check-password-change",
+          "/api/auth/user",
+          "/api/auth/setup-admin", // Nueva ruta para configuración inicial de admin
+        ];
+
+        const currentPath = req.path;
+        const isAllowedPath =
+          allowedPathsWithPasswordChange.includes(currentPath);
+
+        // Verificar si es el admin en primer inicio
+        const isAdminFirstLogin =
+          user.username === "admin" &&
+          user.force_password_change === 1 &&
+          currentPath === "/api/auth/setup-admin";
+
+        // Permitir acceso si es la ruta de configuración inicial de admin
+        if (isAdminFirstLogin) {
+          return next();
+        }
+
+        // Verificar si la columna existe en el objeto user y bloquear rutas no permitidas
+        if (
+          user.hasOwnProperty("force_password_change") &&
+          user.force_password_change === 1 &&
+          !isAllowedPath
+        ) {
           return res.status(403).json({
             error: "Cambio de contraseña requerido",
             message: "Debes cambiar tu contraseña antes de continuar",
@@ -53,7 +75,10 @@ const authMiddleware = async (req, res, next) => {
     } catch (userCheckError) {
       // Si hay un error al verificar el usuario, simplemente continuamos
       // Esto evita problemas con la columna faltante
-      console.log("Aviso: Error al verificar estado de usuario:", userCheckError.message);
+      console.log(
+        "Aviso: Error al verificar estado de usuario:",
+        userCheckError.message
+      );
     }
 
     // Continuar con la siguiente función en la cadena de middleware
