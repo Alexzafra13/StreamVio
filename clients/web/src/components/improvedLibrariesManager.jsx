@@ -978,3 +978,4 @@ function ImprovedLibrariesManager() {
     </div>
   );
 }
+export default ImprovedLibrariesManager;
