@@ -50,7 +50,7 @@ Una vez completada la instalación, la aplicación estará lista para usar.
 ### Acceso a la aplicación
 
 - **Interfaz web**: http://localhost:4321 (o la IP de tu servidor)
-- **API**: http://localhost:3000 (o la IP de tu servidor)
+- **API**: http://localhost:8000 (o la IP de tu servidor)
 
 ### Primer inicio de sesión
 
