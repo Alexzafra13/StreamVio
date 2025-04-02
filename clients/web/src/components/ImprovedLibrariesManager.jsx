@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
 
-// Componente para mostrar el error de permisos del sistema de archivos
 // Componente que muestra el error en los permisos del sistema de archivos
 function FilesystemError({ message, onRetry }) {
   return (
