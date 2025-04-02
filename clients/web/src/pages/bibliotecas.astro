@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import LibrariesManager from '../components/LibrariesManagement';
+import ImprovedLibrariesManager from '../components/ImprovedLibrariesManager';
 ---
 
 <Layout title="Gestión de Bibliotecas | StreamVio">
@@ -9,7 +9,7 @@ import LibrariesManager from '../components/LibrariesManagement';
       <h1 class="text-3xl font-bold mb-8 text-center text-blue-500">Gestión de Bibliotecas</h1>
       
       <div id="libraries-manager-container">
-        <LibrariesManager client:load />
+        <ImprovedLibrariesManager client:load />
       </div>
       
       <div id="unauthorized-message" class="hidden text-center py-8">
