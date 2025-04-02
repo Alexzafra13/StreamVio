@@ -13,7 +13,7 @@ function MediaViewer({ mediaId }) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [hlsAvailable, setHLSAvailable] = useState(false);
-  const [streamType, setStreamType] = useState("direct"); // 'direct' or 'hls'
+  const [streamType, setStreamType] = useState("direct"); // 'direct' o 'hls'
   const playerRef = useRef(null);
   const progressInterval = useRef(null);
 
@@ -22,7 +22,6 @@ function MediaViewer({ mediaId }) {
     const fetchMedia = async () => {
       try {
         const token = localStorage.getItem("streamvio_token");
-
         if (!token) {
           setError("Se requiere autenticación para ver este contenido");
           setLoading(false);
@@ -33,34 +32,73 @@ function MediaViewer({ mediaId }) {
           headers: { Authorization: `Bearer ${token}` },
         });
 
+        // Si llegamos aquí, la petición fue exitosa
         setMedia(response.data);
+        console.log("Datos del medio cargados:", response.data);
 
         // Verificar si existe streaming HLS
-        const fileName = response.data.file_path.split("/").pop().split(".")[0];
-        const hlsPath = `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8`;
+        if (response.data.file_path) {
+          const filePath = response.data.file_path;
+          // Extraer solo el nombre del archivo sin la ruta completa
+          const fileName = filePath
+            .split(/[\/\\]/)
+            .pop()
+            .split(".")[0];
+          const hlsPath = `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8`;
 
-        try {
-          const hlsResponse = await axios.head(hlsPath, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          console.log("Verificando disponibilidad HLS en:", hlsPath);
 
-          if (hlsResponse.status === 200) {
-            setHLSAvailable(true);
-            setStreamType("hls"); // Usar HLS por defecto si está disponible
+          try {
+            const hlsResponse = await axios.head(hlsPath, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (hlsResponse.status === 200) {
+              console.log("Streaming HLS disponible");
+              setHLSAvailable(true);
+              setStreamType("hls"); // Usar HLS por defecto si está disponible
+            }
+          } catch (err) {
+            // No hay streaming HLS disponible, seguir con streaming directo
+            console.log("HLS no disponible:", err.message);
+            setHLSAvailable(false);
           }
-        } catch (err) {
-          // No hay streaming HLS disponible, seguir con streaming directo
-          console.log("HLS no disponible:", err);
+        } else {
+          console.warn("El medio no tiene una ruta de archivo válida");
           setHLSAvailable(false);
         }
 
         setLoading(false);
       } catch (err) {
         console.error("Error al cargar datos del medio:", err);
-        setError(
-          err.response?.data?.message ||
-            "Error al cargar el contenido multimedia"
-        );
+
+        // Manejo específico según el tipo de error
+        if (err.response) {
+          // El servidor respondió con un código de estado fuera del rango 2xx
+          if (err.response.status === 404) {
+            setError("El medio solicitado no existe o ha sido eliminado");
+          } else if (err.response.status === 401) {
+            setError(
+              "Tu sesión ha expirado. Por favor, inicia sesión nuevamente"
+            );
+          } else if (err.response.status === 403) {
+            setError("No tienes permisos para acceder a este contenido");
+          } else {
+            setError(
+              err.response.data?.message ||
+                "Error al cargar el contenido multimedia"
+            );
+          }
+        } else if (err.request) {
+          // La solicitud se realizó pero no se recibió respuesta
+          setError(
+            "No se pudo conectar con el servidor. Verifica tu conexión a internet"
+          );
+        } else {
+          // Ocurrió un error durante la configuración de la solicitud
+          setError("Error de configuración al intentar cargar el contenido");
+        }
+
         setLoading(false);
       }
     };
@@ -141,6 +179,10 @@ function MediaViewer({ mediaId }) {
         { position, completed: isCompleted },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
+      console.log(
+        `Progreso guardado: ${position}s, completado: ${isCompleted}`
+      );
     } catch (err) {
       console.error("Error al guardar progreso:", err);
     }
@@ -189,7 +231,10 @@ function MediaViewer({ mediaId }) {
 
     if (streamType === "hls" && hlsAvailable) {
       // URL para streaming HLS
-      const fileName = media.file_path.split("/").pop().split(".")[0];
+      const fileName = media.file_path
+        .split(/[\/\\]/)
+        .pop()
+        .split(".")[0];
       return `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8`;
     } else {
       // URL para streaming directo
@@ -367,10 +412,10 @@ function MediaViewer({ mediaId }) {
       <div className="rounded-lg bg-red-800 p-6 text-center">
         <p className="text-white mb-4">{error}</p>
         <a
-          href="/auth"
+          href="/media"
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition"
         >
-          Iniciar Sesión
+          Volver a la Biblioteca
         </a>
       </div>
     );
