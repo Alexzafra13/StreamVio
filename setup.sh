@@ -1,5 +1,5 @@
 #!/bin/bash
-# StreamVio - Script de instalación mejorado
+# StreamVio - Script de instalación mejorado v2.0
 # Este script instala y configura StreamVio en sistemas Linux
 
 # Colores para mejor legibilidad
@@ -8,6 +8,11 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Versiones requeridas
+REQUIRED_NODE_VERSION="18" # Versión mínima de Node.js
+DEFAULT_API_PORT="8000"    # Puerto para la API (cambiado de 3000)
+DEFAULT_WEB_PORT="4321"    # Puerto para la interfaz web
 
 # Archivo de log para registrar todo el proceso
 LOG_FILE="streamvio-install.log"
@@ -63,6 +68,33 @@ progress_bar() {
     fi
 }
 
+# Función para verificar si un puerto está en uso
+check_port() {
+    local port=$1
+    local service=$2
+    local alternative=$3
+    
+    # Verificar si el puerto está en uso
+    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null ; then
+        log_error "El puerto $port para $service está en uso."
+        
+        if [ -n "$alternative" ]; then
+            log "Intentando usar el puerto alternativo $alternative para $service..."
+            if lsof -Pi :$alternative -sTCP:LISTEN -t >/dev/null ; then
+                log_error "El puerto alternativo $alternative también está en uso."
+                return 1
+            else
+                log "Usando puerto alternativo $alternative para $service."
+                return 2  # Indica que se usará el puerto alternativo
+            fi
+        else
+            return 1  # Error si no hay puerto alternativo
+        fi
+    fi
+    
+    return 0  # Puerto disponible
+}
+
 # Función para mostrar resumen al finalizar
 show_summary() {
     local error_count=$(wc -l < "$ERROR_LOG")
@@ -76,8 +108,8 @@ show_summary() {
     fi
     
     echo -e "\n${GREEN}StreamVio está disponible en:${NC}"
-    echo -e "  - Interfaz web: ${GREEN}http://$SERVER_IP:4321${NC}"
-    echo -e "  - API: ${GREEN}http://$SERVER_IP:3000${NC}"
+    echo -e "  - Interfaz web: ${GREEN}http://$SERVER_IP:$WEB_PORT${NC}"
+    echo -e "  - API: ${GREEN}http://$SERVER_IP:$API_PORT${NC}"
     
     echo -e "\n${YELLOW}Credenciales de acceso inicial:${NC}"
     echo -e "  - Usuario: ${YELLOW}admin${NC}"
@@ -90,7 +122,33 @@ show_summary() {
     echo -e "\n${BLUE}Logs:${NC}"
     echo -e "  sudo journalctl -u streamvio-backend"
     echo -e "  sudo journalctl -u streamvio-frontend"
+    
+    echo -e "\n${YELLOW}Acceso desde fuera de la red local:${NC}"
+    echo -e "  Para acceder desde Internet, necesitarás:"
+    echo -e "  1. Una IP pública estática o un dominio"
+    echo -e "  2. Configurar el reenvío de puertos en tu router (puertos $API_PORT y $WEB_PORT)"
+    
+    echo -e "\n${BLUE}Configuración en caso de problemas:${NC}"
+    echo -e "  Edita los archivos .env en server/ y clients/web/ si necesitas"
+    echo -e "  cambiar los puertos o las direcciones IP."
+    
     echo -e "${BLUE}=================== FIN DEL RESUMEN ===================${NC}"
+}
+
+# Función para verificar y sugerir comandos a ejecutar como superusuario
+check_sudo_commands() {
+    if [ "$EUID" -ne 0 ]; then
+        echo -e "${YELLOW}Para completar la instalación correctamente, ejecuta estos comandos como superusuario:${NC}"
+        echo -e "  sudo ufw allow $API_PORT/tcp    # Abrir puerto de la API"
+        echo -e "  sudo ufw allow $WEB_PORT/tcp    # Abrir puerto de la interfaz web"
+        echo -e "  sudo cp /tmp/streamvio-backend.service /etc/systemd/system/"
+        echo -e "  sudo cp /tmp/streamvio-frontend.service /etc/systemd/system/"
+        echo -e "  sudo systemctl daemon-reload"
+        echo -e "  sudo systemctl enable streamvio-backend.service"
+        echo -e "  sudo systemctl enable streamvio-frontend.service"
+        echo -e "  sudo systemctl start streamvio-backend.service"
+        echo -e "  sudo systemctl start streamvio-frontend.service"
+    fi
 }
 
 # Crear archivos de log
@@ -99,13 +157,13 @@ show_summary() {
 
 # Inicio del script
 echo -e "${BLUE}=======================================================${NC}"
-echo -e "${BLUE}       StreamVio - Asistente de Instalación            ${NC}"
+echo -e "${BLUE}       StreamVio - Asistente de Instalación v2.0       ${NC}"
 echo -e "${BLUE}=======================================================${NC}\n"
 
 log "Iniciando instalación de StreamVio..."
 
 # Verificar requisitos previos
-log "Paso 1/8: ${YELLOW}Verificando requisitos del sistema...${NC}"
+log "Paso 1/10: ${YELLOW}Verificando requisitos del sistema...${NC}"
 
 # Verificar si se está ejecutando como root o con sudo
 if [ "$EUID" -ne 0 ]; then
@@ -129,11 +187,12 @@ fi
 # Comprobar Node.js
 if command -v node &> /dev/null; then
     NODE_VERSION=$(node -v | cut -d'v' -f2)
+    NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1)
+    
     log "Node.js detectado: v$NODE_VERSION"
     
-    NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1)
-    if [ "$NODE_MAJOR" -lt 14 ]; then
-        log_error "La versión de Node.js es menor que la recomendada (v14+). Se procederá a actualizarla."
+    if [ "$NODE_MAJOR" -lt "$REQUIRED_NODE_VERSION" ]; then
+        log_error "La versión de Node.js es menor que la requerida (v$REQUIRED_NODE_VERSION+). Se procederá a actualizarla."
         INSTALL_NODE=true
     fi
 else
@@ -168,8 +227,45 @@ else
     INSTALL_PM2=true
 fi
 
+# Comprobar si build-essential está instalado (necesario para módulos nativos)
+if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
+    if ! dpkg -l | grep -q build-essential; then
+        log_error "build-essential no está instalado. Se procederá a instalarlo."
+        INSTALL_BUILD_ESSENTIAL=true
+    else
+        log "build-essential detectado"
+    fi
+fi
+
+# Verificar puertos disponibles
+log "Paso 2/10: ${YELLOW}Verificando puertos disponibles...${NC}"
+
+# Verificar puerto de la API
+API_PORT=$DEFAULT_API_PORT
+API_PORT_ALTERNATIVE="8080"
+api_port_status=$(check_port $API_PORT "API" $API_PORT_ALTERNATIVE)
+if [ $? -eq 2 ]; then
+    # Puerto alternativo será usado
+    API_PORT=$API_PORT_ALTERNATIVE
+    log "Puerto para API cambiado a: $API_PORT"
+elif [ $? -eq 1 ]; then
+    log_error "No se pudo encontrar un puerto disponible para la API. Por favor, elige manualmente un puerto libre y edita los archivos .env después de la instalación."
+fi
+
+# Verificar puerto de la interfaz web
+WEB_PORT=$DEFAULT_WEB_PORT
+WEB_PORT_ALTERNATIVE="4000"
+web_port_status=$(check_port $WEB_PORT "interfaz web" $WEB_PORT_ALTERNATIVE)
+if [ $? -eq 2 ]; then
+    # Puerto alternativo será usado
+    WEB_PORT=$WEB_PORT_ALTERNATIVE
+    log "Puerto para interfaz web cambiado a: $WEB_PORT"
+elif [ $? -eq 1 ]; then
+    log_error "No se pudo encontrar un puerto disponible para la interfaz web. Por favor, elige manualmente un puerto libre y edita los archivos .env después de la instalación."
+fi
+
 # Detectar IP del servidor
-log "Paso 2/8: ${YELLOW}Detectando IP del servidor...${NC}"
+log "Paso 3/10: ${YELLOW}Detectando IP del servidor...${NC}"
 PUBLIC_IP=$(curl -s ifconfig.me)
 if [ -z "$PUBLIC_IP" ]; then
     LOCAL_IP=$(hostname -I | awk '{print $1}')
@@ -186,17 +282,22 @@ else
 fi
 
 # Instalar dependencias necesarias
-log "Paso 3/8: ${YELLOW}Instalando dependencias del sistema...${NC}"
-progress_bar 4 1
+log "Paso 4/10: ${YELLOW}Instalando dependencias del sistema...${NC}"
+progress_bar 6 1
 
 # Actualizar repositorios
 if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     apt-get update -y >> "$LOG_FILE" 2>&1
     check_result "Actualización de repositorios"
     
+    if [ "$INSTALL_BUILD_ESSENTIAL" = true ]; then
+        apt-get install -y build-essential >> "$LOG_FILE" 2>&1
+        check_result "Instalación de build-essential" "fatal"
+    fi
+    
     if [ "$INSTALL_NODE" = true ]; then
-        log "Instalando Node.js..."
-        curl -fsSL https://deb.nodesource.com/setup_16.x | bash - >> "$LOG_FILE" 2>&1
+        log "Instalando Node.js v$REQUIRED_NODE_VERSION..."
+        curl -fsSL https://deb.nodesource.com/setup_${REQUIRED_NODE_VERSION}.x | bash - >> "$LOG_FILE" 2>&1
         apt-get install -y nodejs >> "$LOG_FILE" 2>&1
         check_result "Instalación de Node.js" "fatal"
     fi
@@ -213,78 +314,102 @@ if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
         check_result "Instalación de SQLite" "fatal"
     fi
     
-    if [ "$INSTALL_PM2" = true ]; then
-        log "Instalando PM2..."
-        npm install -g pm2 >> "$LOG_FILE" 2>&1
-        check_result "Instalación de PM2" "fatal"
-    fi
+    progress_bar 6 2
+    
+    # Paquetes adicionales útiles
+    log "Instalando paquetes adicionales necesarios..."
+    apt-get install -y git curl libpng-dev >> "$LOG_FILE" 2>&1
+    check_result "Instalación de paquetes adicionales"
     
 elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "fedora" ]; then
     yum update -y >> "$LOG_FILE" 2>&1
     check_result "Actualización de repositorios"
     
+    # Paquetes de desarrollo para CentOS/RHEL
+    yum groupinstall -y "Development Tools" >> "$LOG_FILE" 2>&1
+    check_result "Instalación de herramientas de desarrollo"
+    
     if [ "$INSTALL_NODE" = true ]; then
         log "Instalando Node.js..."
-        curl -fsSL https://rpm.nodesource.com/setup_16.x | bash - >> "$LOG_FILE" 2>&1
+        curl -fsSL https://rpm.nodesource.com/setup_${REQUIRED_NODE_VERSION}.x | bash - >> "$LOG_FILE" 2>&1
         yum install -y nodejs >> "$LOG_FILE" 2>&1
         check_result "Instalación de Node.js" "fatal"
     fi
     
     if [ "$INSTALL_FFMPEG" = true ]; then
         log "Instalando FFmpeg..."
-        yum install -y ffmpeg >> "$LOG_FILE" 2>&1
+        
+        if [ "$OS_NAME" = "fedora" ]; then
+            dnf install -y ffmpeg ffmpeg-devel >> "$LOG_FILE" 2>&1
+        else
+            # Para CentOS/RHEL, ffmpeg no está en los repos estándar
+            yum install -y epel-release >> "$LOG_FILE" 2>&1
+            yum localinstall -y --nogpgcheck https://download1.rpmfusion.org/free/el/rpmfusion-free-release-$(rpm -E %rhel).noarch.rpm >> "$LOG_FILE" 2>&1
+            yum install -y ffmpeg ffmpeg-devel >> "$LOG_FILE" 2>&1
+        fi
+        
         check_result "Instalación de FFmpeg" "fatal"
     fi
     
     if [ "$INSTALL_SQLITE" = true ]; then
         log "Instalando SQLite..."
-        yum install -y sqlite >> "$LOG_FILE" 2>&1
+        yum install -y sqlite sqlite-devel >> "$LOG_FILE" 2>&1
         check_result "Instalación de SQLite" "fatal"
     fi
     
-    if [ "$INSTALL_PM2" = true ]; then
-        log "Instalando PM2..."
-        npm install -g pm2 >> "$LOG_FILE" 2>&1
-        check_result "Instalación de PM2" "fatal"
-    fi
+    progress_bar 6 2
+    
+    # Paquetes adicionales útiles
+    log "Instalando paquetes adicionales necesarios..."
+    yum install -y git curl libpng-devel >> "$LOG_FILE" 2>&1
+    check_result "Instalación de paquetes adicionales"
+    
 else
     log_error "Distribución no soportada automáticamente. Intentando instalación genérica."
-    
-    if [ "$INSTALL_PM2" = true ]; then
-        log "Instalando PM2..."
-        npm install -g pm2 >> "$LOG_FILE" 2>&1
-        check_result "Instalación de PM2" "fatal"
-    fi
+    log "Se recomienda instalar manualmente Node.js v$REQUIRED_NODE_VERSION+, FFmpeg y SQLite3."
 fi
 
-progress_bar 4 2
+progress_bar 6 3
+
+# Instalar PM2 globalmente
+if [ "$INSTALL_PM2" = true ]; then
+    log "Instalando PM2..."
+    npm install -g pm2 >> "$LOG_FILE" 2>&1
+    check_result "Instalación de PM2" "fatal"
+    
+    # Configurar PM2 para arrancar con el sistema
+    pm2 startup >> "$LOG_FILE" 2>&1
+    log "PM2 configurado para arranque automático"
+fi
+
+progress_bar 6 4
 
 # Crear directorios necesarios
-log "Paso 4/8: ${YELLOW}Configurando directorios...${NC}"
-mkdir -p server/data/thumbnails server/data/transcoded server/public/assets >> "$LOG_FILE" 2>&1
+log "Paso 5/10: ${YELLOW}Configurando directorios...${NC}"
+mkdir -p server/data/thumbnails server/data/transcoded server/data/cache server/public/assets >> "$LOG_FILE" 2>&1
 check_result "Creación de directorios"
-progress_bar 4 3
+progress_bar 6 5
 
 # Configurar firewall
-log "Paso 5/8: ${YELLOW}Configurando firewall...${NC}"
+log "Paso 6/10: ${YELLOW}Configurando firewall...${NC}"
 if command -v ufw &> /dev/null; then
     # Si está usando UFW (Ubuntu, Debian)
-    ufw allow 3000/tcp >> "$LOG_FILE" 2>&1
-    ufw allow 4321/tcp >> "$LOG_FILE" 2>&1
+    ufw allow $API_PORT/tcp >> "$LOG_FILE" 2>&1
+    ufw allow $WEB_PORT/tcp >> "$LOG_FILE" 2>&1
     check_result "Configuración de puertos en UFW"
 elif command -v firewall-cmd &> /dev/null; then
     # Si está usando FirewallD (CentOS, Fedora)
-    firewall-cmd --permanent --add-port=3000/tcp >> "$LOG_FILE" 2>&1
-    firewall-cmd --permanent --add-port=4321/tcp >> "$LOG_FILE" 2>&1
+    firewall-cmd --permanent --add-port=$API_PORT/tcp >> "$LOG_FILE" 2>&1
+    firewall-cmd --permanent --add-port=$WEB_PORT/tcp >> "$LOG_FILE" 2>&1
     firewall-cmd --reload >> "$LOG_FILE" 2>&1
     check_result "Configuración de puertos en FirewallD"
 else
-    log_error "No se detectó un firewall compatible. Asegúrate de abrir manualmente los puertos 3000 (API) y 4321 (Cliente web)."
+    log_error "No se detectó un firewall compatible. Asegúrate de abrir manualmente los puertos $API_PORT (API) y $WEB_PORT (Cliente web)."
 fi
-progress_bar 4 4
+progress_bar 6 6
 
 # Instalar dependencias de la aplicación
-log "Paso 6/8: ${YELLOW}Instalando dependencias de la aplicación...${NC}"
+log "Paso 7/10: ${YELLOW}Instalando dependencias de la aplicación...${NC}"
 log "Instalando dependencias del servidor..."
 cd server
 npm install --production >> "../$LOG_FILE" 2>&1
@@ -298,25 +423,29 @@ check_result "Instalación de dependencias del cliente web" "fatal"
 cd ../..
 
 # Configurar archivos .env
-log "Paso 7/8: ${YELLOW}Configurando archivos de entorno...${NC}"
+log "Paso 8/10: ${YELLOW}Configurando archivos de entorno...${NC}"
 if [ ! -f server/.env ]; then
     cp server/.env.example server/.env 2>/dev/null || touch server/.env
     
     # Configurar variables de entorno para producción
     cat > server/.env << EOF
-PORT=3000
+PORT=$API_PORT
 NODE_ENV=production
-CORS_ORIGINS=http://$SERVER_IP:4321
+CORS_ORIGINS=http://$SERVER_IP:$WEB_PORT
 JWT_SECRET=$(openssl rand -hex 32)
 DB_PATH=./data/streamvio.db
 EOF
     check_result "Creación del archivo .env del servidor"
 else
     log "El archivo .env del servidor ya existe, se mantiene la configuración actual"
+    
+    # Modificar el puerto de la API si es necesario
+    sed -i "s/^PORT=.*/PORT=$API_PORT/" server/.env
+    log "Puerto de la API actualizado en .env existente"
 fi
 
 # Configurar .env del cliente
-echo "PUBLIC_API_URL=http://$SERVER_IP:3000" > clients/web/.env
+echo "PUBLIC_API_URL=http://$SERVER_IP:$API_PORT" > clients/web/.env
 check_result "Creación del archivo .env del cliente"
 
 # Compilar el frontend
@@ -327,14 +456,14 @@ check_result "Compilación del frontend" "fatal"
 cd ../..
 
 # Inicializar la base de datos
-log "Inicializando la base de datos..."
+log "Paso 9/10: ${YELLOW}Inicializando la base de datos...${NC}"
 cd server
 npm run init-db >> "../$LOG_FILE" 2>&1
 check_result "Inicialización de la base de datos" "fatal"
 cd ..
 
 # Configurar servicios systemd
-log "Paso 8/8: ${YELLOW}Configurando servicios del sistema...${NC}"
+log "Paso 10/10: ${YELLOW}Configurando servicios del sistema...${NC}"
 
 # Crear archivo de servicio para el backend
 cat > /tmp/streamvio-backend.service << EOF
@@ -365,7 +494,7 @@ After=network.target streamvio-backend.service
 Type=forking
 User=$USER
 WorkingDirectory=$(pwd)/clients/web
-ExecStart=$(which pm2) start npm --name streamvio-frontend -- run preview
+ExecStart=$(which pm2) start npm --name streamvio-frontend -- run preview -- --host --port $WEB_PORT
 ExecReload=$(which pm2) reload streamvio-frontend
 ExecStop=$(which pm2) stop streamvio-frontend
 Restart=on-failure
@@ -410,11 +539,14 @@ fi
 
 # Verificar conectividad a los servicios
 log "Verificando conectividad a la API..."
-if curl -s "http://localhost:3000/api/health" | grep -q "ok"; then
+if curl -s "http://localhost:$API_PORT/api/health" | grep -q "ok"; then
     log "API de StreamVio: ${GREEN}ACCESIBLE${NC}"
 else
     log_error "API de StreamVio: NO ACCESIBLE. Verifica los logs con 'journalctl -u streamvio-backend'"
 fi
+
+# Verificar si hay pasos que el usuario debe realizar (si no se ejecuta como root)
+check_sudo_commands
 
 # Mostrar resumen final
 show_summary

@@ -140,7 +140,7 @@ app.use((err, req, res, next) => {
 // no cuando se importa para tests
 if (require.main === module) {
   // Configurar el puerto
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 8000;
 
   // Iniciar el servidor
   app.listen(PORT, () => {

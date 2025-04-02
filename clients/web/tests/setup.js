@@ -37,7 +37,7 @@ Object.defineProperty(window, "location", {
 });
 
 // Mock para API_URL
-import.meta.env.PUBLIC_API_URL = "http://localhost:3000";
+import.meta.env.PUBLIC_API_URL = "http://localhost:8000";
 
 // Mock para eventos personalizados
 window.dispatchEvent = vi.fn();
