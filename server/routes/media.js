@@ -399,19 +399,23 @@ router.get("/:id/stream", async (req, res) => {
     );
 
     if (!mediaItem || !mediaItem.file_path) {
+      console.error(`Archivo no encontrado para media_id=${mediaId}`);
       return res.status(404).json({
         error: "No encontrado",
         message: "Archivo multimedia no encontrado",
       });
     }
 
-    const filePath = mediaItem.file_path;
+    // Normalizar la ruta del archivo para asegurar compatibilidad entre sistemas
+    const filePath = mediaItem.file_path.replace(/\\/g, "/");
+    console.log(`Intentando acceder al archivo: ${filePath}`);
 
     // Verificar que el archivo existe
     if (!fs.existsSync(filePath)) {
+      console.error(`El archivo físico no existe: ${filePath}`);
       return res.status(404).json({
         error: "Archivo no encontrado",
-        message: "El archivo físico no existe",
+        message: "El archivo físico no existe en el sistema",
       });
     }
 

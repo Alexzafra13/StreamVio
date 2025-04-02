@@ -85,6 +85,15 @@ function getMediaType(filePath) {
 }
 
 /**
+ * Normaliza una ruta para usar siempre barras diagonales (/)
+ * @param {string} filePath - Ruta a normalizar
+ * @returns {string} - Ruta normalizada
+ */
+function normalizePath(filePath) {
+  return filePath.replace(/\\/g, "/");
+}
+
+/**
  * Extrae metadatos básicos de un archivo utilizando ffprobe (para video/audio)
  * @param {string} filePath - Ruta del archivo
  * @returns {Object} - Objeto con metadatos
@@ -171,13 +180,14 @@ async function generateThumbnail(videoPath, outputDir) {
 
     const fileName = path.basename(videoPath, path.extname(videoPath));
     const thumbnailPath = path.join(outputDir, `${fileName}_thumb.jpg`);
+    const normalizedThumbnailPath = normalizePath(thumbnailPath);
 
     // Generar miniatura al 20% del video
     await execPromise(
       `ffmpeg -y -i "${videoPath}" -ss 00:00:20 -vframes 1 -vf "scale=320:-1" "${thumbnailPath}"`
     );
 
-    return thumbnailPath;
+    return normalizedThumbnailPath;
   } catch (error) {
     console.warn(
       `FFmpeg no disponible o error al generar miniatura para ${videoPath}:`,
@@ -202,29 +212,34 @@ async function scanDirectory(directory, libraryId, thumbnailsDir) {
 
     for (const entry of entries) {
       const fullPath = path.join(directory, entry.name);
+      // Normalizar la ruta para consistencia entre sistemas operativos
+      const normalizedPath = normalizePath(fullPath);
 
       if (entry.isDirectory()) {
         // Recursivamente escanear subdirectorios
         const subDirFiles = await scanDirectory(
-          fullPath,
+          normalizedPath,
           libraryId,
           thumbnailsDir
         );
         mediaFiles.push(...subDirFiles);
-      } else if (entry.isFile() && isMediaFile(fullPath)) {
+      } else if (entry.isFile() && isMediaFile(normalizedPath)) {
         // Extraer metadatos si es un archivo multimedia
-        console.log(`Escaneando archivo: ${fullPath}`);
-        const metadata = await extractMetadata(fullPath);
-        const type = getMediaType(fullPath);
+        console.log(`Escaneando archivo: ${normalizedPath}`);
+        const metadata = await extractMetadata(normalizedPath);
+        const type = getMediaType(normalizedPath);
 
         // Generar miniatura para videos
         let thumbnailPath = null;
         if (type === "movie") {
-          thumbnailPath = await generateThumbnail(fullPath, thumbnailsDir);
+          thumbnailPath = await generateThumbnail(
+            normalizedPath,
+            thumbnailsDir
+          );
         }
 
         mediaFiles.push({
-          path: fullPath,
+          path: normalizedPath, // Usar la ruta normalizada
           type,
           libraryId,
           ...metadata,
@@ -247,10 +262,13 @@ async function scanDirectory(directory, libraryId, thumbnailsDir) {
  */
 async function saveMediaFileToDB(mediaFile) {
   try {
+    // Normalizar la ruta antes de verificar si existe en la BD
+    const normalizedPath = normalizePath(mediaFile.path);
+
     // Verificar si el archivo ya existe en la base de datos
     const existingFile = await db.asyncGet(
       "SELECT id FROM media_items WHERE file_path = ?",
-      [mediaFile.path]
+      [normalizedPath]
     );
 
     let mediaId;
@@ -273,7 +291,7 @@ async function saveMediaFileToDB(mediaFile) {
         ]
       );
 
-      console.log(`Archivo actualizado en la base de datos: ${mediaFile.path}`);
+      console.log(`Archivo actualizado en la base de datos: ${normalizedPath}`);
       mediaId = existingFile.id;
     } else {
       // Insertar nuevo archivo
@@ -285,7 +303,7 @@ async function saveMediaFileToDB(mediaFile) {
           mediaFile.libraryId,
           mediaFile.title,
           mediaFile.type,
-          mediaFile.path,
+          normalizedPath, // Usar ruta normalizada
           mediaFile.duration,
           mediaFile.size,
           mediaFile.thumbnailPath,
@@ -293,7 +311,7 @@ async function saveMediaFileToDB(mediaFile) {
       );
 
       console.log(
-        `Nuevo archivo añadido a la base de datos: ${mediaFile.path}`
+        `Nuevo archivo añadido a la base de datos: ${normalizedPath}`
       );
       mediaId = result.lastID;
     }
@@ -380,15 +398,20 @@ async function scanAllLibraries() {
       };
 
       try {
-        if (!fs.existsSync(library.path)) {
-          console.error(`La ruta de la biblioteca no existe: ${library.path}`);
+        // Normalizar ruta de la biblioteca
+        const normalizedLibraryPath = normalizePath(library.path);
+
+        if (!fs.existsSync(normalizedLibraryPath)) {
+          console.error(
+            `La ruta de la biblioteca no existe: ${normalizedLibraryPath}`
+          );
           libraryResult.error = "La ruta de la biblioteca no existe";
           results.libraries.push(libraryResult);
           continue;
         }
 
         const mediaFiles = await scanDirectory(
-          library.path,
+          normalizedLibraryPath,
           library.id,
           thumbnailsDir
         );
@@ -481,11 +504,14 @@ async function scanLibrary(libraryId) {
 
     console.log(`Escaneando biblioteca: ${library.name} (${library.path})`);
 
+    // Normalizar ruta de la biblioteca
+    const normalizedLibraryPath = normalizePath(library.path);
+
     // Verificar que la ruta existe
-    if (!fs.existsSync(library.path)) {
+    if (!fs.existsSync(normalizedLibraryPath)) {
       return {
         ...results,
-        error: `La ruta de la biblioteca no existe: ${library.path}`,
+        error: `La ruta de la biblioteca no existe: ${normalizedLibraryPath}`,
       };
     }
 
@@ -494,7 +520,7 @@ async function scanLibrary(libraryId) {
 
     // Escanear la biblioteca
     const mediaFiles = await scanDirectory(
-      library.path,
+      normalizedLibraryPath,
       library.id,
       thumbnailsDir
     );
@@ -583,4 +609,5 @@ module.exports = {
   getMediaType,
   extractMetadata,
   generateThumbnail,
+  normalizePath, // Exportamos la función de normalización también
 };
