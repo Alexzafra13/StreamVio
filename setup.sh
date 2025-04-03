@@ -1,5 +1,5 @@
 #!/bin/bash
-# StreamVio - Script de instalación unificado
+# StreamVio - Script de instalación unificado con gestión mejorada de permisos
 # Este script instala y configura StreamVio como un servicio unificado (API + frontend) en un solo puerto
 
 # Colores para mejor legibilidad
@@ -13,6 +13,8 @@ NC='\033[0m' # No Color
 STREAMVIO_PORT=45000    # Puerto unificado para la aplicación
 INSTALL_LOG="streamvio-install.log"
 ERROR_LOG="streamvio-errors.log"
+STREAMVIO_USER="streamvio"  # Usuario específico para el servicio
+STREAMVIO_GROUP="streamvio"  # Grupo específico para el servicio
 
 # Función para registrar mensajes en el log
 log() {
@@ -105,7 +107,7 @@ get_server_ip() {
 
 # Inicio del script
 echo -e "${BLUE}=======================================================${NC}"
-echo -e "${BLUE}         StreamVio - Instalación Unificada v1.0         ${NC}"
+echo -e "${BLUE}         StreamVio - Instalación Unificada v1.1         ${NC}"
 echo -e "${BLUE}=======================================================${NC}\n"
 
 log "Iniciando instalación de StreamVio..."
@@ -134,8 +136,8 @@ SERVER_IP=$(get_server_ip)
 log "Dirección IP detectada: $SERVER_IP"
 
 # Verificar requisitos previos
-log "Paso 1/7: ${YELLOW}Verificando requisitos del sistema...${NC}"
-show_progress 1 7 "Verificando requisitos"
+log "Paso 1/8: ${YELLOW}Verificando requisitos del sistema...${NC}"
+show_progress 1 8 "Verificando requisitos"
 
 # Verificar Node.js
 if command -v node &> /dev/null; then
@@ -178,8 +180,8 @@ if lsof -Pi :$STREAMVIO_PORT -sTCP:LISTEN -t >/dev/null ; then
 fi
 
 # Instalar dependencias del sistema
-log "Paso 2/7: ${YELLOW}Instalando dependencias del sistema...${NC}"
-show_progress 2 7 "Instalando dependencias"
+log "Paso 2/8: ${YELLOW}Instalando dependencias del sistema...${NC}"
+show_progress 2 8 "Instalando dependencias"
 
 if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     # Actualizando repositorios
@@ -211,7 +213,7 @@ if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     
     # Paquetes adicionales útiles
     log "Instalando paquetes adicionales necesarios..."
-    apt-get install -y curl libpng-dev sqlite3 >> "$INSTALL_LOG" 2>&1
+    apt-get install -y curl libpng-dev sqlite3 acl >> "$INSTALL_LOG" 2>&1
     check_result "Instalación de paquetes adicionales"
     
 elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "fedora" ]; then
@@ -271,9 +273,9 @@ elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "fed
     # Paquetes adicionales útiles
     log "Instalando paquetes adicionales necesarios..."
     if [ "$OS_NAME" = "fedora" ]; then
-        dnf install -y curl libpng-devel sqlite sqlite-devel >> "$INSTALL_LOG" 2>&1
+        dnf install -y curl libpng-devel sqlite sqlite-devel acl >> "$INSTALL_LOG" 2>&1
     else
-        yum install -y curl libpng-devel sqlite sqlite-devel >> "$INSTALL_LOG" 2>&1
+        yum install -y curl libpng-devel sqlite sqlite-devel acl >> "$INSTALL_LOG" 2>&1
     fi
     check_result "Instalación de paquetes adicionales"
 else
@@ -282,9 +284,24 @@ else
     exit 1
 fi
 
+# Crear usuario y grupo específicos para StreamVio
+log "Paso 3/8: ${YELLOW}Creando usuario y grupo para StreamVio...${NC}"
+show_progress 3 8 "Creando usuario"
+
+# Comprobar si el usuario ya existe
+if id "$STREAMVIO_USER" &>/dev/null; then
+    log "El usuario $STREAMVIO_USER ya existe"
+else
+    # Crear usuario y grupo
+    groupadd "$STREAMVIO_GROUP" >> "$INSTALL_LOG" 2>&1
+    # Crear usuario sin directorio home ni shell de login
+    useradd -r -g "$STREAMVIO_GROUP" -s /bin/false -d /nonexistent "$STREAMVIO_USER" >> "$INSTALL_LOG" 2>&1
+    check_result "Creación de usuario $STREAMVIO_USER y grupo $STREAMVIO_GROUP"
+fi
+
 # Configurar servicio y firewall
-log "Paso 3/7: ${YELLOW}Configurando firewall...${NC}"
-show_progress 3 7 "Configurando firewall"
+log "Paso 4/8: ${YELLOW}Configurando firewall...${NC}"
+show_progress 4 8 "Configurando firewall"
 
 # Abrir puerto en el firewall
 if command -v ufw &> /dev/null; then
@@ -301,8 +318,8 @@ else
 fi
 
 # Descargar el código si es necesario
-log "Paso 4/7: ${YELLOW}Obteniendo código fuente...${NC}"
-show_progress 4 7 "Obteniendo código"
+log "Paso 5/8: ${YELLOW}Obteniendo código fuente...${NC}"
+show_progress 5 8 "Obteniendo código"
 
 # Determinar directorio de instalación
 INSTALL_DIR="/opt/streamvio"
@@ -321,9 +338,16 @@ else
     check_result "Clonación del repositorio" "fatal"
 fi
 
+# Configurar permisos del directorio de instalación
+log "Configurando permisos del directorio de instalación..."
+chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "$INSTALL_DIR"
+# Dar permisos a grupo y otros para leer y ejecutar, propietario tiene control total
+chmod -R 755 "$INSTALL_DIR"
+check_result "Configuración de permisos para directorio de instalación"
+
 # Instalación de dependencias del proyecto
-log "Paso 5/7: ${YELLOW}Instalando dependencias del proyecto...${NC}"
-show_progress 5 7 "Instalando dependencias"
+log "Paso 6/8: ${YELLOW}Instalando dependencias del proyecto...${NC}"
+show_progress 6 8 "Instalando dependencias"
 
 # Instalar dependencias del servidor
 cd "$INSTALL_DIR/server"
@@ -336,8 +360,8 @@ npm install >> "$INSTALL_LOG" 2>&1
 check_result "Instalación de dependencias del cliente" "fatal"
 
 # Compilar el frontend
-log "Paso 6/7: ${YELLOW}Compilando la interfaz web...${NC}"
-show_progress 6 7 "Compilando frontend"
+log "Paso 7/8: ${YELLOW}Compilando la interfaz web...${NC}"
+show_progress 7 8 "Compilando frontend"
 
 cd "$INSTALL_DIR/clients/web"
 npm run build >> "$INSTALL_LOG" 2>&1
@@ -367,20 +391,21 @@ mkdir -p "$INSTALL_DIR/server/data/thumbnails" \
          "$INSTALL_DIR/server/data/metadata" >> "$INSTALL_LOG" 2>&1
 check_result "Creación de directorios para datos"
 
-# Asegurar permisos correctos
-chown -R $(id -u):$(id -g) "$INSTALL_DIR/server/data"
+# Asegurar permisos correctos para directorios de datos
+chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "$INSTALL_DIR/server/data"
 chmod -R 755 "$INSTALL_DIR/server/data"
 check_result "Configuración de permisos para directorios de datos"
 
 # Inicializar la base de datos
 log "Inicializando la base de datos..."
 cd "$INSTALL_DIR/server"
-npm run init-db >> "$INSTALL_LOG" 2>&1
+# Ejecutar la inicialización como el usuario streamvio
+sudo -u "$STREAMVIO_USER" node scripts/initDatabase.js >> "$INSTALL_LOG" 2>&1
 check_result "Inicialización de la base de datos" "fatal"
 
 # Configurar e iniciar el servicio
-log "Paso 7/7: ${YELLOW}Configurando servicio del sistema...${NC}"
-show_progress 7 7 "Configurando servicio"
+log "Paso 8/8: ${YELLOW}Configurando servicio del sistema...${NC}"
+show_progress 8 8 "Configurando servicio"
 
 # Crear archivo de servicio systemd
 cat > /etc/systemd/system/streamvio.service << EOF
@@ -390,12 +415,18 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=$STREAMVIO_USER
+Group=$STREAMVIO_GROUP
 WorkingDirectory=$INSTALL_DIR/server
 ExecStart=$(which node) app.js
 Restart=on-failure
 Environment=NODE_ENV=production
 Environment=PORT=$STREAMVIO_PORT
+
+# Asegurarnos de que el servicio puede leer y escribir a sus directorios
+# Esta es una configuración permisiva, ajustar según necesidad
+ReadWritePaths=$INSTALL_DIR/server/data
+# Para mayor seguridad, podríamos usar ProtectSystem=strict, etc.
 
 [Install]
 WantedBy=multi-user.target
@@ -409,6 +440,35 @@ check_result "Recarga de systemd"
 # Habilitar servicio para arranque automático
 systemctl enable streamvio.service >> "$INSTALL_LOG" 2>&1
 check_result "Habilitación del servicio para arranque automático"
+
+# Crear script para ayudar a añadir carpetas multimedia
+log "Creando script de ayuda para el manejo de permisos de carpetas multimedia..."
+cat > "$INSTALL_DIR/add-media-folder.sh" << EOF
+#!/bin/bash
+# Script para añadir una carpeta multimedia a StreamVio
+
+if [ \$# -ne 1 ]; then
+    echo "Uso: \$0 /ruta/a/carpeta/multimedia"
+    exit 1
+fi
+
+MEDIA_FOLDER="\$1"
+
+# Verificar que la carpeta existe
+if [ ! -d "\$MEDIA_FOLDER" ]; then
+    echo "Error: La carpeta \$MEDIA_FOLDER no existe"
+    exit 1
+fi
+
+# Dar permisos al usuario streamvio para acceder a la carpeta
+setfacl -R -m u:$STREAMVIO_USER:rx "\$MEDIA_FOLDER"
+
+echo "Permisos configurados: el usuario $STREAMVIO_USER ahora puede acceder a \$MEDIA_FOLDER"
+echo "Ya puedes añadir esta carpeta como biblioteca en StreamVio"
+EOF
+
+chmod +x "$INSTALL_DIR/add-media-folder.sh"
+check_result "Creación del script de ayuda para carpetas multimedia"
 
 # Iniciar servicio
 log "Iniciando servicio StreamVio..."
@@ -426,7 +486,7 @@ else
     # Intentar iniciar manualmente para ver errores
     log_error "Intentando iniciar manualmente para obtener más información:"
     cd "$INSTALL_DIR/server"
-    node app.js >> "$ERROR_LOG" 2>&1 &
+    sudo -u "$STREAMVIO_USER" node app.js >> "$ERROR_LOG" 2>&1 &
     PID=$!
     sleep 5
     kill $PID 2>/dev/null
@@ -450,6 +510,10 @@ echo -e "  ✓ Detener: ${YELLOW}sudo systemctl stop streamvio.service${NC}"
 echo -e "  ✓ Reiniciar: ${YELLOW}sudo systemctl restart streamvio.service${NC}"
 echo -e "  ✓ Ver logs: ${YELLOW}sudo journalctl -u streamvio.service -f${NC}"
 
+echo -e "\n${BLUE}Añadir carpetas multimedia:${NC}"
+echo -e "  ✓ Usa el script: ${YELLOW}sudo $INSTALL_DIR/add-media-folder.sh /ruta/a/tu/carpeta${NC}"
+echo -e "  ✓ Esto dará al usuario $STREAMVIO_USER los permisos necesarios para acceder a tus archivos"
+
 echo -e "\n${BLUE}Ubicaciones importantes:${NC}"
 echo -e "  ✓ Código: ${YELLOW}$INSTALL_DIR${NC}"
 echo -e "  ✓ Base de datos: ${YELLOW}$INSTALL_DIR/server/data/streamvio.db${NC}"
@@ -461,7 +525,8 @@ echo -e "  1. ${YELLOW}cd $INSTALL_DIR${NC}"
 echo -e "  2. ${YELLOW}git pull${NC}"
 echo -e "  3. ${YELLOW}cd clients/web && npm install && npm run build${NC}"
 echo -e "  4. ${YELLOW}cd ../../server && npm install${NC}"
-echo -e "  5. ${YELLOW}sudo systemctl restart streamvio.service${NC}"
+echo -e "  5. ${YELLOW}chown -R $STREAMVIO_USER:$STREAMVIO_GROUP $INSTALL_DIR${NC}"
+echo -e "  6. ${YELLOW}sudo systemctl restart streamvio.service${NC}"
 
 echo -e "\n${GREEN}¡Instalación completada con éxito!${NC}"
 echo -e "${BLUE}=================== FIN DEL RESUMEN ===================${NC}\n"
