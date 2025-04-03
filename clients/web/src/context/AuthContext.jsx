@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect, useContext } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
 import PasswordChangeModal from "../components/PasswordChangeModal";
-import AdminFirstLogin from "../components/AdminFirstLogin";
+import FirstTimeSetup from "../components/FirstTimeSetup"; // Importar nuevo componente
 
 const API_URL = apiConfig.API_URL;
 
@@ -18,7 +18,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
   const [requirePasswordChange, setRequirePasswordChange] = useState(false);
-  const [isAdminFirstLogin, setIsAdminFirstLogin] = useState(false);
+  const [isFirstTimeSetup, setIsFirstTimeSetup] = useState(false); // Nuevo estado
 
   // Función para actualizar el almacenamiento local y el estado
   const updateUserData = (userData) => {
@@ -55,19 +55,9 @@ export const AuthProvider = ({ children }) => {
       );
 
       if (response.data.requirePasswordChange) {
-        // Si es admin, mostrar el formulario específico de admin
-        if (response.data.isAdmin) {
-          setIsAdminFirstLogin(true);
-          setRequirePasswordChange(false);
-          console.log("Admin first login detected - showing setup modal");
-        } else {
-          // Para usuarios normales
-          setRequirePasswordChange(true);
-          setIsAdminFirstLogin(false);
-        }
+        setRequirePasswordChange(true);
       } else {
         setRequirePasswordChange(false);
-        setIsAdminFirstLogin(false);
       }
     } catch (error) {
       console.error("Error checking password change requirement:", error);
@@ -78,45 +68,62 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Verificar si hay un token guardado
     const checkLoggedIn = async () => {
-      const token = localStorage.getItem("streamvio_token");
+      try {
+        // Intentar verificar si es primera ejecución (sin usuarios)
+        const firstTimeResponse = await axios.get(
+          `${API_URL}/api/auth/check-first-time`
+        );
 
-      if (token) {
-        try {
-          // Configurar el token en los headers
-          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-
-          // Intentar obtener información del usuario actual
-          const response = await axios.get(`${API_URL}/api/auth/user`);
-
-          // Guardar datos del usuario
-          updateUserData(response.data);
-
-          // Verificar estado de cambio de contraseña
-          await checkPasswordChangeRequired(token);
-        } catch (error) {
-          console.log("Token inválido o expirado:", error);
-          // Si hay un error, limpiar el token
-          localStorage.removeItem("streamvio_token");
-          localStorage.removeItem("streamvio_user");
-          delete axios.defaults.headers.common["Authorization"];
-          setCurrentUser(null);
+        if (firstTimeResponse.data.isFirstTime) {
+          setIsFirstTimeSetup(true);
+          setLoading(false);
+          setInitialized(true);
+          return;
         }
-      } else {
-        // Intentar obtener información del usuario del localStorage (fallback)
-        const userStr = localStorage.getItem("streamvio_user");
-        if (userStr) {
+
+        const token = localStorage.getItem("streamvio_token");
+        if (token) {
           try {
-            const user = JSON.parse(userStr);
-            setCurrentUser(user);
-          } catch (e) {
-            console.error("Error al parsear datos de usuario:", e);
+            // Configurar el token en los headers
+            axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+            // Intentar obtener información del usuario actual
+            const response = await axios.get(`${API_URL}/api/auth/user`);
+
+            // Guardar datos del usuario
+            updateUserData(response.data);
+
+            // Verificar estado de cambio de contraseña
+            await checkPasswordChangeRequired(token);
+          } catch (error) {
+            console.log("Token inválido o expirado:", error);
+            // Si hay un error, limpiar el token
+            localStorage.removeItem("streamvio_token");
             localStorage.removeItem("streamvio_user");
+            delete axios.defaults.headers.common["Authorization"];
+            setCurrentUser(null);
+          }
+        } else {
+          // Intentar obtener información del usuario del localStorage (fallback)
+          const userStr = localStorage.getItem("streamvio_user");
+          if (userStr) {
+            try {
+              const user = JSON.parse(userStr);
+              setCurrentUser(user);
+            } catch (e) {
+              console.error("Error al parsear datos de usuario:", e);
+              localStorage.removeItem("streamvio_user");
+            }
           }
         }
-      }
 
-      setLoading(false);
-      setInitialized(true);
+        setLoading(false);
+        setInitialized(true);
+      } catch (error) {
+        console.log("Error al verificar estado:", error);
+        setLoading(false);
+        setInitialized(true);
+      }
     };
 
     checkLoggedIn();
@@ -197,7 +204,6 @@ export const AuthProvider = ({ children }) => {
     // Actualizar estado
     setCurrentUser(null);
     setRequirePasswordChange(false);
-    setIsAdminFirstLogin(false);
 
     // Disparar evento personalizado de cambio de autenticación
     window.dispatchEvent(new Event("streamvio-auth-change"));
@@ -223,31 +229,10 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Función para manejar la configuración inicial de admin completa
-  const handleAdminSetupComplete = (newEmail) => {
-    setIsAdminFirstLogin(false);
-
-    // Actualizar email del usuario en el estado si cambió
-    if (newEmail && currentUser) {
-      setCurrentUser({
-        ...currentUser,
-        email: newEmail,
-      });
-
-      // También actualizamos el localStorage
-      const userStr = localStorage.getItem("streamvio_user");
-      if (userStr) {
-        try {
-          const userData = JSON.parse(userStr);
-          userData.email = newEmail;
-          localStorage.setItem("streamvio_user", JSON.stringify(userData));
-        } catch (e) {
-          console.error("Error al actualizar email en localStorage:", e);
-        }
-      }
-    }
-
-    // Disparar evento personalizado para refrescar la aplicación
+  // Función para manejar la configuración inicial completa
+  const handleFirstTimeSetupComplete = () => {
+    setIsFirstTimeSetup(false);
+    // Disparar evento para refrescar la aplicación
     window.dispatchEvent(new Event("streamvio-auth-change"));
   };
 
@@ -257,7 +242,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     initialized,
     requirePasswordChange,
-    isAdminFirstLogin,
+    isFirstTimeSetup,
     login,
     register,
     logout,
@@ -269,9 +254,11 @@ export const AuthProvider = ({ children }) => {
       {initialized && requirePasswordChange && (
         <PasswordChangeModal onComplete={handlePasswordChangeComplete} />
       )}
-      {initialized && isAdminFirstLogin && (
-        <AdminFirstLogin onComplete={handleAdminSetupComplete} />
+
+      {initialized && isFirstTimeSetup && (
+        <FirstTimeSetup onComplete={handleFirstTimeSetupComplete} />
       )}
+
       {children}
     </AuthContext.Provider>
   );

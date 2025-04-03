@@ -399,8 +399,8 @@ check_result "Configuración de permisos para directorios de datos"
 # Inicializar la base de datos
 log "Inicializando la base de datos..."
 cd "$INSTALL_DIR/server"
-# Ejecutar la inicialización como el usuario streamvio
-sudo -u "$STREAMVIO_USER" node scripts/initDatabase.js >> "$INSTALL_LOG" 2>&1
+# Ejecutar directamente como root para evitar problemas de permisos
+node scripts/initDatabase.js >> "$INSTALL_LOG" 2>&1
 check_result "Inicialización de la base de datos" "fatal"
 
 # Configurar e iniciar el servicio
