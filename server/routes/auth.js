@@ -1,3 +1,12 @@
+// server/routes/auth.js
+const express = require("express");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const db = require("../config/database");
+
+// Crear router
+const router = express.Router();
+
 /**
  * @route   GET /api/auth/check-first-time
  * @desc    Verificar si es la primera ejecución (sin usuarios)
@@ -273,3 +282,6 @@ router.post("/refresh-token", authMiddleware, async (req, res) => {
     });
   }
 });
+
+// Exportar router
+module.exports = router;
