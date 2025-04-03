@@ -3,28 +3,34 @@ const jwt = require("jsonwebtoken");
 
 /**
  * Middleware para autenticación de usuario
- * Verifica el token JWT en las cabeceras de la solicitud
+ * Verifica el token JWT en las cabeceras de la solicitud o como parámetro de consulta
  */
 module.exports = (req, res, next) => {
-  // Obtener el token de la cabecera de autorización
+  // Obtener el token de la cabecera de autorización o del parámetro de consulta
+  let token;
+
+  // Comprobar primero en la cabecera
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
+  if (authHeader) {
+    // Verificar formato del token (Bearer [token])
+    const parts = authHeader.split(" ");
+    if (parts.length === 2 && parts[0] === "Bearer") {
+      token = parts[1];
+    }
+  }
+
+  // Si no hay token en la cabecera, verificar en los parámetros de consulta
+  if (!token && req.query.auth) {
+    token = req.query.auth;
+  }
+
+  // Si no hay token en ningún lado, responder con error
+  if (!token) {
     return res.status(401).json({
       error: "No autorizado",
       message: "Token no proporcionado",
     });
   }
-
-  // Verificar formato del token (Bearer [token])
-  const parts = authHeader.split(" ");
-  if (parts.length !== 2 || parts[0] !== "Bearer") {
-    return res.status(401).json({
-      error: "Error de token",
-      message: "Formato de token incorrecto",
-    });
-  }
-
-  const token = parts[1];
 
   try {
     // Verificar y decodificar el token

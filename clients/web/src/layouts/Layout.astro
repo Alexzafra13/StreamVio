@@ -32,7 +32,7 @@ const { title } = Astro.props;
     </AuthProvider>
 
     <script>
-      // Script para manejar la autenticación en todas las páginas
+      // MODIFICACIÓN: Script mejorado para manejar la autenticación en todas las páginas
       document.addEventListener('DOMContentLoaded', () => {
         // Verificar token
         const token = localStorage.getItem('streamvio_token');
@@ -45,6 +45,9 @@ const { title } = Astro.props;
             init.headers['Authorization'] = `Bearer ${token}`;
             return originalFetch(input, init);
           };
+          
+          // Configurar renovación automática de token
+          setupTokenRefresh();
         }
 
         // Escuchar eventos de autenticación
@@ -58,6 +61,78 @@ const { title } = Astro.props;
             window.location.reload();
           }
         });
+        
+        // Función para configurar renovación automática de token
+        function setupTokenRefresh() {
+          // Renovar el token cada 6 días (antes de que expire a los 7 días)
+          const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
+          
+          // Programar la primera renovación
+          setTimeout(refreshToken, SIX_DAYS_MS);
+          
+          // Verificar cada hora si el token sigue siendo válido
+          setInterval(checkToken, 60 * 60 * 1000);
+        }
+        
+        // Función para renovar el token
+        async function refreshToken() {
+          try {
+            const token = localStorage.getItem('streamvio_token');
+            if (!token) return;
+            
+            const response = await fetch('/api/auth/refresh-token', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              
+              // Guardar el nuevo token
+              localStorage.setItem('streamvio_token', data.token);
+              
+              // Actualizar los datos del usuario si es necesario
+              if (data.user) {
+                localStorage.setItem('streamvio_user', JSON.stringify(data.user));
+              }
+              
+              console.log('Token renovado exitosamente');
+              
+              // Programar la próxima renovación
+              const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
+              setTimeout(refreshToken, SIX_DAYS_MS);
+            } else {
+              console.error('Error al renovar token:', await response.text());
+            }
+          } catch (error) {
+            console.error('Error en la renovación automática del token:', error);
+          }
+        }
+        
+        // Función para verificar si el token sigue siendo válido
+        async function checkToken() {
+          const token = localStorage.getItem('streamvio_token');
+          if (!token) return;
+          
+          try {
+            // Hacer una petición a un endpoint seguro para verificar el token
+            const response = await fetch('/api/auth/user', {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (!response.ok && response.status === 401) {
+              // Token inválido o expirado, intentar renovarlo inmediatamente
+              refreshToken();
+            }
+          } catch (error) {
+            console.error('Error al verificar token:', error);
+          }
+        }
       });
     </script>
   </body>

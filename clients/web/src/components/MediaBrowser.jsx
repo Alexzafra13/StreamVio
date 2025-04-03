@@ -23,7 +23,6 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     search: searchTerm || "",
   });
 
-  // Cargar medios
   const fetchMedia = async (page = 1) => {
     try {
       setLoading(true);
@@ -35,7 +34,6 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
         return;
       }
 
-      // Construir parámetros de consulta
       const params = new URLSearchParams();
       params.append("page", page);
       params.append("limit", pagination.limit);
@@ -82,7 +80,6 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     }
   };
 
-  // Cargar al iniciar y cuando cambien los filtros
   useEffect(() => {
     setActiveFilters({
       libraryId: libraryId,
@@ -90,19 +87,16 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
       search: searchTerm || "",
     });
 
-    // Resetear a la página 1 cuando cambian los filtros
     setPagination((prev) => ({
       ...prev,
       page: 1,
     }));
   }, [libraryId, type, searchTerm]);
 
-  // Cargar medios cuando cambien los filtros activos
   useEffect(() => {
     fetchMedia(pagination.page);
   }, [pagination.page, pagination.limit, sort, order, activeFilters]);
 
-  // Manejar cambio de página
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= pagination.totalPages) {
       setPagination((prev) => ({
@@ -112,7 +106,6 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     }
   };
 
-  // Manejar búsqueda local
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setActiveFilters((prev) => ({
@@ -125,19 +118,15 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     }));
   };
 
-  // Manejar cambio de ordenación
   const handleSortChange = (newSort) => {
     if (sort === newSort) {
-      // Cambiar dirección si ya está seleccionado
       setOrder(order === "asc" ? "desc" : "asc");
     } else {
-      // Nuevo campo, ordenar ascendente por defecto
       setSort(newSort);
       setOrder("asc");
     }
   };
 
-  // Renderizar indicador de carga
   if (loading && pagination.page === 1) {
     return (
       <div className="flex justify-center items-center py-16">
@@ -146,17 +135,16 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     );
   }
 
-  // Obtener la ruta de la miniatura o una imagen por defecto según el tipo
   const getThumbnail = (item) => {
+    const token = localStorage.getItem("streamvio_token");
+
     if (item.thumbnail_path) {
-      // Si es una ruta absoluta en el sistema de archivos, usa la API
       if (item.thumbnail_path.startsWith("/")) {
-        return `${API_URL}/api/media/${item.id}/thumbnail`;
+        return `${API_URL}/api/media/${item.id}/thumbnail?auth=${token}`;
       }
       return item.thumbnail_path;
     }
 
-    // Imágenes por defecto según el tipo
     const defaultThumbnails = {
       movie: "/assets/default-movie.jpg",
       series: "/assets/default-series.jpg",
@@ -167,7 +155,7 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
 
     return defaultThumbnails[item.type] || "/assets/default-media.jpg";
   };
-  // Formatear duración
+
   const formatDuration = (seconds) => {
     if (!seconds) return "Desconocida";
 
@@ -182,7 +170,6 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     }
   };
 
-  // Formatear tamaño
   const formatSize = (bytes) => {
     if (!bytes) return "Desconocido";
 
@@ -352,7 +339,6 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
             ))}
           </div>
 
-          {/* Paginación */}
           {pagination.totalPages > 1 && (
             <div className="flex justify-center mt-8">
               <nav className="flex space-x-2" aria-label="Pagination">

@@ -12,7 +12,16 @@ function VideoList() {
   useEffect(() => {
     async function fetchVideos() {
       try {
-        const response = await axios.get(`${API_URL}/api/videos`);
+        const token = localStorage.getItem("streamvio_token");
+        if (!token) {
+          throw new Error("No hay sesión activa");
+        }
+
+        const response = await axios.get(`${API_URL}/api/videos`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         setVideos(response.data);
         setLoading(false);
       } catch (err) {
@@ -38,8 +47,11 @@ function VideoList() {
           className="bg-gray-800 rounded-lg overflow-hidden shadow-lg"
         >
           <div className="relative pb-[56.25%]">
+            {/* MODIFICACIÓN: Añadir token a la URL de la miniatura */}
             <img
-              src={video.thumbnail}
+              src={`${API_URL}/api/media/${
+                video.id
+              }/thumbnail?auth=${localStorage.getItem("streamvio_token")}`}
               alt={video.title}
               className="absolute inset-0 w-full h-full object-cover"
             />
@@ -48,6 +60,7 @@ function VideoList() {
             <h3 className="text-xl font-semibold text-white">{video.title}</h3>
             <p className="text-gray-400 mt-1">{video.description}</p>
             <p className="text-gray-500 mt-2">Duración: {video.duration}</p>
+
             <a
               href={`/player/${video.id}`}
               className="mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
