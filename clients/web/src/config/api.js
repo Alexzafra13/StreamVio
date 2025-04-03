@@ -1,23 +1,23 @@
-// Utilizamos una función para determinar la URL base de la API
+// Configuración unificada para API
+// Ya no necesitamos un puerto separado ya que todo se sirve desde el mismo origen
+
 const getApiUrl = () => {
   // En el entorno de construcción, usar el valor de la variable de entorno
   if (import.meta.env.PUBLIC_API_URL) {
     return import.meta.env.PUBLIC_API_URL;
   }
 
-  // En el navegador, intentar inferir desde la ubicación actual
+  // En el navegador, usar la misma base URL que la aplicación
   if (typeof window !== "undefined") {
-    // Obtener la base de la URL actual (protocolo + hostname)
-    const baseUrl = `${window.location.protocol}//${window.location.hostname}`;
-    // Añadir el puerto 8000 para la API
-    return `${baseUrl}:8000`;
+    // Obtener la base de la URL actual (protocolo + hostname + puerto)
+    return `${window.location.origin}`;
   }
 
   // Valor por defecto para entorno de servidor o SSR
-  return "http://localhost:8000";
+  return "http://localhost:45000";
 };
 
-// Obtener la URL de la API
+// Obtener la URL base de la API
 const API_URL = getApiUrl();
 
 // Mostrar la URL configurada para depuración
