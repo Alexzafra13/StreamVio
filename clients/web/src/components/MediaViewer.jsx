@@ -49,7 +49,11 @@ function MediaViewer({ mediaId }) {
           console.log("Verificando disponibilidad HLS en:", hlsPath);
 
           try {
-            const hlsResponse = await axios.head(hlsPath, {
+            // Incluir token como parámetro de consulta para la verificación HLS
+            const authParam = token ? `?auth=${token}` : "";
+            const hlsUrl = `${hlsPath}${authParam}`;
+
+            const hlsResponse = await axios.head(hlsUrl, {
               headers: { Authorization: `Bearer ${token}` },
             });
 
@@ -223,11 +227,12 @@ function MediaViewer({ mediaId }) {
       .padStart(2, "0")}`;
   };
 
-  // MODIFICACIÓN: Obtener URL de streaming según el tipo
+  // Obtener URL de streaming según el tipo
   const getStreamUrl = () => {
     if (!media) return "";
 
     const token = localStorage.getItem("streamvio_token");
+    // Asegurar que el token se incluye como parámetro de consulta
     const authParam = token ? `?auth=${token}` : "";
 
     if (streamType === "hls" && hlsAvailable) {
@@ -241,6 +246,13 @@ function MediaViewer({ mediaId }) {
       // URL para streaming directo
       return `${API_URL}/api/media/${mediaId}/stream${authParam}`;
     }
+  };
+
+  // Obtener URL de miniatura con token de autenticación
+  const getThumbnailUrl = () => {
+    const token = localStorage.getItem("streamvio_token");
+    const authParam = token ? `?auth=${token}` : "";
+    return `${API_URL}/api/media/${mediaId}/thumbnail${authParam}`;
   };
 
   // Renderizar según el tipo de medio
@@ -328,9 +340,7 @@ function MediaViewer({ mediaId }) {
         return (
           <div className="flex justify-center rounded-lg overflow-hidden bg-black">
             <img
-              src={`${API_URL}/api/media/${mediaId}/stream?auth=${localStorage.getItem(
-                "streamvio_token"
-              )}`}
+              src={getStreamUrl()}
               alt={media.title}
               className="max-h-[80vh] object-contain"
             />
@@ -344,9 +354,7 @@ function MediaViewer({ mediaId }) {
               <div className="w-48 h-48 bg-gray-800 rounded-lg flex items-center justify-center">
                 {media.thumbnail_path ? (
                   <img
-                    src={`${API_URL}/api/media/${mediaId}/thumbnail?auth=${localStorage.getItem(
-                      "streamvio_token"
-                    )}`}
+                    src={getThumbnailUrl()}
                     alt={media.title}
                     className="max-w-full max-h-full"
                   />
@@ -416,7 +424,6 @@ function MediaViewer({ mediaId }) {
     return (
       <div className="rounded-lg bg-red-800 p-6 text-center">
         <p className="text-white mb-4">{error}</p>
-        href="/media"
         <a
           href="/media"
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition"

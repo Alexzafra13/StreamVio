@@ -135,16 +135,32 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     );
   }
 
+  // Función mejorada para obtener la URL de miniatura con autenticación
   const getThumbnail = (item) => {
+    // Obtener token de autenticación
     const token = localStorage.getItem("streamvio_token");
+    const authParam = token ? `?auth=${token}` : "";
 
     if (item.thumbnail_path) {
+      // Si la ruta de la miniatura comienza con /, es una ruta relativa a la API
       if (item.thumbnail_path.startsWith("/")) {
-        return `${API_URL}/api/media/${item.id}/thumbnail?auth=${token}`;
+        return `${API_URL}/api/media/${item.id}/thumbnail${authParam}`;
+      }
+      // Si no, podría ser una URL completa ya formada o una ruta del servidor
+      // Añadir el token si la ruta apunta a nuestra API
+      if (
+        item.thumbnail_path.includes(`${API_URL}/api/`) ||
+        item.thumbnail_path.includes(`${API_URL}/data/`)
+      ) {
+        // Verificar si ya hay parámetros en la URL
+        const hasParams = item.thumbnail_path.includes("?");
+        const separator = hasParams ? "&" : "?";
+        return `${item.thumbnail_path}${separator}auth=${token}`;
       }
       return item.thumbnail_path;
     }
 
+    // Imágenes por defecto según tipo de medio
     const defaultThumbnails = {
       movie: "/assets/default-movie.jpg",
       series: "/assets/default-series.jpg",
