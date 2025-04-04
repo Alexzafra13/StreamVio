@@ -1,4 +1,4 @@
-// server/app.js - Versión corregida
+// server/app.js - Versión corregida para solucionar el error EISDIR
 const express = require("express");
 const helmet = require("helmet");
 const morgan = require("morgan");
@@ -190,17 +190,19 @@ if (!fs.existsSync(dataDir)) {
   }
 }
 
-// Middleware para mejorar el manejo de errores al servir archivos estáticos
+// Middleware mejorado para manejar archivos estáticos con mejor manejo de errores
+// Esta es la función corregida para solucionar el error EISDIR
 const serveStaticWithErrorHandling = (directory) => {
   return (req, res, next) => {
-    // Middleware personalizado para servir archivos estáticos con mejor manejo de errores
-    const filePath = path.join(directory, req.path);
+    // Decodificar URL para manejar caracteres especiales correctamente
+    const decodedPath = decodeURIComponent(req.path);
+    const filePath = path.join(directory, decodedPath);
 
-    // Verificar si el archivo existe
-    fs.access(filePath, fs.constants.R_OK, (err) => {
+    // Primero verificar si la ruta existe
+    fs.stat(filePath, (err, stats) => {
       if (err) {
         if (err.code === "ENOENT") {
-          // Archivo no encontrado, continuar con el siguiente middleware
+          // Si el archivo no existe, continuar con el siguiente middleware
           return next();
         } else if (err.code === "EACCES") {
           // Error de permisos
@@ -222,18 +224,44 @@ const serveStaticWithErrorHandling = (directory) => {
         }
       }
 
-      // Si no hay error, servir el archivo
-      res.sendFile(filePath, (err) => {
-        if (err) {
-          console.error(`Error al enviar archivo ${filePath}:`, err);
-          if (!res.headersSent) {
-            res.status(500).json({
-              error: "Error del servidor",
-              message: `Error al enviar el archivo: ${err.message}`,
+      // Verificar si estamos tratando con un directorio o un archivo
+      if (stats.isDirectory()) {
+        // Si es un directorio, buscar un index.html en ese directorio
+        const indexPath = path.join(filePath, "index.html");
+
+        fs.access(indexPath, fs.constants.R_OK, (err) => {
+          if (err) {
+            // No hay un index.html, pasar al siguiente middleware
+            return next();
+          } else {
+            // Hay un index.html, enviarlo
+            res.sendFile(indexPath, (err) => {
+              if (err) {
+                console.error(`Error al enviar index.html ${indexPath}:`, err);
+                if (!res.headersSent) {
+                  res.status(500).json({
+                    error: "Error del servidor",
+                    message: `Error al enviar el archivo: ${err.message}`,
+                  });
+                }
+              }
             });
           }
-        }
-      });
+        });
+      } else {
+        // Es un archivo, enviarlo directamente
+        res.sendFile(filePath, (err) => {
+          if (err) {
+            console.error(`Error al enviar archivo ${filePath}:`, err);
+            if (!res.headersSent) {
+              res.status(500).json({
+                error: "Error del servidor",
+                message: `Error al enviar el archivo: ${err.message}`,
+              });
+            }
+          }
+        });
+      }
     });
   };
 };
