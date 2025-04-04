@@ -211,4 +211,39 @@ router.get("/system", async (req, res) => {
   }
 });
 
+/**
+ * @route   GET /api/admin/users/count
+ * @desc    Obtener el número total de usuarios
+ * @access  Private (Admin)
+ */
+router.get(
+  "/users/count",
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    try {
+      const countResult = await db.asyncGet(
+        "SELECT COUNT(*) as count FROM users"
+      );
+
+      // Obtener el límite de usuarios de la configuración
+      const limitSetting = await db.asyncGet(
+        "SELECT value FROM settings WHERE key = 'max_users'"
+      );
+      const limit = limitSetting ? parseInt(limitSetting.value) : 10; // Valor por defecto: 10
+
+      res.json({
+        count: countResult ? countResult.count : 0,
+        limit: limit,
+      });
+    } catch (error) {
+      console.error("Error al obtener conteo de usuarios:", error);
+      res.status(500).json({
+        error: "Error del servidor",
+        message: "Error al obtener conteo de usuarios",
+      });
+    }
+  }
+);
+
 module.exports = router;

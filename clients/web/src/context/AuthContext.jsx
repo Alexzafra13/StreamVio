@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect, useContext } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
 import PasswordChangeModal from "../components/PasswordChangeModal";
-import FirstTimeSetup from "../components/FirstTimeSetup"; // Importar nuevo componente
+import FirstTimeSetup from "../components/FirstTimeSetup";
 
 const API_URL = apiConfig.API_URL;
 
@@ -18,7 +18,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
   const [requirePasswordChange, setRequirePasswordChange] = useState(false);
-  const [isFirstTimeSetup, setIsFirstTimeSetup] = useState(false); // Nuevo estado
+  const [isFirstTimeSetup, setIsFirstTimeSetup] = useState(false);
 
   // Función para actualizar el almacenamiento local y el estado
   const updateUserData = (userData) => {
@@ -70,11 +70,17 @@ export const AuthProvider = ({ children }) => {
     const checkLoggedIn = async () => {
       try {
         // Intentar verificar si es primera ejecución (sin usuarios)
-        const firstTimeResponse = await axios.get(
-          `${API_URL}/api/auth/check-first-time`
-        );
+        const firstTimeResponse = await axios
+          .get(`${API_URL}/api/auth/check-first-time`)
+          .catch((error) => {
+            console.warn("Error al verificar primera ejecución:", error);
+            return { data: { isFirstTime: false } };
+          });
 
         if (firstTimeResponse.data.isFirstTime) {
+          console.log(
+            "Primera ejecución detectada - requiere configuración de administrador"
+          );
           setIsFirstTimeSetup(true);
           setLoading(false);
           setInitialized(true);
@@ -232,8 +238,8 @@ export const AuthProvider = ({ children }) => {
   // Función para manejar la configuración inicial completa
   const handleFirstTimeSetupComplete = () => {
     setIsFirstTimeSetup(false);
-    // Disparar evento para refrescar la aplicación
-    window.dispatchEvent(new Event("streamvio-auth-change"));
+    // Recargar la aplicación para aplicar cambios
+    window.location.reload();
   };
 
   // Valor del contexto

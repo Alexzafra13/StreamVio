@@ -1,0 +1,32 @@
+---
+import Layout from '../layouts/Layout.astro';
+import RegisterWithInvitation from '../components/RegisterWithInvitation';
+---
+
+<Layout title="Registro | StreamVio">
+  <main class="container mx-auto px-4 py-8">
+    <div class="max-w-md mx-auto mt-8">
+      <h1 class="text-4xl font-bold mb-8 text-center text-blue-500">Únete a StreamVio</h1>
+      
+      <RegisterWithInvitation client:load />
+      
+      <div class="text-center mt-8">
+        <a href="/" class="text-gray-400 hover:text-blue-400 transition">
+          Volver a página principal
+        </a>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  // Script que se ejecuta en el cliente
+  document.addEventListener('DOMContentLoaded', () => {
+    // Verificar si el usuario ya está autenticado
+    const token = localStorage.getItem('streamvio_token');
+    if (token) {
+      // Redirigir a la página principal si ya está autenticado
+      window.location.href = '/';
+    }
+  });
+</script>

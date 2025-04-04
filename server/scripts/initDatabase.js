@@ -6,7 +6,6 @@
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 const fs = require("fs");
-const bcrypt = require("bcrypt");
 require("dotenv").config();
 
 // Definir la ruta de la base de datos
@@ -176,8 +175,36 @@ const db = new sqlite3.Database(dbPath, (err) => {
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       )`);
 
-      // Insertar configuraciones por defecto si la base de datos es nueva
-      if (!dbExists) {
+      // Tabla para códigos de invitación
+      db.run(`CREATE TABLE IF NOT EXISTS invitation_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        created_by INTEGER NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used BOOLEAN DEFAULT 0,
+        used_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (used_by) REFERENCES users (id) ON DELETE SET NULL
+      )`);
+
+      // Si es una base de datos nueva, insertar configuraciones por defecto
+      if (dbExists) {
+        console.log(
+          "Base de datos existente detectada. Verificando estructura..."
+        );
+        db.run("COMMIT", (err) => {
+          if (err) {
+            console.error("Error al confirmar transacción:", err.message);
+            db.run("ROLLBACK");
+            finalizeDB(db, 1);
+          } else {
+            console.log("Base de datos verificada correctamente.");
+            finalizeDB(db, 0);
+          }
+        });
+      } else {
+        // Si es una base de datos nueva, insertar configuraciones por defecto
         console.log(
           "Base de datos nueva detectada. Insertando configuraciones por defecto..."
         );
@@ -190,7 +217,8 @@ const db = new sqlite3.Database(dbPath, (err) => {
           ('max_bitrate', '8000', 'Bitrate máximo para streaming en kbps'),
           ('scan_interval', '3600', 'Intervalo entre escaneos automáticos en segundos'),
           ('thumbnail_generation', '1', 'Generar miniaturas automáticamente'),
-          ('metadata_language', 'es', 'Idioma preferido para metadatos')
+          ('metadata_language', 'es', 'Idioma preferido para metadatos'),
+          ('max_users', '10', 'Número máximo de usuarios permitidos')
         `,
           function (err) {
             if (err) {
@@ -209,24 +237,15 @@ const db = new sqlite3.Database(dbPath, (err) => {
                   finalizeDB(db, 1);
                 } else {
                   console.log("Base de datos inicializada correctamente.");
+                  console.log(
+                    "Esperando la configuración del primer usuario administrador a través de la interfaz web."
+                  );
                   finalizeDB(db, 0);
                 }
               });
             }
           }
         );
-      } else {
-        // Si la base de datos ya existe, solo confirmar la transacción
-        db.run("COMMIT", (err) => {
-          if (err) {
-            console.error("Error al confirmar transacción:", err.message);
-            db.run("ROLLBACK");
-            finalizeDB(db, 1);
-          } else {
-            console.log("Base de datos inicializada correctamente.");
-            finalizeDB(db, 0);
-          }
-        });
       }
     } catch (error) {
       console.error("Error al configurar la base de datos:", error);
