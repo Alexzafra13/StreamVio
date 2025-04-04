@@ -74,32 +74,38 @@ show_progress() {
     fi
 }
 
-# Función para obtener la dirección IP actual
+# Obtener la dirección IP actual
 get_server_ip() {
-    # Intentar obtener IP pública
-    PUBLIC_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || 
-                curl -s --max-time 5 ipinfo.io/ip 2>/dev/null || 
-                curl -s --max-time 5 icanhazip.com 2>/dev/null)
-    
-    # Si no se puede obtener la IP pública, usar IP local
-    if [ -z "$PUBLIC_IP" ]; then
-        # Obtener dirección IP local principal (no loopback)
-        LOCAL_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
-        if [ -z "$LOCAL_IP" ]; then
-            # Alternativa usando hostname
-            LOCAL_IP=$(hostname -I | awk '{print $1}')
-        fi
-        
-        # Si todavía no tenemos IP, usar localhost
-        if [ -z "$LOCAL_IP" ]; then
-            echo "localhost"
-        else
-            echo "$LOCAL_IP"
-        fi
-    else
-        echo "$PUBLIC_IP"
-    fi
+  # Intentar obtener IPv4 local (no loopback)
+  LOCAL_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+  
+  # Si no se pudo obtener la IP con el método anterior, intentar con hostname
+  if [ -z "$LOCAL_IP" ]; then
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+  fi
+  
+  # Si todavía no tenemos IP, usar la dirección local
+  if [ -z "$LOCAL_IP" ]; then
+    LOCAL_IP="localhost"
+  fi
+  
+  echo "$LOCAL_IP"
 }
+
+# Configurar archivos .env
+cat > "$INSTALL_DIR/server/.env" << EOF
+PORT=$STREAMVIO_PORT
+NODE_ENV=production
+JWT_SECRET=$(openssl rand -hex 32)
+DB_PATH=./data/streamvio.db
+HOST=0.0.0.0
+EOF
+
+# Obtener la IP del servidor
+SERVER_IP=$(get_server_ip)
+
+# Configurar .env del cliente web con la IP detectada
+echo "PUBLIC_API_URL=http://$SERVER_IP:$STREAMVIO_PORT" > "$INSTALL_DIR/clients/web/.env"
 
 # Crear o limpiar archivos de log
 > "$INSTALL_LOG"
@@ -299,43 +305,15 @@ else
     check_result "Creación de usuario $STREAMVIO_USER y grupo $STREAMVIO_GROUP"
 fi
 
-# Configurar servicio y firewall
-log "Paso 4/8: ${YELLOW}Configurando firewall...${NC}"
-show_progress 4 8 "Configurando firewall"
-
-# Abrir puerto en el firewall
-if command -v ufw &> /dev/null; then
-    # Ubuntu/Debian con UFW
-    ufw allow $STREAMVIO_PORT/tcp >> "$INSTALL_LOG" 2>&1
-    check_result "Configuración de puerto $STREAMVIO_PORT en UFW"
-elif command -v firewall-cmd &> /dev/null; then
-    # CentOS/Fedora con firewalld
-    firewall-cmd --permanent --add-port=$STREAMVIO_PORT/tcp >> "$INSTALL_LOG" 2>&1
-    firewall-cmd --reload >> "$INSTALL_LOG" 2>&1
-    check_result "Configuración de puerto $STREAMVIO_PORT en firewalld"
-else
-    log_error "No se detectó un firewall compatible. Asegúrate de abrir manualmente el puerto $STREAMVIO_PORT/tcp."
-fi
-
-# Descargar el código si es necesario
-log "Paso 5/8: ${YELLOW}Obteniendo código fuente...${NC}"
-show_progress 5 8 "Obteniendo código"
-
-# Determinar directorio de instalación
-INSTALL_DIR="/opt/streamvio"
-log "Instalando StreamVio en: $INSTALL_DIR"
-
-# Clonar o actualizar el repositorio
-if [ -d "$INSTALL_DIR/.git" ]; then
-    # El repositorio ya existe, actualizar
-    cd "$INSTALL_DIR"
-    git pull >> "$INSTALL_LOG" 2>&1
-    check_result "Actualización del código fuente"
-else
-    # Nuevo repositorio, clonar
-    mkdir -p "$INSTALL_DIR"
-    git clone https://github.com/Alexzafra13/StreamVio.git "$INSTALL_DIR" >> "$INSTALL_LOG" 2>&1
-    check_result "Clonación del repositorio" "fatal"
+# Añadir usuario actual al grupo streamvio para facilitar desarrollo
+log "Añadiendo usuario actual al grupo $STREAMVIO_GROUP para facilitar la administración..."
+if [ "$EUID" -eq 0 ]; then
+    # Si estamos ejecutando como root, añadir el usuario que ejecutó sudo
+    REAL_USER=$(who am i | awk '{print $1}')
+    if [ -n "$REAL_USER" ]; then
+        usermod -a -G "$STREAMVIO_GROUP" "$REAL_USER" >> "$INSTALL_LOG" 2>&1
+        check_result "Añadir usuario $REAL_USER al grupo $STREAMVIO_GROUP"
+    fi
 fi
 
 # Configurar permisos del directorio de instalación
@@ -345,45 +323,7 @@ chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "$INSTALL_DIR"
 chmod -R 755 "$INSTALL_DIR"
 check_result "Configuración de permisos para directorio de instalación"
 
-# Instalación de dependencias del proyecto
-log "Paso 6/8: ${YELLOW}Instalando dependencias del proyecto...${NC}"
-show_progress 6 8 "Instalando dependencias"
-
-# Instalar dependencias del servidor
-cd "$INSTALL_DIR/server"
-npm install --production >> "$INSTALL_LOG" 2>&1
-check_result "Instalación de dependencias del servidor" "fatal"
-
-# Instalar dependencias del cliente
-cd "$INSTALL_DIR/clients/web"
-npm install >> "$INSTALL_LOG" 2>&1
-check_result "Instalación de dependencias del cliente" "fatal"
-
-# Compilar el frontend
-log "Paso 7/8: ${YELLOW}Compilando la interfaz web...${NC}"
-show_progress 7 8 "Compilando frontend"
-
-cd "$INSTALL_DIR/clients/web"
-npm run build >> "$INSTALL_LOG" 2>&1
-check_result "Compilación del frontend" "fatal"
-
-# Crear archivos de configuración
-log "Configurando archivos .env..."
-
-# Configurar .env del servidor
-cat > "$INSTALL_DIR/server/.env" << EOF
-PORT=$STREAMVIO_PORT
-NODE_ENV=production
-JWT_SECRET=$(openssl rand -hex 32)
-DB_PATH=./data/streamvio.db
-EOF
-check_result "Creación del archivo .env del servidor"
-
-# Configurar .env del cliente web
-echo "PUBLIC_API_URL=http://$SERVER_IP:$STREAMVIO_PORT" > "$INSTALL_DIR/clients/web/.env"
-check_result "Creación del archivo .env del cliente"
-
-# Crear directorios necesarios para la base de datos y otros datos
+# Crear directorios necesarios para la base de datos y otros datos con permisos adecuados
 log "Creando directorios de datos..."
 mkdir -p "$INSTALL_DIR/server/data/thumbnails" \
          "$INSTALL_DIR/server/data/transcoded" \
@@ -391,10 +331,20 @@ mkdir -p "$INSTALL_DIR/server/data/thumbnails" \
          "$INSTALL_DIR/server/data/metadata" >> "$INSTALL_LOG" 2>&1
 check_result "Creación de directorios para datos"
 
-# Asegurar permisos correctos para directorios de datos
+# Asegurar permisos correctos para directorios de datos (escritura para streamvio)
 chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "$INSTALL_DIR/server/data"
 chmod -R 755 "$INSTALL_DIR/server/data"
+# Permisos especiales para directorios que necesitan escritura
+find "$INSTALL_DIR/server/data" -type d -exec chmod 775 {} \;
 check_result "Configuración de permisos para directorios de datos"
+
+# Configurar el directorio de datos para que nuevos archivos hereden grupo
+chmod g+s "$INSTALL_DIR/server/data"
+chmod g+s "$INSTALL_DIR/server/data/thumbnails"
+chmod g+s "$INSTALL_DIR/server/data/transcoded"
+chmod g+s "$INSTALL_DIR/server/data/cache"
+chmod g+s "$INSTALL_DIR/server/data/metadata"
+check_result "Configuración de permisos para herencia de grupo"
 
 # Inicializar la base de datos
 log "Inicializando la base de datos..."
@@ -403,9 +353,278 @@ cd "$INSTALL_DIR/server"
 node scripts/initDatabase.js >> "$INSTALL_LOG" 2>&1
 check_result "Inicialización de la base de datos" "fatal"
 
-# Configurar e iniciar el servicio
-log "Paso 8/8: ${YELLOW}Configurando servicio del sistema...${NC}"
-show_progress 8 8 "Configurando servicio"
+# Verificar que la base de datos se creó correctamente
+DB_PATH="$INSTALL_DIR/server/data/streamvio.db"
+if [ -f "$DB_PATH" ]; then
+    # Aplicar permisos correctos a la base de datos
+    chown "$STREAMVIO_USER":"$STREAMVIO_GROUP" "$DB_PATH"
+    chmod 664 "$DB_PATH"  # rw-rw-r--
+    check_result "Ajuste de permisos para la base de datos"
+fi
+
+# Verificar que systemd puede ejecutar el servicio correctamente
+log "Verificando permisos para Node.js..."
+NODE_PATH=$(which node)
+if [ -z "$NODE_PATH" ]; then
+    log_error "No se pudo encontrar node en el sistema"
+else
+    if [ -x "$NODE_PATH" ]; then
+        log "${GREEN}✓${NC} Node.js tiene permisos de ejecución correctos"
+    else
+        log_error "Node.js no tiene permisos de ejecución"
+        chmod +x "$NODE_PATH"
+        check_result "Corrección de permisos para Node.js"
+    fi
+fi
+
+# Verificar permisos de app.js
+APP_JS="$INSTALL_DIR/server/app.js"
+if [ -f "$APP_JS" ]; then
+    if [ -r "$APP_JS" ]; then
+        log "${GREEN}✓${NC} app.js tiene permisos de lectura correctos"
+    else
+        log_error "app.js no tiene permisos de lectura"
+        chmod +r "$APP_JS"
+        check_result "Corrección de permisos para app.js"
+    fi
+fi
+
+# Verificar si SELinux está activo y configurar contextos si es necesario
+if command -v sestatus &> /dev/null && sestatus | grep -q "enabled"; then
+    log "SELinux detectado. Configurando contextos..."
+    
+    # Instalar policymgmt si no está presente
+    if ! command -v semanage &> /dev/null; then
+        if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
+            apt-get install -y policycoreutils-python-utils >> "$INSTALL_LOG" 2>&1
+        elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "fedora" ]; then
+            if [ "$OS_NAME" = "fedora" ]; then
+                dnf install -y policycoreutils-python-utils >> "$INSTALL_LOG" 2>&1
+            else
+                yum install -y policycoreutils-python-utils >> "$INSTALL_LOG" 2>&1
+            fi
+        fi
+    fi
+    
+    # Configurar contexto para permitir que el servicio acceda a los archivos
+    if command -v semanage &> /dev/null; then
+        semanage fcontext -a -t httpd_sys_content_t "$INSTALL_DIR(/.*)?" >> "$INSTALL_LOG" 2>&1
+        restorecon -Rv "$INSTALL_DIR" >> "$INSTALL_LOG" 2>&1
+        check_result "Configuración de contextos SELinux"
+    else
+        log_error "No se pudo instalar semanage. Es posible que SELinux interfiera con la aplicación."
+    fi
+fi
+
+# Crear script para verificar permisos en cualquier momento
+cat > "$INSTALL_DIR/check-permissions.sh" << EOF
+#!/bin/bash
+
+# Colores para mejor legibilidad
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "\n${YELLOW}Verificando permisos de StreamVio...${NC}"
+
+# Verificar usuario del servicio
+echo -n "Usuario streamvio: "
+if id streamvio &>/dev/null; then
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${RED}NO EXISTE${NC}"
+fi
+
+# Verificar permisos de directorios críticos
+echo -e "\n${YELLOW}Permisos de directorios:${NC}"
+DIRS=("$INSTALL_DIR" 
+      "$INSTALL_DIR/server" 
+      "$INSTALL_DIR/server/data"
+      "$INSTALL_DIR/server/data/thumbnails"
+      "$INSTALL_DIR/server/data/transcoded"
+      "$INSTALL_DIR/clients/web/dist")
+
+for dir in "\${DIRS[@]}"; do
+    if [ -d "\$dir" ]; then
+        perm=\$(stat -c "%a %U:%G" "\$dir")
+        echo -e "\$dir: \${GREEN}\$perm${NC}"
+    else
+        echo -e "\$dir: ${RED}NO EXISTE${NC}"
+    fi
+done
+
+# Verificar permisos de archivos críticos
+echo -e "\n${YELLOW}Permisos de archivos críticos:${NC}"
+FILES=("$INSTALL_DIR/server/app.js"
+       "$INSTALL_DIR/server/.env"
+       "$INSTALL_DIR/server/data/streamvio.db"
+       "/etc/systemd/system/streamvio.service")
+
+for file in "\${FILES[@]}"; do
+    if [ -f "\$file" ]; then
+        perm=\$(stat -c "%a %U:%G" "\$file")
+        echo -e "\$file: \${GREEN}\$perm${NC}"
+    else
+        echo -e "\$file: ${RED}NO EXISTE${NC}"
+    fi
+done
+
+# Verificar que el servicio puede ejecutar node
+echo -e "\n${YELLOW}Verificando ejecución de node:${NC}"
+NODE_PATH=\$(which node)
+echo -n "Node.js path (\$NODE_PATH): "
+if [ -x "\$NODE_PATH" ]; then
+    echo -e "${GREEN}EJECUTABLE${NC}"
+else
+    echo -e "${RED}NO EJECUTABLE${NC}"
+fi
+
+# Verificar estado del servicio
+echo -e "\n${YELLOW}Estado del servicio:${NC}"
+systemctl status streamvio.service --no-pager | head -n 3
+
+echo -e "\n${YELLOW}Últimas líneas del log:${NC}"
+journalctl -u streamvio.service --no-pager -n 5
+
+echo
+echo -e "${YELLOW}Para más detalles, ejecutar:${NC}"
+echo "sudo journalctl -u streamvio.service -f"
+echo
+EOF
+
+chmod +x "$INSTALL_DIR/check-permissions.sh"
+check_result "Creación de script para verificar permisos"
+
+# Crear script para reparación de permisos en caso de problemas
+cat > "$INSTALL_DIR/fix-permissions.sh" << EOF
+#!/bin/bash
+# Script para corregir permisos de StreamVio
+
+# Colores para mejor legibilidad
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Verificar si se ejecuta como root
+if [ "\$EUID" -ne 0 ]; then
+    echo -e "${RED}Error: Este script debe ejecutarse con privilegios de administrador (sudo).${NC}"
+    echo -e "${YELLOW}Por favor, ejecuta el script de la siguiente manera:${NC}"
+    echo -e "  sudo ./\$(basename "\$0")"
+    exit 1
+fi
+
+STREAMVIO_USER="$STREAMVIO_USER"
+STREAMVIO_GROUP="$STREAMVIO_GROUP"
+INSTALL_DIR="$INSTALL_DIR"
+
+echo -e "${BLUE}=================== CORRECCIÓN DE PERMISOS STREAMVIO ===================${NC}"
+
+# 1. Verificar que el usuario y grupo existen
+echo -e "${YELLOW}Verificando usuario y grupo StreamVio...${NC}"
+if ! id "\$STREAMVIO_USER" &>/dev/null; then
+    echo -e "${RED}El usuario \$STREAMVIO_USER no existe. Creándolo...${NC}"
+    groupadd "\$STREAMVIO_GROUP"
+    useradd -r -g "\$STREAMVIO_GROUP" -s /bin/false -d /nonexistent "\$STREAMVIO_USER"
+    echo -e "${GREEN}✓ Usuario y grupo creados correctamente${NC}"
+else
+    echo -e "${GREEN}✓ Usuario \$STREAMVIO_USER existe${NC}"
+fi
+
+# 2. Corregir permisos de directorios principales
+echo -e "${YELLOW}Corrigiendo permisos de directorios principales...${NC}"
+chown -R "\$STREAMVIO_USER":"\$STREAMVIO_GROUP" "\$INSTALL_DIR"
+chmod -R 755 "\$INSTALL_DIR"
+echo -e "${GREEN}✓ Permisos básicos corregidos${NC}"
+
+# 3. Corregir permisos de directorios de datos (necesitan escritura)
+echo -e "${YELLOW}Configurando directorios de datos...${NC}"
+DATA_DIRS=(
+    "\$INSTALL_DIR/server/data"
+    "\$INSTALL_DIR/server/data/thumbnails"
+    "\$INSTALL_DIR/server/data/transcoded"
+    "\$INSTALL_DIR/server/data/cache"
+    "\$INSTALL_DIR/server/data/metadata"
+)
+
+for dir in "\${DATA_DIRS[@]}"; do
+    if [ ! -d "\$dir" ]; then
+        echo -e "Creando directorio \$dir"
+        mkdir -p "\$dir"
+    fi
+    chown -R "\$STREAMVIO_USER":"\$STREAMVIO_GROUP" "\$dir"
+    chmod -R 775 "\$dir"
+    # Establecer bit SGID para heredar grupo
+    chmod g+s "\$dir"
+done
+echo -e "${GREEN}✓ Permisos de directorios de datos corregidos${NC}"
+
+# 4. Verificar y corregir permisos de base de datos
+DB_PATH="\$INSTALL_DIR/server/data/streamvio.db"
+if [ -f "\$DB_PATH" ]; then
+    echo -e "${YELLOW}Corrigiendo permisos de base de datos...${NC}"
+    chown "\$STREAMVIO_USER":"\$STREAMVIO_GROUP" "\$DB_PATH"
+    chmod 664 "\$DB_PATH"  # rw-rw-r--
+    echo -e "${GREEN}✓ Permisos de base de datos corregidos${NC}"
+fi
+
+# 5. Verificar y corregir permisos del archivo de servicio
+SERVICE_FILE="/etc/systemd/system/streamvio.service"
+if [ -f "\$SERVICE_FILE" ]; then
+    echo -e "${YELLOW}Corrigiendo permisos del archivo de servicio...${NC}"
+    chmod 644 "\$SERVICE_FILE"
+    echo -e "${GREEN}✓ Permisos del archivo de servicio corregidos${NC}"
+fi
+
+# 6. Corregir permisos de archivos críticos
+echo -e "${YELLOW}Corrigiendo permisos de archivos críticos...${NC}"
+APP_JS="\$INSTALL_DIR/server/app.js"
+ENV_FILE="\$INSTALL_DIR/server/.env"
+
+if [ -f "\$APP_JS" ]; then
+    chown "\$STREAMVIO_USER":"\$STREAMVIO_GROUP" "\$APP_JS"
+    chmod 644 "\$APP_JS"
+fi
+
+if [ -f "\$ENV_FILE" ]; then
+    chown "\$STREAMVIO_USER":"\$STREAMVIO_GROUP" "\$ENV_FILE" 
+    chmod 640 "\$ENV_FILE"  # Más restrictivo por contener secretos
+fi
+
+echo -e "${GREEN}✓ Permisos de archivos críticos corregidos${NC}"
+
+# 7. Verificar permisos del frontend (directorio dist)
+DIST_DIR="\$INSTALL_DIR/clients/web/dist"
+if [ -d "\$DIST_DIR" ]; then
+    echo -e "${YELLOW}Corrigiendo permisos del frontend...${NC}"
+    chown -R "\$STREAMVIO_USER":"\$STREAMVIO_GROUP" "\$DIST_DIR"
+    chmod -R 755 "\$DIST_DIR"
+    echo -e "${GREEN}✓ Permisos del frontend corregidos${NC}"
+fi
+
+# 8. Reiniciar servicio
+echo -e "${YELLOW}Reiniciando servicio StreamVio...${NC}"
+systemctl daemon-reload
+systemctl restart streamvio.service
+
+# Verificar estado
+sleep 2
+if systemctl is-active --quiet streamvio.service; then
+    echo -e "${GREEN}✓ Servicio StreamVio reiniciado correctamente${NC}"
+else
+    echo -e "${RED}⚠ El servicio StreamVio no pudo iniciarse${NC}"
+    echo -e "${YELLOW}Revisando los logs para detectar problemas:${NC}"
+    journalctl -u streamvio.service --no-pager -n 10
+fi
+
+echo -e "\n${BLUE}=================== CORRECCIÓN COMPLETADA ===================${NC}"
+echo -e "Si el servicio no ha podido iniciarse, ejecuta: sudo journalctl -u streamvio.service -f"
+EOF
+
+chmod +x "$INSTALL_DIR/fix-permissions.sh"
+check_result "Creación de script para reparar permisos"
 
 # Crear archivo de servicio systemd
 cat > /etc/systemd/system/streamvio.service << EOF
@@ -433,6 +652,10 @@ WantedBy=multi-user.target
 EOF
 check_result "Creación del servicio systemd"
 
+# Verificar permisos para el archivo de servicio
+chmod 644 "/etc/systemd/system/streamvio.service"
+check_result "Configuración de permisos para archivo de servicio"
+
 # Recargar systemd
 systemctl daemon-reload
 check_result "Recarga de systemd"
@@ -440,95 +663,3 @@ check_result "Recarga de systemd"
 # Habilitar servicio para arranque automático
 systemctl enable streamvio.service >> "$INSTALL_LOG" 2>&1
 check_result "Habilitación del servicio para arranque automático"
-
-# Crear script para ayudar a añadir carpetas multimedia
-log "Creando script de ayuda para el manejo de permisos de carpetas multimedia..."
-cat > "$INSTALL_DIR/add-media-folder.sh" << EOF
-#!/bin/bash
-# Script para añadir una carpeta multimedia a StreamVio
-
-if [ \$# -ne 1 ]; then
-    echo "Uso: \$0 /ruta/a/carpeta/multimedia"
-    exit 1
-fi
-
-MEDIA_FOLDER="\$1"
-
-# Verificar que la carpeta existe
-if [ ! -d "\$MEDIA_FOLDER" ]; then
-    echo "Error: La carpeta \$MEDIA_FOLDER no existe"
-    exit 1
-fi
-
-# Dar permisos al usuario streamvio para acceder a la carpeta
-setfacl -R -m u:$STREAMVIO_USER:rx "\$MEDIA_FOLDER"
-
-echo "Permisos configurados: el usuario $STREAMVIO_USER ahora puede acceder a \$MEDIA_FOLDER"
-echo "Ya puedes añadir esta carpeta como biblioteca en StreamVio"
-EOF
-
-chmod +x "$INSTALL_DIR/add-media-folder.sh"
-check_result "Creación del script de ayuda para carpetas multimedia"
-
-# Iniciar servicio
-log "Iniciando servicio StreamVio..."
-systemctl start streamvio.service
-check_result "Inicio del servicio"
-
-# Verificar que el servicio está funcionando
-sleep 3
-if systemctl is-active --quiet streamvio.service; then
-    log "${GREEN}✓ Servicio StreamVio activo y funcionando${NC}"
-else
-    log_error "El servicio StreamVio no está activo. Verificando logs..."
-    journalctl -u streamvio.service --no-pager -n 20 >> "$ERROR_LOG"
-    
-    # Intentar iniciar manualmente para ver errores
-    log_error "Intentando iniciar manualmente para obtener más información:"
-    cd "$INSTALL_DIR/server"
-    sudo -u "$STREAMVIO_USER" node app.js >> "$ERROR_LOG" 2>&1 &
-    PID=$!
-    sleep 5
-    kill $PID 2>/dev/null
-fi
-
-# Mostrar resumen de la instalación
-echo -e "\n${BLUE}=================== RESUMEN DE INSTALACIÓN ===================${NC}"
-echo -e "${GREEN}StreamVio ha sido instalado en:${NC} $INSTALL_DIR"
-echo -e "\n${GREEN}Acceso a la aplicación:${NC}"
-echo -e "  ✓ Acceso local: ${YELLOW}http://localhost:$STREAMVIO_PORT${NC}"
-echo -e "  ✓ Acceso en red: ${YELLOW}http://$SERVER_IP:$STREAMVIO_PORT${NC}"
-
-echo -e "\n${BLUE}Credenciales de acceso inicial:${NC}"
-echo -e "  ✓ Usuario: ${YELLOW}admin${NC}"
-echo -e "  ✓ Contraseña: ${YELLOW}admin${NC}"
-echo -e "  ✓ Se te pedirá cambiar la contraseña en el primer inicio de sesión."
-
-echo -e "\n${BLUE}Gestión del servicio:${NC}"
-echo -e "  ✓ Iniciar: ${YELLOW}sudo systemctl start streamvio.service${NC}"
-echo -e "  ✓ Detener: ${YELLOW}sudo systemctl stop streamvio.service${NC}"
-echo -e "  ✓ Reiniciar: ${YELLOW}sudo systemctl restart streamvio.service${NC}"
-echo -e "  ✓ Ver logs: ${YELLOW}sudo journalctl -u streamvio.service -f${NC}"
-
-echo -e "\n${BLUE}Añadir carpetas multimedia:${NC}"
-echo -e "  ✓ Usa el script: ${YELLOW}sudo $INSTALL_DIR/add-media-folder.sh /ruta/a/tu/carpeta${NC}"
-echo -e "  ✓ Esto dará al usuario $STREAMVIO_USER los permisos necesarios para acceder a tus archivos"
-
-echo -e "\n${BLUE}Ubicaciones importantes:${NC}"
-echo -e "  ✓ Código: ${YELLOW}$INSTALL_DIR${NC}"
-echo -e "  ✓ Base de datos: ${YELLOW}$INSTALL_DIR/server/data/streamvio.db${NC}"
-echo -e "  ✓ Archivo systemd: ${YELLOW}/etc/systemd/system/streamvio.service${NC}"
-echo -e "  ✓ Logs de instalación: ${YELLOW}$PWD/$INSTALL_LOG${NC} y ${YELLOW}$PWD/$ERROR_LOG${NC}"
-
-echo -e "\n${BLUE}Para actualizar StreamVio en el futuro:${NC}"
-echo -e "  1. ${YELLOW}cd $INSTALL_DIR${NC}"
-echo -e "  2. ${YELLOW}git pull${NC}"
-echo -e "  3. ${YELLOW}cd clients/web && npm install && npm run build${NC}"
-echo -e "  4. ${YELLOW}cd ../../server && npm install${NC}"
-echo -e "  5. ${YELLOW}chown -R $STREAMVIO_USER:$STREAMVIO_GROUP $INSTALL_DIR${NC}"
-echo -e "  6. ${YELLOW}sudo systemctl restart streamvio.service${NC}"
-
-echo -e "\n${GREEN}¡Instalación completada con éxito!${NC}"
-echo -e "${BLUE}=================== FIN DEL RESUMEN ===================${NC}\n"
-
-log "Instalación finalizada. ¡Disfruta de StreamVio!"

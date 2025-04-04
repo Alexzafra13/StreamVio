@@ -1,5 +1,5 @@
 // Configuración unificada para API
-// Ya no necesitamos un puerto separado ya que todo se sirve desde el mismo origen
+// ya no necesitamos un puerto separado ya que todo se sirve desde el mismo origen
 
 const getApiUrl = () => {
   // En el entorno de construcción, usar el valor de la variable de entorno
@@ -9,8 +9,8 @@ const getApiUrl = () => {
 
   // En el navegador, usar la misma base URL que la aplicación
   if (typeof window !== "undefined") {
-    // Obtener la base de la URL actual (protocolo + hostname + puerto)
-    return `${window.location.origin}`;
+    // Simplemente usar el origen actual de la ventana
+    return window.location.origin;
   }
 
   // Valor por defecto para entorno de servidor o SSR

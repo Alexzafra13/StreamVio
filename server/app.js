@@ -1,6 +1,4 @@
-// Modificación de app.js para mejorar el manejo de permisos
-// Esta versión incluye mejor manejo de errores y registro detallado para problemas de permisos
-
+// server/app.js - Versión corregida
 const express = require("express");
 const helmet = require("helmet");
 const morgan = require("morgan");
@@ -381,18 +379,30 @@ app.use((err, req, res, next) => {
   `);
 });
 
-// Obtener la dirección IP local
+// Función mejorada para obtener la dirección IP local IPv4
 const getLocalIP = () => {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      // Omitir direcciones de loopback y no IPv4
-      if (iface.family === "IPv4" && !iface.internal) {
-        return iface.address;
+  try {
+    const interfaces = os.networkInterfaces();
+    // Filtrar solo interfaces IPv4 y no internas
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        // Filtrar solo IPv4 y no loopback
+        if (iface.family === "IPv4" && !iface.internal) {
+          console.log(
+            `Interfaz de red detectada: ${name}, IP: ${iface.address}`
+          );
+          return iface.address;
+        }
       }
     }
+
+    // Si no encuentra ninguna IP válida, usar localhost
+    console.warn("No se detectó ninguna IP válida, usando 0.0.0.0");
+    return "0.0.0.0";
+  } catch (error) {
+    console.error("Error al detectar IP local:", error);
+    return "0.0.0.0"; // En caso de error, usar 0.0.0.0
   }
-  return "0.0.0.0"; // IP predeterminada si no se encuentra ninguna
 };
 
 // IMPORTANTE: Solo iniciar el servidor si este archivo se ejecuta directamente,
