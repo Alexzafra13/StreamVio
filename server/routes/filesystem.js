@@ -1,9 +1,12 @@
-// server/routes/filesystem.js
+// server/routes/filesystem.js - Versión corregida
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const { promisify } = require("util");
+const { execSync } = require("child_process");
+const os = require("os");
 const authMiddleware = require("../middleware/auth");
+const db = require("../config/database"); // Añadido import necesario
 
 const router = express.Router();
 
@@ -238,11 +241,6 @@ router.post("/create-directory", authMiddleware, async (req, res) => {
     });
   }
 });
-
-// server/routes/filesystem.js (añadir al archivo existente)
-
-const { execSync } = require("child_process");
-const os = require("os");
 
 /**
  * @route   POST /api/filesystem/check-permissions

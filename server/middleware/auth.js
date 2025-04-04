@@ -42,6 +42,9 @@ module.exports = (req, res, next) => {
     // Agregar información del usuario a la solicitud
     req.user = decoded;
 
+    // También agregar el token para uso en otras partes del código
+    req.token = token;
+
     // Registrar qué usuario está haciendo la solicitud para logging
     const method = req.method;
     const url = req.originalUrl;

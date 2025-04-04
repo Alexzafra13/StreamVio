@@ -1,20 +1,22 @@
-// server/routes/media.js
+// server/routes/media.js - Versión mejorada con mejor manejo de tokens
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const router = express.Router();
 const db = require("../config/database");
 const authMiddleware = require("../middleware/auth");
+const jwt = require("jsonwebtoken"); // Añadimos JWT para decodificar tokens en query params
 
 // Middleware de autenticación para todas las rutas de este router
-router.use(authMiddleware);
+// Excepto para stream y thumbnail que necesitan manejo especial de tokens
+router.use(/^(?!.*\/(stream|thumbnail)).*$/, authMiddleware);
 
 /**
  * @route   GET /api/media
  * @desc    Obtener todos los elementos multimedia con filtros
  * @access  Private
  */
-router.get("/", async (req, res) => {
+router.get("/", authMiddleware, async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -121,7 +123,7 @@ router.get("/", async (req, res) => {
  * @desc    Obtener un elemento multimedia por ID
  * @access  Private
  */
-router.get("/:id", async (req, res) => {
+router.get("/:id", authMiddleware, async (req, res) => {
   const mediaId = req.params.id;
 
   try {
@@ -202,7 +204,7 @@ router.get("/:id", async (req, res) => {
  * @desc    Actualizar un elemento multimedia
  * @access  Private
  */
-router.put("/:id", async (req, res) => {
+router.put("/:id", authMiddleware, async (req, res) => {
   const mediaId = req.params.id;
   const {
     title,
@@ -340,7 +342,7 @@ router.put("/:id", async (req, res) => {
  * @desc    Eliminar un elemento multimedia
  * @access  Private
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware, async (req, res) => {
   const mediaId = req.params.id;
 
   try {
@@ -384,12 +386,55 @@ router.delete("/:id", async (req, res) => {
 });
 
 /**
+ * Función para obtener y verificar token de autenticación
+ * @param {Object} req - Objeto de solicitud
+ * @returns {Object|null} - Token decodificado o null si no es válido
+ */
+const getVerifiedToken = (req) => {
+  // Intentar obtener token de headers
+  let token;
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    const parts = authHeader.split(" ");
+    if (parts.length === 2 && parts[0] === "Bearer") {
+      token = parts[1];
+    }
+  }
+
+  // Si no hay token en headers, intentar en query params
+  if (!token && req.query.auth) {
+    token = req.query.auth;
+  }
+
+  if (!token) {
+    return null;
+  }
+
+  // Verificar token
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET || "streamvio_secret_key");
+  } catch (error) {
+    console.error("Error al verificar token:", error);
+    return null;
+  }
+};
+
+/**
  * @route   GET /api/media/:id/stream
  * @desc    Transmitir un archivo multimedia
- * @access  Private
+ * @access  Private (verificación manual de token)
  */
 router.get("/:id/stream", async (req, res) => {
   const mediaId = req.params.id;
+
+  // Verificar token manualmente
+  const decoded = getVerifiedToken(req);
+  if (!decoded) {
+    return res.status(401).json({
+      error: "No autorizado",
+      message: "Token no proporcionado o inválido",
+    });
+  }
 
   try {
     // Obtener el elemento multimedia
@@ -424,6 +469,11 @@ router.get("/:id/stream", async (req, res) => {
     const fileSize = stat.size;
     const mimeType = getMimeType(filePath);
 
+    // Registrar información para debug
+    console.log(
+      `Streaming: ${filePath}, tamaño: ${fileSize}, tipo: ${mimeType}`
+    );
+
     // Manejar solicitudes de rango (para streaming)
     const range = req.headers.range;
 
@@ -441,6 +491,11 @@ router.get("/:id/stream", async (req, res) => {
       const chunksize = end - start + 1;
       const file = fs.createReadStream(filePath, { start, end });
 
+      // Registrar información para debug
+      console.log(
+        `Streaming con rango: ${start}-${end}/${fileSize}, tamaño chunk: ${chunksize}`
+      );
+
       res.writeHead(206, {
         "Content-Range": `bytes ${start}-${end}/${fileSize}`,
         "Accept-Ranges": "bytes",
@@ -451,9 +506,13 @@ router.get("/:id/stream", async (req, res) => {
       file.pipe(res);
     } else {
       // Respuesta completa si no hay cabecera de rango
+      // Registrar información para debug
+      console.log(`Streaming completo: ${fileSize} bytes`);
+
       res.writeHead(200, {
         "Content-Length": fileSize,
         "Content-Type": mimeType,
+        "Accept-Ranges": "bytes", // Importante para streaming
       });
 
       fs.createReadStream(filePath).pipe(res);
@@ -461,7 +520,7 @@ router.get("/:id/stream", async (req, res) => {
 
     // Registrar la visualización
     try {
-      const userId = req.user.id;
+      const userId = decoded.id;
 
       // Verificar si ya existe un registro para este usuario y medio
       const existingRecord = await db.asyncGet(
@@ -500,7 +559,7 @@ router.get("/:id/stream", async (req, res) => {
  * @desc    Guardar el progreso de reproducción
  * @access  Private
  */
-router.post("/:id/progress", async (req, res) => {
+router.post("/:id/progress", authMiddleware, async (req, res) => {
   const mediaId = req.params.id;
   const userId = req.user.id;
   const { position, completed } = req.body;
@@ -566,7 +625,7 @@ router.post("/:id/progress", async (req, res) => {
  * @desc    Obtener el progreso de reproducción
  * @access  Private
  */
-router.get("/:id/progress", async (req, res) => {
+router.get("/:id/progress", authMiddleware, async (req, res) => {
   const mediaId = req.params.id;
   const userId = req.user.id;
 
@@ -605,10 +664,19 @@ router.get("/:id/progress", async (req, res) => {
 /**
  * @route   GET /api/media/:id/thumbnail
  * @desc    Obtener thumbnail de un elemento multimedia
- * @access  Private
+ * @access  Private (verificación manual de token)
  */
 router.get("/:id/thumbnail", async (req, res) => {
   const mediaId = req.params.id;
+
+  // Verificar token manualmente
+  const decoded = getVerifiedToken(req);
+  if (!decoded) {
+    return res.status(401).json({
+      error: "No autorizado",
+      message: "Token no proporcionado o inválido",
+    });
+  }
 
   try {
     const mediaItem = await db.asyncGet(
