@@ -1,4 +1,4 @@
-// server/middleware/auth.js
+// server/middleware/auth.js - Versión mejorada
 const jwt = require("jsonwebtoken");
 
 /**
@@ -41,6 +41,13 @@ module.exports = (req, res, next) => {
 
     // Agregar información del usuario a la solicitud
     req.user = decoded;
+
+    // Registrar qué usuario está haciendo la solicitud para logging
+    const method = req.method;
+    const url = req.originalUrl;
+    console.log(
+      `Usuario ${decoded.id} (${decoded.username}): ${method} ${url}`
+    );
 
     // Continuar con la siguiente función de middleware
     return next();

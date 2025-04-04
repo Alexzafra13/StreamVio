@@ -1,4 +1,4 @@
-// src/components/MediaViewer.jsx
+// src/components/MediaViewer.jsx corregido
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -16,6 +16,7 @@ function MediaViewer({ mediaId }) {
   const [streamType, setStreamType] = useState("direct"); // 'direct' o 'hls'
   const playerRef = useRef(null);
   const progressInterval = useRef(null);
+  const [streamUrl, setStreamUrl] = useState("");
 
   // Cargar información del medio
   useEffect(() => {
@@ -71,6 +72,10 @@ function MediaViewer({ mediaId }) {
           console.warn("El medio no tiene una ruta de archivo válida");
           setHLSAvailable(false);
         }
+
+        // Generar URL del stream con autenticación
+        const newStreamUrl = getStreamUrl(response.data, token);
+        setStreamUrl(newStreamUrl);
 
         setLoading(false);
       } catch (err) {
@@ -167,6 +172,16 @@ function MediaViewer({ mediaId }) {
     loadProgress();
   }, [media, mediaId]);
 
+  // Actualizar streamUrl cuando cambia el tipo de stream
+  useEffect(() => {
+    if (media) {
+      const token = localStorage.getItem("streamvio_token");
+      const newStreamUrl = getStreamUrl(media, token);
+      console.log("Actualizando URL del stream:", newStreamUrl);
+      setStreamUrl(newStreamUrl);
+    }
+  }, [streamType, media]);
+
   // Guardar progreso en el servidor
   const saveProgress = async (position) => {
     if (!media || !mediaId) return;
@@ -227,25 +242,12 @@ function MediaViewer({ mediaId }) {
       .padStart(2, "0")}`;
   };
 
-  // Obtener URL de streaming según el tipo
-  const getStreamUrl = () => {
-    if (!media) return "";
+  // Importar la función desde utils/auth.js
+  const { getStreamUrl: getStreamUrlFromUtils } = require("../utils/auth");
 
-    const token = localStorage.getItem("streamvio_token");
-    // Asegurar que el token se incluye como parámetro de consulta
-    const authParam = token ? `?auth=${token}` : "";
-
-    if (streamType === "hls" && hlsAvailable) {
-      // URL para streaming HLS
-      const fileName = media.file_path
-        .split(/[\/\\]/)
-        .pop()
-        .split(".")[0];
-      return `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8${authParam}`;
-    } else {
-      // URL para streaming directo
-      return `${API_URL}/api/media/${mediaId}/stream${authParam}`;
-    }
+  // Función para obtener URL de streaming con token
+  const getStreamUrl = (mediaId, streamType, hlsAvailable, mediaData) => {
+    return getStreamUrlFromUtils(mediaId, streamType, hlsAvailable, mediaData);
   };
 
   // Obtener URL de miniatura con token de autenticación
@@ -270,7 +272,7 @@ function MediaViewer({ mediaId }) {
                 className="absolute inset-0 w-full h-full"
                 controls
                 autoPlay
-                src={getStreamUrl()}
+                src={streamUrl} // Usar la URL con autenticación
                 onTimeUpdate={handleTimeUpdate}
                 onDurationChange={handleDurationChange}
                 onEnded={() => saveProgress(duration)}
@@ -340,7 +342,7 @@ function MediaViewer({ mediaId }) {
         return (
           <div className="flex justify-center rounded-lg overflow-hidden bg-black">
             <img
-              src={getStreamUrl()}
+              src={streamUrl}
               alt={media.title}
               className="max-h-[80vh] object-contain"
             />
@@ -383,7 +385,7 @@ function MediaViewer({ mediaId }) {
                 className="w-full"
                 controls
                 autoPlay
-                src={getStreamUrl()}
+                src={streamUrl}
                 onTimeUpdate={handleTimeUpdate}
                 onDurationChange={handleDurationChange}
                 onEnded={() => saveProgress(duration)}

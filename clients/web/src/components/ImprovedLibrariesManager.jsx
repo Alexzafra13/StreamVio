@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
+import FolderPermissionsManager from "./FolderPermissionsManager";
 
 const API_URL = apiConfig.API_URL;
 
@@ -24,6 +25,8 @@ function ImprovedLibrariesManager() {
     contents: [],
     loading: false,
   });
+  const [showPermissionCheck, setShowPermissionCheck] = useState(false);
+  const [permissionsFixed, setPermissionsFixed] = useState(false);
 
   // Cargar bibliotecas
   const fetchLibraries = async () => {
@@ -70,6 +73,12 @@ function ImprovedLibrariesManager() {
         ...formErrors,
         [name]: null,
       });
+    }
+
+    // Si se cambia la ruta, mostrar el componente de verificación de permisos
+    if (name === "path" && value) {
+      setShowPermissionCheck(true);
+      setPermissionsFixed(false); // Reiniciar estado de permisos
     }
   };
 
@@ -157,6 +166,8 @@ function ImprovedLibrariesManager() {
     });
     setEditingId(library.id);
     setFormVisible(true);
+    // Ocultar validación de permisos para edición
+    setShowPermissionCheck(false);
   };
 
   // Eliminar biblioteca
@@ -276,6 +287,10 @@ function ImprovedLibrariesManager() {
       ...directoryBrowser,
       visible: false,
     });
+
+    // Mostrar comprobación de permisos al seleccionar un directorio
+    setShowPermissionCheck(true);
+    setPermissionsFixed(false);
   };
 
   // Resetear formulario
@@ -294,12 +309,24 @@ function ImprovedLibrariesManager() {
       contents: [],
       loading: false,
     });
+    setShowPermissionCheck(false);
+    setPermissionsFixed(false);
   };
 
   // Cancelar edición/creación
   const handleCancel = () => {
     resetForm();
     setFormVisible(false);
+  };
+
+  // Manejar cuando los permisos se han arreglado
+  const handlePermissionsFixed = (result) => {
+    if (result && result.success) {
+      setPermissionsFixed(true);
+      // Mostrar mensaje de éxito temporal
+      setError(null);
+      // Opcional: mostrar mensaje de éxito
+    }
   };
 
   if (loading) {
@@ -417,6 +444,14 @@ function ImprovedLibrariesManager() {
                 </label>
               </div>
             </div>
+
+            {/* Componente de verificación de permisos */}
+            {showPermissionCheck && formData.path && (
+              <FolderPermissionsManager
+                folderPath={formData.path}
+                onPermissionsFixed={handlePermissionsFixed}
+              />
+            )}
 
             <div className="flex justify-end space-x-3 mt-6">
               <button
@@ -667,7 +702,7 @@ function ImprovedLibrariesManager() {
                 </div>
               </div>
 
-              {/* Sección para mostrar contenido de la biblioteca - incluye token en las URLs */}
+              {/* Sección para mostrar contenido de la biblioteca */}
               <div className="border-t border-gray-700 px-6 py-4">
                 <div className="flex justify-between items-center">
                   <h4 className="font-medium">Elementos recientes</h4>
@@ -680,7 +715,6 @@ function ImprovedLibrariesManager() {
                 </div>
 
                 <div className="overflow-x-auto pb-2 mt-2 -mx-2 px-2">
-                  {/* AQUÍ ES DONDE MODIFICAMOS PARA INCLUIR EL TOKEN */}
                   <div className="flex space-x-4">
                     {Array.from({ length: 5 }).map((_, i) => (
                       <div key={i} className="w-32 flex-shrink-0">
@@ -689,6 +723,24 @@ function ImprovedLibrariesManager() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* Botón para verificar permisos de la biblioteca */}
+              <div className="border-t border-gray-700 px-6 py-4">
+                <button
+                  onClick={() => {
+                    setFormData({
+                      ...formData,
+                      path: library.path,
+                    });
+                    setShowPermissionCheck(true);
+                    setFormVisible(true);
+                    setEditingId(library.id);
+                  }}
+                  className="text-sm text-gray-400 hover:text-blue-400"
+                >
+                  Verificar permisos de carpeta
+                </button>
               </div>
             </div>
           ))}
