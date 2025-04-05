@@ -11,6 +11,7 @@ const jwt = require("jsonwebtoken"); // Añadimos JWT para decodificar tokens en
 // Excepto para stream y thumbnail que necesitan manejo especial de tokens
 router.use(/^(?!.*\/(stream|thumbnail)).*$/, authMiddleware);
 
+// Parte relevante de server/routes/media.js que debe ser corregida
 /**
  * @route   GET /api/media
  * @desc    Obtener todos los elementos multimedia con filtros
@@ -28,8 +29,8 @@ router.get("/", authMiddleware, async (req, res) => {
   } = req.query;
 
   // Validar parámetros
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
+  const pageNum = parseInt(page) || 1; // Asegurar que sea un número válido
+  const limitNum = parseInt(limit) || 20; // Asegurar que sea un número válido
 
   // Validar orden
   const validSortFields = [
@@ -79,7 +80,8 @@ router.get("/", authMiddleware, async (req, res) => {
     const countQuery = `SELECT COUNT(*) as total FROM media_items ${whereClause}`;
     const countResult = await db.asyncGet(countQuery, queryParams);
 
-    const total = countResult ? countResult.total : 0;
+    // Asegurarse de que el conteo total es un número válido
+    const total = countResult && countResult.total ? countResult.total : 0;
 
     // Obtener elementos paginados
     const mediaItemsQuery = `
@@ -89,17 +91,19 @@ router.get("/", authMiddleware, async (req, res) => {
       LIMIT ? OFFSET ?
     `;
 
-    const mediaItems = await db.asyncAll(mediaItemsQuery, [
-      ...queryParams,
-      limitNum,
-      offset,
-    ]);
+    const mediaItems =
+      (await db.asyncAll(mediaItemsQuery, [
+        ...queryParams,
+        limitNum,
+        offset,
+      ])) || []; // Proporcionar un array vacío como valor predeterminado
 
     // Calcular información de paginación
-    const totalPages = Math.ceil(total / limitNum);
+    const totalPages = Math.ceil(total / limitNum) || 1; // Asegurar que sea al menos 1
 
-    res.json({
-      items: mediaItems,
+    // Estructura de respuesta completa y coherente
+    const response = {
+      items: mediaItems || [], // Asegurar que sea un array incluso si es nulo
       pagination: {
         total,
         page: pageNum,
@@ -108,12 +112,27 @@ router.get("/", authMiddleware, async (req, res) => {
         hasNextPage: pageNum < totalPages,
         hasPrevPage: pageNum > 1,
       },
-    });
+    };
+
+    // Enviar respuesta
+    res.json(response);
   } catch (error) {
     console.error("Error al obtener elementos multimedia:", error);
+
+    // En caso de error, enviar una respuesta estructurada con array vacío y paginación básica
     res.status(500).json({
       error: "Error del servidor",
       message: "Error al obtener elementos multimedia",
+      items: [], // Proporcionar un array vacío
+      pagination: {
+        // Proporcionar un objeto de paginación básico
+        total: 0,
+        page: 1,
+        limit: parseInt(limit) || 20,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPrevPage: false,
+      },
     });
   }
 });

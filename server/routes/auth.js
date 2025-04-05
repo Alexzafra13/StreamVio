@@ -148,13 +148,14 @@ router.post("/login", async (req, res) => {
     );
 
     // Responder con token y datos básicos del usuario
+    // Asegurar que isAdmin sea booleano para consistencia
     res.json({
       message: "Login exitoso",
       token,
       userId: user.id,
       username: user.username,
       email: user.email,
-      isAdmin: user.is_admin === 1,
+      isAdmin: user.is_admin === 1, // Convertir explícitamente a booleano
       requirePasswordChange: user.force_password_change === 1,
     });
   } catch (error) {
@@ -277,11 +278,13 @@ router.get("/user", authMiddleware, async (req, res) => {
     }
 
     // Devolver usuario sin la contraseña
+    // Incluir isAdmin como booleano para mayor consistencia
     res.json({
       id: user.id,
       username: user.username,
       email: user.email,
-      is_admin: user.is_admin,
+      is_admin: user.is_admin, // Mantener el valor original
+      isAdmin: user.is_admin === 1, // Añadir versión booleana
       force_password_change: user.force_password_change,
       created_at: user.created_at,
     });

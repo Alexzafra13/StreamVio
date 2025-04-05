@@ -1,3 +1,4 @@
+// clients/web/src/components/MediaBrowser.jsx
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -61,21 +62,43 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
         }
       );
 
-      setMedia(response.data.items);
-      setPagination({
-        ...pagination,
-        page: response.data.pagination.page,
-        total: response.data.pagination.total,
-        totalPages: response.data.pagination.totalPages,
-      });
+      // Mejora: Verificación segura de la estructura de la respuesta
+      const responseData = response.data || {};
+      const items = responseData.items || [];
+
+      // Establecer medios
+      setMedia(items);
+
+      // Verificar si la respuesta incluye información de paginación
+      if (responseData.pagination) {
+        setPagination({
+          ...pagination,
+          page: responseData.pagination.page || 1,
+          total: responseData.pagination.total || 0,
+          totalPages: responseData.pagination.totalPages || 1,
+        });
+      } else {
+        // Si no hay información de paginación, establecer valores por defecto
+        setPagination({
+          ...pagination,
+          page: 1,
+          total: items.length,
+          totalPages: 1,
+        });
+        console.warn(
+          "La respuesta de la API no incluye información de paginación"
+        );
+      }
 
       setLoading(false);
     } catch (err) {
       console.error("Error al cargar medios:", err);
       setError(
         err.response?.data?.message ||
-          "Error al cargar los elementos multimedia"
+          "Error al cargar los elementos multimedia. Por favor, intenta de nuevo más tarde."
       );
+      // Establecer medios como array vacío en caso de error
+      setMedia([]);
       setLoading(false);
     }
   };
@@ -137,6 +160,9 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
 
   // Función mejorada para obtener la URL de miniatura con autenticación
   const getThumbnail = (item) => {
+    // Verificar si el elemento existe
+    if (!item) return "/assets/default-media.jpg";
+
     // Obtener token de autenticación
     const token = localStorage.getItem("streamvio_token");
     const authParam = token ? `?auth=${token}` : "";
@@ -230,7 +256,11 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
       {error && (
         <div className="bg-red-600 text-white p-4 rounded mb-6">
           {error}
-          <button onClick={() => setError(null)} className="float-right">
+          <button
+            onClick={() => setError(null)}
+            className="float-right"
+            aria-label="Cerrar"
+          >
             &times;
           </button>
         </div>
