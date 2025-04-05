@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import apiConfig from "../config/api";
 
-const API_URL = "http://localhost:8000";
+const API_URL = apiConfig.API_URL;
 
 function DashboardPanel() {
   const [stats, setStats] = useState({
@@ -19,6 +20,9 @@ function DashboardPanel() {
     const fetchStats = async () => {
       try {
         const token = localStorage.getItem("streamvio_token");
+        if (!token) {
+          throw new Error("No hay sesión activa");
+        }
 
         const response = await axios.get(`${API_URL}/api/admin/stats`, {
           headers: {

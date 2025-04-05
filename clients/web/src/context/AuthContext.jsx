@@ -20,25 +20,28 @@ export const AuthProvider = ({ children }) => {
   const [requirePasswordChange, setRequirePasswordChange] = useState(false);
   const [isFirstTimeSetup, setIsFirstTimeSetup] = useState(false);
 
+  // Función para actualizar el almacenamiento local y el estado
   const updateUserData = (userData) => {
     if (!userData) return;
 
-    // Asegurarnos de que el campo isAdmin se guarda correctamente
-    const userToStore = {
+    // Guardar en localStorage
+    localStorage.setItem(
+      "streamvio_user",
+      JSON.stringify({
+        id: userData.id,
+        username: userData.username,
+        email: userData.email,
+        isAdmin: userData.is_admin === 1 || userData.isAdmin === true,
+      })
+    );
+
+    // Actualizar el estado
+    setCurrentUser({
       id: userData.id,
       username: userData.username,
       email: userData.email,
       isAdmin: userData.is_admin === 1 || userData.isAdmin === true,
-    };
-
-    // Guardar en localStorage
-    localStorage.setItem("streamvio_user", JSON.stringify(userToStore));
-
-    // Actualizar el estado
-    setCurrentUser(userToStore);
-
-    // Para debugging
-    console.log("Datos de usuario actualizados:", userToStore);
+    });
   };
 
   // Verificar si se requiere cambio de contraseña
@@ -95,7 +98,23 @@ export const AuthProvider = ({ children }) => {
 
             // Guardar datos del usuario
             updateUserData(response.data);
-            console.log("Usuario cargado desde API:", response.data);
+
+            // Verificar explícitamente si es administrador
+            try {
+              const adminResponse = await axios.get(
+                `${API_URL}/api/auth/verify-admin`
+              );
+              if (adminResponse.data.isAdmin) {
+                const updatedUser = {
+                  ...response.data,
+                  is_admin: 1,
+                };
+                updateUserData(updatedUser);
+                console.log("Usuario verificado como administrador");
+              }
+            } catch (adminError) {
+              console.log("El usuario no es administrador:", adminError);
+            }
 
             // Verificar estado de cambio de contraseña
             await checkPasswordChangeRequired(token);
@@ -114,7 +133,6 @@ export const AuthProvider = ({ children }) => {
             try {
               const user = JSON.parse(userStr);
               setCurrentUser(user);
-              console.log("Usuario cargado desde localStorage:", user);
             } catch (e) {
               console.error("Error al parsear datos de usuario:", e);
               localStorage.removeItem("streamvio_user");
@@ -145,18 +163,13 @@ export const AuthProvider = ({ children }) => {
       // Guardar token
       localStorage.setItem("streamvio_token", response.data.token);
 
-      // Asegurarnos de interpretar correctamente el campo isAdmin
-      const userData = {
+      // Actualizar datos de usuario
+      updateUserData({
         id: response.data.userId,
         username: response.data.username,
         email: response.data.email,
-        is_admin: response.data.isAdmin ? 1 : 0, // convertir booleano a entero para consistencia
-        isAdmin: !!response.data.isAdmin, // asegurar que es booleano
-      };
-
-      // Actualizar datos de usuario
-      updateUserData(userData);
-      console.log("Login exitoso, datos:", userData);
+        isAdmin: response.data.isAdmin,
+      });
 
       // Configurar axios para enviar el token en solicitudes futuras
       axios.defaults.headers.common[
@@ -165,9 +178,6 @@ export const AuthProvider = ({ children }) => {
 
       // Verificar inmediatamente si requiere cambio de contraseña
       await checkPasswordChangeRequired(response.data.token);
-
-      // Disparar evento de cambio de autenticación
-      window.dispatchEvent(new Event("streamvio-auth-change"));
 
       return response.data;
     } catch (error) {

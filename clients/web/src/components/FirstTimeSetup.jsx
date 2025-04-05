@@ -26,26 +26,19 @@ function FirstTimeSetup({ onComplete }) {
   const checkSystemStatus = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_URL}/api/setup/check`);
+      // Verificar si es primera ejecución - cambiada ruta a la correcta
+      const response = await axios.get(`${API_URL}/api/auth/check-first-time`);
       setSystemStatus(response.data);
 
       // Determinar el paso adecuado
-      if (response.data.needsFirstTimeSetup) {
-        if (!response.data.permissionsOk) {
-          setStep(2); // Problemas de permisos
-        } else {
-          setStep(1); // Configuración de usuario
-        }
+      if (response.data.isFirstTime) {
+        // Si es la primera vez, ir a configuración de usuario
+        setStep(1);
       } else {
-        // No necesita configuración, pero podemos tener problemas de permisos
-        if (!response.data.permissionsOk) {
-          setStep(2);
-        } else {
-          // Todo está bien, completar
-          setTimeout(() => {
-            if (onComplete) onComplete();
-          }, 2000);
-        }
+        // Todo está bien, completar
+        setTimeout(() => {
+          if (onComplete) onComplete();
+        }, 2000);
       }
     } catch (err) {
       console.error("Error al verificar estado del sistema:", err);
@@ -66,32 +59,6 @@ function FirstTimeSetup({ onComplete }) {
     setError(null);
   };
 
-  // Función para intentar reparar permisos
-  const fixPermissions = async () => {
-    setFixingPermissions(true);
-    setError(null);
-
-    try {
-      const response = await axios.post(`${API_URL}/api/setup/fix-permissions`);
-
-      if (response.data.success) {
-        // Si se repararon con éxito, verificar de nuevo el estado
-        await checkSystemStatus();
-      } else {
-        setError(
-          "No se pudieron reparar todos los permisos automáticamente. Es posible que necesites hacerlo manualmente."
-        );
-      }
-    } catch (err) {
-      console.error("Error al reparar permisos:", err);
-      setError(
-        "Error al intentar reparar los permisos. Es posible que necesites permisos de administrador."
-      );
-    } finally {
-      setFixingPermissions(false);
-    }
-  };
-
   // Manejar envío del formulario
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -110,14 +77,18 @@ function FirstTimeSetup({ onComplete }) {
     setLoading(true);
 
     try {
-      // Enviar solicitud para crear el primer usuario administrador
-      const response = await axios.post(`${API_URL}/api/setup/init`, {
-        username: formData.username,
-        email: formData.email,
-        password: formData.password,
-      });
+      // Usar la ruta correcta para el setup inicial
+      // Cambio aquí: usar setup-first-user en vez de init
+      const response = await axios.post(
+        `${API_URL}/api/auth/setup-first-user`,
+        {
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+        }
+      );
 
-      // Guardar token y datos de usuario
+      // Guardar token y datos de usuario con isAdmin=true explícitamente
       localStorage.setItem("streamvio_token", response.data.token);
       localStorage.setItem(
         "streamvio_user",
@@ -125,7 +96,7 @@ function FirstTimeSetup({ onComplete }) {
           id: response.data.userId,
           username: response.data.username,
           email: response.data.email,
-          isAdmin: true,
+          isAdmin: true, // Explícitamente marcar como admin
         })
       );
 
@@ -133,6 +104,27 @@ function FirstTimeSetup({ onComplete }) {
       axios.defaults.headers.common[
         "Authorization"
       ] = `Bearer ${response.data.token}`;
+
+      console.log("Usuario administrador creado exitosamente:", response.data);
+
+      // Verificar explícitamente que se configuró como admin
+      try {
+        const verifyResponse = await axios.get(
+          `${API_URL}/api/auth/verify-admin`,
+          {
+            headers: {
+              Authorization: `Bearer ${response.data.token}`,
+            },
+          }
+        );
+        console.log("Verificación de admin exitosa:", verifyResponse.data);
+      } catch (verifyErr) {
+        console.warn("Error al verificar estado de admin:", verifyErr);
+        // Continuar de todos modos, ya que sabemos que el usuario debe ser admin
+      }
+
+      // Disparar evento de cambio de autenticación para actualizar el contexto
+      window.dispatchEvent(new Event("streamvio-auth-change"));
 
       // Mostrar pantalla de éxito
       setStep(3);
@@ -291,133 +283,6 @@ function FirstTimeSetup({ onComplete }) {
     </>
   );
 
-  // Renderizar paso de verificación/arreglo de permisos
-  const renderPermissionsStep = () => (
-    <>
-      <h2 className="text-2xl font-bold mb-6 text-center text-yellow-500">
-        Verificación de Permisos
-      </h2>
-
-      <div className="bg-yellow-900 text-white p-4 rounded mb-4">
-        <p className="font-semibold">Problemas de Permisos Detectados</p>
-        <p className="text-sm">
-          StreamVio necesita permisos adecuados en ciertos directorios para
-          funcionar correctamente. Los siguientes directorios tienen problemas
-          de permisos:
-        </p>
-      </div>
-
-      {error && (
-        <div className="bg-red-600 text-white p-3 rounded mb-4">{error}</div>
-      )}
-
-      <div className="bg-gray-700 p-4 rounded-lg mb-4 max-h-48 overflow-y-auto">
-        <ul className="space-y-2">
-          {systemStatus &&
-            systemStatus.permissionsDetails &&
-            systemStatus.permissionsDetails.map((dir, index) => (
-              <li key={index} className="flex items-start">
-                <svg
-                  className="h-5 w-5 text-red-500 mr-2 mt-0.5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-                <div>
-                  <p className="text-sm font-medium">{dir.path}</p>
-                  <p className="text-xs text-gray-400">
-                    {dir.message || dir.error}
-                  </p>
-                </div>
-              </li>
-            ))}
-        </ul>
-      </div>
-
-      <div className="bg-gray-700 p-4 rounded-lg mb-6">
-        <h3 className="font-medium text-yellow-400 mb-2">
-          Posibles soluciones:
-        </h3>
-        <ul className="list-disc pl-5 space-y-1 text-sm">
-          <li>Ejecutar la aplicación con permisos de administrador</li>
-          <li>
-            Comprobar que el usuario tiene permisos de escritura en la carpeta
-            de datos
-          </li>
-          <li>
-            Usar el script de instalación con sudo (Linux/Mac) o como
-            administrador (Windows)
-          </li>
-        </ul>
-      </div>
-
-      <div className="flex flex-wrap gap-4">
-        <button
-          onClick={fixPermissions}
-          disabled={fixingPermissions}
-          className={`bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg transition flex-1 ${
-            fixingPermissions ? "opacity-70 cursor-not-allowed" : ""
-          }`}
-        >
-          {fixingPermissions ? (
-            <span className="flex items-center justify-center">
-              <svg
-                className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Reparando permisos...
-            </span>
-          ) : (
-            "Reparar Permisos Automáticamente"
-          )}
-        </button>
-        <button
-          onClick={checkSystemStatus}
-          disabled={loading || fixingPermissions}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition"
-        >
-          Verificar de Nuevo
-        </button>
-      </div>
-
-      <div className="mt-4 text-center">
-        <button
-          onClick={() =>
-            systemStatus?.needsFirstTimeSetup ? setStep(1) : onComplete?.()
-          }
-          className="text-gray-400 hover:text-blue-400 text-sm"
-        >
-          {systemStatus?.needsFirstTimeSetup
-            ? "Continuar con la configuración de todas formas"
-            : "Omitir esta verificación"}
-        </button>
-      </div>
-    </>
-  );
-
   // Renderizar paso de finalización
   const renderCompletedStep = () => (
     <div className="text-center">
@@ -457,8 +322,6 @@ function FirstTimeSetup({ onComplete }) {
         return renderCheckingStep();
       case 1:
         return renderUserSetupStep();
-      case 2:
-        return renderPermissionsStep();
       case 3:
         return renderCompletedStep();
       default:
