@@ -1,6 +1,5 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import RegisterWithInvitation from '../components/RegisterWithInvitation';
 ---
 
 <Layout title="Registro | StreamVio">
@@ -8,25 +7,41 @@ import RegisterWithInvitation from '../components/RegisterWithInvitation';
     <div class="max-w-md mx-auto mt-8">
       <h1 class="text-4xl font-bold mb-8 text-center text-blue-500">Únete a StreamVio</h1>
       
-      <RegisterWithInvitation client:load />
-      
-      <div class="text-center mt-8">
-        <a href="/" class="text-gray-400 hover:text-blue-400 transition">
-          Volver a página principal
-        </a>
-      </div>
-    </div>
-  </main>
-</Layout>
+      <div id="register-container" class="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md mx-auto">
+        <h2 class="text-2xl font-bold text-blue-500 mb-6 text-center">
+          Crear Cuenta con Invitación
+        </h2>
 
-<script>
-  // Script que se ejecuta en el cliente
-  document.addEventListener('DOMContentLoaded', () => {
-    // Verificar si el usuario ya está autenticado
-    const token = localStorage.getItem('streamvio_token');
-    if (token) {
-      // Redirigir a la página principal si ya está autenticado
-      window.location.href = '/';
-    }
-  });
-</script>
+        <div id="register-error" class="hidden bg-red-600 text-white p-3 rounded mb-4"></div>
+        <div id="register-success" class="hidden bg-green-600 text-white p-4 rounded text-center mb-4">
+          <p class="font-bold text-lg mb-2">¡Registro Exitoso!</p>
+          <p>Tu cuenta ha sido creada correctamente.</p>
+          <p class="mt-2">Redirigiendo a la página de inicio...</p>
+        </div>
+
+        <div id="verification-section">
+          <p class="text-gray-300 mb-4">
+            Ingresa el código de invitación que has recibido para crear una cuenta.
+          </p>
+
+          <form id="verify-code-form" class="mb-4">
+            <div class="mb-4">
+              <label for="invitationCode" class="block text-gray-300 mb-2">
+                Código de Invitación
+              </label>
+              <input
+                type="text"
+                id="invitationCode"
+                name="invitationCode"
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              id="verify-button"
+              class="w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition"
+            >
+              Verificar Código
+            </button>

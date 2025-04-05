@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import PasswordChangeModal from '../components/PasswordChangeModal';
 ---
 
 <Layout title="Perfil de Usuario | StreamVio">
@@ -31,8 +32,8 @@ import Layout from '../layouts/Layout.astro';
           </div>
           
           <div class="bg-gray-700 p-4 rounded">
-            <h3 class="text-gray-400 text-sm mb-1">Plan de suscripción</h3>
-            <p class="text-xl">Plan Básico</p>
+            <h3 class="text-gray-400 text-sm mb-1" id="account-type-label">Tipo de cuenta</h3>
+            <p id="account-type" class="text-xl">Plan Básico</p>
           </div>
         </div>
         
@@ -44,6 +45,10 @@ import Layout from '../layouts/Layout.astro';
           <button id="edit-profile-btn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded transition">
             Editar Perfil
           </button>
+          
+          <a id="admin-panel-link" href="/admin" class="hidden bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded transition inline-block">
+            Panel de Administración
+          </a>
         </div>
       </div>
       
@@ -54,12 +59,18 @@ import Layout from '../layouts/Layout.astro';
           Iniciar Sesión
         </a>
       </div>
+      
+      <!-- Contenedor para el modal -->
+      <div id="password-modal-container"></div>
     </div>
   </main>
 </Layout>
 
 <script>
-  const API_URL = "http://localhost:8000";
+  import apiConfig from "../config/api";
+  
+  // Usar la configuración correcta
+  const API_URL = apiConfig.API_URL;
 
   document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('streamvio_token');
@@ -82,6 +93,13 @@ import Layout from '../layouts/Layout.astro';
         document.getElementById('email').textContent = userData.email || 'email@ejemplo.com';
         document.getElementById('avatar-placeholder').textContent = userData.username ? userData.username.charAt(0).toUpperCase() : 'U';
         
+        // Mostrar enlace al panel de administrador si es admin
+        if (userData.isAdmin || userData.is_admin) {
+          document.getElementById('admin-panel-link').classList.remove('hidden');
+          document.getElementById('account-type').textContent = 'Administrador';
+          document.getElementById('account-type').classList.add('text-blue-400');
+        }
+        
         // Obtener información actualizada desde el servidor
         const response = await fetch(`${API_URL}/api/auth/user`, {
           headers: {
@@ -96,6 +114,13 @@ import Layout from '../layouts/Layout.astro';
           document.getElementById('username').textContent = userProfile.username;
           document.getElementById('email').textContent = userProfile.email;
           document.getElementById('avatar-placeholder').textContent = userProfile.username.charAt(0).toUpperCase();
+          
+          // Actualizar tipo de cuenta si es administrador
+          if (userProfile.is_admin || userProfile.isAdmin) {
+            document.getElementById('admin-panel-link').classList.remove('hidden');
+            document.getElementById('account-type').textContent = 'Administrador';
+            document.getElementById('account-type').classList.add('text-blue-400');
+          }
           
           // Formatear fecha
           if (userProfile.created_at) {
@@ -123,6 +148,13 @@ import Layout from '../layouts/Layout.astro';
           document.getElementById('username').textContent = userProfile.username;
           document.getElementById('email').textContent = userProfile.email;
           document.getElementById('avatar-placeholder').textContent = userProfile.username.charAt(0).toUpperCase();
+          
+          // Actualizar tipo de cuenta si es administrador
+          if (userProfile.is_admin || userProfile.isAdmin) {
+            document.getElementById('admin-panel-link').classList.remove('hidden');
+            document.getElementById('account-type').textContent = 'Administrador';
+            document.getElementById('account-type').classList.add('text-blue-400');
+          }
           
           // Formatear fecha
           if (userProfile.created_at) {
@@ -153,7 +185,32 @@ import Layout from '../layouts/Layout.astro';
     
     // Eventos de botones
     document.getElementById('change-password-btn').addEventListener('click', () => {
-      alert('Funcionalidad de cambio de contraseña en desarrollo');
+      // Mostrar el modal de cambio de contraseña
+      const modalContainer = document.getElementById('password-modal-container');
+      
+      // Crear y montar el componente de React
+      const passwordChangeModal = document.createElement('div');
+      modalContainer.appendChild(passwordChangeModal);
+      
+      // Importar el cliente de React para renderizar componentes
+      import('../components/PasswordChangeModal.jsx').then(module => {
+        const PasswordChangeModal = module.default;
+        
+        // Renderizar el componente en el contenedor
+        ReactDOM.render(
+          React.createElement(PasswordChangeModal, {
+            onComplete: () => {
+              // Limpiar el modal cuando se complete
+              ReactDOM.unmountComponentAtNode(modalContainer);
+              modalContainer.innerHTML = '';
+            }
+          }),
+          passwordChangeModal
+        );
+      }).catch(err => {
+        console.error('Error al cargar el modal de cambio de contraseña:', err);
+        alert('No se pudo cargar el formulario de cambio de contraseña');
+      });
     });
     
     document.getElementById('edit-profile-btn').addEventListener('click', () => {

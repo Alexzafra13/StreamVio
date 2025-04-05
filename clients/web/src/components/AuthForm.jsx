@@ -34,6 +34,7 @@ export const LoginForm = ({ onLoginSuccess }) => {
           id: response.data.userId,
           username: response.data.username,
           email: response.data.email,
+          isAdmin: response.data.isAdmin,
         })
       );
 
@@ -45,6 +46,14 @@ export const LoginForm = ({ onLoginSuccess }) => {
       // Notificar éxito al componente padre
       if (onLoginSuccess) {
         onLoginSuccess(response.data);
+      } else {
+        // Notificar cambio en la autenticación
+        window.dispatchEvent(new Event("streamvio-auth-change"));
+
+        // Redirigir a la página principal
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 500);
       }
     } catch (err) {
       console.error("Error de inicio de sesión:", err);
@@ -112,6 +121,42 @@ export const LoginForm = ({ onLoginSuccess }) => {
   );
 };
 
+export const InvitationInfo = () => {
+  return (
+    <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md mx-auto">
+      <h2 className="text-2xl font-bold text-blue-500 mb-6 text-center">
+        ¿Quieres unirte?
+      </h2>
+
+      <div className="bg-gray-700 p-4 rounded-lg mb-4">
+        <h3 className="text-lg font-semibold mb-2">Se requiere invitación</h3>
+        <p className="text-gray-300 mb-3">
+          StreamVio es un servicio privado que requiere una invitación para
+          registrarse.
+        </p>
+        <p className="text-gray-300">
+          Si has recibido un código de invitación, por favor visita el enlace
+          que se te proporcionó o utiliza el botón de abajo.
+        </p>
+      </div>
+
+      <a
+        href="/register"
+        className="block w-full bg-green-600 text-white py-3 rounded-md font-medium hover:bg-green-700 transition text-center"
+      >
+        Tengo un código de invitación
+      </a>
+
+      <div className="mt-4 text-center text-gray-400 text-sm">
+        <p>
+          StreamVio funciona por invitación para garantizar una experiencia de
+          calidad para todos los usuarios.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 export const RegisterForm = ({ onRegisterSuccess }) => {
   const [formData, setFormData] = useState({
     username: "",
@@ -166,6 +211,14 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
       // Notificar éxito al componente padre
       if (onRegisterSuccess) {
         onRegisterSuccess(response.data);
+      } else {
+        // Notificar cambio en la autenticación
+        window.dispatchEvent(new Event("streamvio-auth-change"));
+
+        // Redirigir a la página principal
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 500);
       }
     } catch (err) {
       console.error("Error de registro:", err);
@@ -184,11 +237,19 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
         Crear Cuenta
       </h2>
 
+      <div className="bg-yellow-700 text-white p-3 rounded mb-4 text-center">
+        <p className="font-semibold">Registro desactivado</p>
+        <p className="text-sm">
+          El registro directo ha sido desactivado. Por favor, solicita una
+          invitación para unirte.
+        </p>
+      </div>
+
       {error && (
         <div className="bg-red-600 text-white p-3 rounded mb-4">{error}</div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="opacity-50 pointer-events-none">
         <div className="mb-4">
           <label htmlFor="username" className="block text-gray-300 mb-2">
             Nombre de usuario
@@ -201,6 +262,7 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
             onChange={handleChange}
             className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
             required
+            disabled
           />
         </div>
 
@@ -216,6 +278,7 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
             onChange={handleChange}
             className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
             required
+            disabled
           />
         </div>
 
@@ -235,6 +298,7 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
             className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
             required
             minLength="6"
+            disabled
           />
         </div>
 
@@ -251,19 +315,24 @@ export const RegisterForm = ({ onRegisterSuccess }) => {
             className="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 focus:outline-none focus:border-blue-500"
             required
             minLength="6"
+            disabled
           />
         </div>
 
         <button
           type="submit"
-          disabled={loading}
-          className={`w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition ${
-            loading ? "opacity-70 cursor-not-allowed" : ""
-          }`}
+          disabled={true}
+          className="w-full bg-gray-600 text-white py-3 rounded-md font-medium opacity-50 cursor-not-allowed"
         >
-          {loading ? "Creando cuenta..." : "Crear Cuenta"}
+          Crear Cuenta
         </button>
       </form>
+
+      <div className="mt-4 text-center">
+        <a href="/register" className="text-blue-400 hover:text-blue-300">
+          Registrarse con código de invitación
+        </a>
+      </div>
     </div>
   );
 };

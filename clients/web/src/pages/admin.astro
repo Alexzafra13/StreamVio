@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import DashboardPanel from '../components/DashboardPanel';
+import AdminDashboard from '../components/AdminDashboard';
 ---
 
 <Layout title="Panel de Administración | StreamVio">
@@ -9,7 +9,7 @@ import DashboardPanel from '../components/DashboardPanel';
       <h1 class="text-3xl font-bold mb-8 text-center text-blue-500">Panel de Administración</h1>
       
       <div id="dashboard-panel-container">
-        <DashboardPanel client:load />
+        <AdminDashboard client:load />
       </div>
       
       <div id="unauthorized-message" class="hidden text-center py-8">
@@ -24,6 +24,11 @@ import DashboardPanel from '../components/DashboardPanel';
 </Layout>
 
 <script>
+  import apiConfig from "../config/api";
+  
+  // Usar la configuración correcta
+  const API_URL = apiConfig.API_URL;
+  
   document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('streamvio_token');
     const userStr = localStorage.getItem('streamvio_user');
@@ -35,8 +40,14 @@ import DashboardPanel from '../components/DashboardPanel';
     }
     
     try {
-      // Verificar si el usuario es administrador
-      const response = await fetch('http://localhost:8000/api/auth/verify-admin', {
+      // Primero, verificar si el usuario es administrador según localStorage
+      const userData = JSON.parse(userStr);
+      if (!userData.isAdmin && !userData.is_admin) {
+        throw new Error('No es administrador');
+      }
+      
+      // Verificar con el servidor por seguridad
+      const response = await fetch(`${API_URL}/api/auth/verify-admin`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -46,6 +57,7 @@ import DashboardPanel from '../components/DashboardPanel';
         throw new Error('No es administrador');
       }
     } catch (error) {
+      console.error('Error verificando acceso de administrador:', error);
       document.getElementById('dashboard-panel-container').classList.add('hidden');
       document.getElementById('unauthorized-message').classList.remove('hidden');
     }
