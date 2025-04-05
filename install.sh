@@ -99,9 +99,43 @@ get_server_ip() {
   echo "$LOCAL_IP"
 }
 
+# Función para configurar permisos de carpeta de forma recursiva
+configure_folder_permissions() {
+  local folder="$1"
+  local owner="$2"
+  local group="$3"
+  local permissions="$4"
+  local folder_permissions="${5:-775}"
+  
+  if [ ! -d "$folder" ]; then
+    log_error "El directorio $folder no existe."
+    return 1
+  fi
+  
+  # Cambiar propietario y grupo
+  log "Configurando propietario y grupo para $folder a $owner:$group..."
+  chown -R "$owner":"$group" "$folder"
+  check_result "Cambio de propietario para $folder"
+  
+  # Cambiar permisos de archivos
+  log "Configurando permisos para archivos en $folder a $permissions..."
+  find "$folder" -type f -exec chmod "$permissions" {} \;
+  check_result "Cambio de permisos para archivos en $folder"
+  
+  # Cambiar permisos de carpetas
+  log "Configurando permisos para directorios en $folder a $folder_permissions..."
+  find "$folder" -type d -exec chmod "$folder_permissions" {} \;
+  check_result "Cambio de permisos para directorios en $folder"
+  
+  # Configurar bit SGID para carpetas para mantener el grupo
+  log "Configurando bit SGID para directorios en $folder..."
+  find "$folder" -type d -exec chmod g+s {} \;
+  check_result "Configuración de bit SGID para directorios en $folder"
+}
+
 # ===== Inicio del script =====
 echo -e "${BLUE}================================================================${NC}"
-echo -e "${BLUE}         StreamVio - Instalación Unificada v2.0                ${NC}"
+echo -e "${BLUE}         StreamVio - Instalación Unificada v1.0                ${NC}"
 echo -e "${BLUE}================================================================${NC}\n"
 
 log "Iniciando instalación de StreamVio..."
@@ -279,18 +313,7 @@ check_result "Creación de archivo .env del cliente web"
 log "Paso 5/8: ${YELLOW}Configurando permisos de directorios...${NC}"
 show_progress 5 8 "Configurando permisos"
 
-# Configurar permisos del directorio de instalación
-log "Configurando permisos del directorio de instalación..."
-if [ -d "$INSTALL_DIR" ]; then
-    chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "$INSTALL_DIR"
-    # Dar permisos a grupo y otros para leer y ejecutar, propietario tiene control total
-    chmod -R 755 "$INSTALL_DIR"
-    check_result "Configuración de permisos para directorio de instalación"
-else
-    log_error "El directorio de instalación $INSTALL_DIR no existe"
-fi
-
-# Crear directorios necesarios para la base de datos y otros datos con permisos adecuados
+# Crear directorios necesarios para la base de datos y otros datos
 log "Creando directorios de datos..."
 mkdir -p "$INSTALL_DIR/server/data/thumbnails" \
          "$INSTALL_DIR/server/data/transcoded" \
@@ -298,20 +321,22 @@ mkdir -p "$INSTALL_DIR/server/data/thumbnails" \
          "$INSTALL_DIR/server/data/metadata" >> "$INSTALL_LOG" 2>&1
 check_result "Creación de directorios para datos"
 
-# Asegurar permisos correctos para directorios de datos (escritura para streamvio)
-chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "$INSTALL_DIR/server/data"
-chmod -R 755 "$INSTALL_DIR/server/data"
-# Permisos especiales para directorios que necesitan escritura
-find "$INSTALL_DIR/server/data" -type d -exec chmod 775 {} \;
-check_result "Configuración de permisos para directorios de datos"
+# Configurar permisos del directorio de instalación
+log "Configurando permisos del directorio de instalación..."
+chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "$INSTALL_DIR"
+chmod -R 755 "$INSTALL_DIR"
+check_result "Configuración de permisos para directorio de instalación"
 
-# Configurar el directorio de datos para que nuevos archivos hereden grupo
-chmod g+s "$INSTALL_DIR/server/data"
-chmod g+s "$INSTALL_DIR/server/data/thumbnails"
-chmod g+s "$INSTALL_DIR/server/data/transcoded"
-chmod g+s "$INSTALL_DIR/server/data/cache"
-chmod g+s "$INSTALL_DIR/server/data/metadata"
-check_result "Configuración de permisos para herencia de grupo"
+# Configurar permisos especiales para directorio de datos (más permisivos para escritura)
+configure_folder_permissions "$INSTALL_DIR/server/data" "$STREAMVIO_USER" "$STREAMVIO_GROUP" "664" "775"
+
+# Configurar permisos especiales para cliente web (para poder compilar)
+log "Configurando permisos especiales para cliente web..."
+mkdir -p "$INSTALL_DIR/clients/web/.astro"
+# Dar permisos 777 temporalmente para la compilación
+chmod -R 777 "$INSTALL_DIR/clients/web/.astro"
+chmod -R 777 "$INSTALL_DIR/clients/web/node_modules" 2>/dev/null || true
+check_result "Configuración de permisos para compilación del cliente web"
 
 # ===== Paso 6: Instalar dependencias =====
 log "Paso 6/8: ${YELLOW}Instalando dependencias del proyecto...${NC}"
@@ -321,8 +346,16 @@ show_progress 6 8 "Instalando dependencias"
 cd "$INSTALL_DIR/server"
 if [ -f "package.json" ]; then
     log "Instalando dependencias del servidor..."
+    # Usar chmod para asegurar que el directorio node_modules sea escribible
+    mkdir -p "node_modules"
+    chmod 777 "node_modules"
+    
     npm install --production --no-fund --no-audit --loglevel=error >> "$INSTALL_LOG" 2>&1
     check_result "Instalación de dependencias del servidor"
+    
+    # Restaurar permisos de node_modules
+    chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "node_modules"
+    chmod -R 755 "node_modules"
 else
     log_error "No se encontró package.json en el directorio del servidor"
     exit 1
@@ -332,12 +365,40 @@ fi
 cd "$INSTALL_DIR/clients/web"
 if [ -f "package.json" ]; then
     log "Instalando dependencias del cliente web..."
+    # Usar chmod para asegurar que el directorio node_modules sea escribible
+    mkdir -p "node_modules"
+    chmod 777 "node_modules"
+    
+    # Asegurar que los directorios de caché sean escribibles
+    mkdir -p ".astro" ".vite" "dist"
+    chmod 777 ".astro" ".vite" "dist"
+    
     npm install --no-fund --no-audit --loglevel=error >> "$INSTALL_LOG" 2>&1
     check_result "Instalación de dependencias del cliente"
     
     log "Compilando cliente web..."
+    # Temporalmente ejecutamos como root para evitar problemas de permisos
     npm run build >> "$INSTALL_LOG" 2>&1
-    check_result "Compilación del cliente web"
+    
+    if [ $? -ne 0 ]; then
+        log_error "Error en la compilación del cliente. Intentando con sudo npm..."
+        sudo npm run build >> "$INSTALL_LOG" 2>&1
+        check_result "Compilación del cliente web con sudo" "fatal"
+    else
+        log "${GREEN}✓ Compilación del cliente web completada exitosamente${NC}"
+    fi
+    
+    # Asegurar permisos adecuados para el directorio dist
+    if [ -d "dist" ]; then
+        chown -R "$STREAMVIO_USER":"$STREAMVIO_GROUP" "dist"
+        chmod -R 755 "dist"
+        # Asegurar que los archivos estáticos son legibles
+        find "dist" -type f -exec chmod 644 {} \;
+        check_result "Configuración de permisos para directorio dist"
+    else
+        log_error "El directorio dist no se creó correctamente. Verifique los logs de compilación."
+        exit 1
+    fi
 else
     log_error "No se encontró package.json en el directorio del cliente"
     exit 1
@@ -652,6 +713,54 @@ EOF
 chmod +x "$INSTALL_DIR/add-media-folder.sh"
 check_result "Creación de script para añadir carpetas multimedia"
 
+# Crear script para reparar permisos de compilación
+cat > "$INSTALL_DIR/fix-web-permissions.sh" << EOF
+#!/bin/bash
+# Script para reparar permisos de compilación del cliente web
+
+# Colores para mejor legibilidad
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Verificar que se está ejecutando como root
+if [ "\$EUID" -ne 0 ]; then
+    echo -e "${RED}Error: Este script debe ejecutarse con privilegios de administrador (sudo).${NC}"
+    echo -e "${YELLOW}Por favor, ejecuta el script de la siguiente manera:${NC}"
+    echo -e "  sudo ./\$(basename "\$0")"
+    exit 1
+fi
+
+echo -e "${BLUE}=================== REPARACIÓN DE PERMISOS DEL CLIENTE WEB ===================${NC}"
+
+# Directorios a reparar
+WEB_DIR="$INSTALL_DIR/clients/web"
+DIRS_TO_FIX=("\$WEB_DIR/.astro" "\$WEB_DIR/node_modules" "\$WEB_DIR/dist" "\$WEB_DIR/.vite")
+
+# Crear directorios si no existen
+for dir in "\${DIRS_TO_FIX[@]}"; do
+    if [ ! -d "\$dir" ]; then
+        echo -e "${YELLOW}Creando directorio \$dir${NC}"
+        mkdir -p "\$dir"
+    fi
+    
+    echo -e "${YELLOW}Configurando permisos para \$dir${NC}"
+    chmod -R 777 "\$dir"
+    echo -e "${GREEN}✓ Permisos aplicados a \$dir${NC}"
+done
+
+echo -e "\n${GREEN}Permisos reparados. Ahora deberías poder compilar el cliente web.${NC}"
+echo -e "${BLUE}=================== CÓMO COMPILAR ===================${NC}"
+echo -e "  cd $INSTALL_DIR/clients/web"
+echo -e "  npm run build"
+echo -e "${BLUE}===================================================${NC}"
+EOF
+
+chmod +x "$INSTALL_DIR/fix-web-permissions.sh"
+check_result "Creación de script para reparar permisos de compilación"
+
 # Mostrar información final de instalación
 ACTUAL_URL="http://$SERVER_IP:$STREAMVIO_PORT"
 
@@ -674,4 +783,5 @@ echo -e "• Ver estado: ${GREEN}sudo systemctl status streamvio.service${NC}"
 echo -e "\n${YELLOW}Herramientas de mantenimiento:${NC}"
 echo -e "• Verificar permisos: ${GREEN}sudo $INSTALL_DIR/check-permissions.sh${NC}"
 echo -e "• Añadir carpeta multimedia: ${GREEN}sudo $INSTALL_DIR/add-media-folder.sh /ruta/carpeta${NC}"
+echo -e "• Reparar permisos de compilación: ${GREEN}sudo $INSTALL_DIR/fix-web-permissions.sh${NC}"
 echo -e "\n${GREEN}¡Disfruta de StreamVio!${NC}\n"
