@@ -1,4 +1,4 @@
-// src/components/MediaViewer.jsx - Componente revisado
+// src/components/MediaViewer.jsx
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -8,15 +8,18 @@ const API_URL = apiConfig.API_URL;
 function MediaViewer({ mediaId }) {
   const [media, setMedia] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [hlsAvailable, setHLSAvailable] = useState(false);
   const [streamType, setStreamType] = useState("direct"); // 'direct' o 'hls'
+  const [streamUrl, setStreamUrl] = useState("");
+  const [streamingToken, setStreamingToken] = useState(null);
   const playerRef = useRef(null);
   const progressInterval = useRef(null);
-  const [streamUrl, setStreamUrl] = useState("");
+  const tokenRefreshTimeout = useRef(null);
 
   // Cargar información del medio
   useEffect(() => {
@@ -36,59 +39,12 @@ function MediaViewer({ mediaId }) {
         // Si llegamos aquí, la petición fue exitosa
         setMedia(response.data);
         console.log("Datos del medio cargados:", response.data);
-
-        // Verificar si existe streaming HLS
-        if (response.data.file_path) {
-          const filePath = response.data.file_path;
-          // Extraer solo el nombre del archivo sin la ruta completa
-          const fileName = filePath
-            .split(/[\/\\]/)
-            .pop()
-            .split(".")[0];
-          const hlsPath = `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8`;
-
-          console.log("Verificando disponibilidad HLS en:", hlsPath);
-
-          try {
-            // Incluir token como parámetro de consulta para la verificación HLS
-            const authParam = token ? `?auth=${token}` : "";
-            const hlsUrl = `${hlsPath}${authParam}`;
-
-            const hlsResponse = await axios.head(hlsUrl, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-
-            if (hlsResponse.status === 200) {
-              console.log("Streaming HLS disponible");
-              setHLSAvailable(true);
-              setStreamType("hls"); // Usar HLS por defecto si está disponible
-            }
-          } catch (err) {
-            // No hay streaming HLS disponible, seguir con streaming directo
-            console.log("HLS no disponible:", err.message);
-            setHLSAvailable(false);
-          }
-        } else {
-          console.warn("El medio no tiene una ruta de archivo válida");
-          setHLSAvailable(false);
-        }
-
-        // Generar URL del stream con autenticación
-        const url = generateStreamUrl(
-          response.data,
-          token,
-          streamType,
-          hlsAvailable
-        );
-        setStreamUrl(url);
-
         setLoading(false);
       } catch (err) {
         console.error("Error al cargar datos del medio:", err);
 
         // Manejo específico según el tipo de error
         if (err.response) {
-          // El servidor respondió con un código de estado fuera del rango 2xx
           if (err.response.status === 404) {
             setError("El medio solicitado no existe o ha sido eliminado");
           } else if (err.response.status === 401) {
@@ -104,12 +60,10 @@ function MediaViewer({ mediaId }) {
             );
           }
         } else if (err.request) {
-          // La solicitud se realizó pero no se recibió respuesta
           setError(
             "No se pudo conectar con el servidor. Verifica tu conexión a internet"
           );
         } else {
-          // Ocurrió un error durante la configuración de la solicitud
           setError("Error de configuración al intentar cargar el contenido");
         }
 
@@ -119,13 +73,95 @@ function MediaViewer({ mediaId }) {
 
     fetchMedia();
 
-    // Limpiar intervalo al desmontar
+    // Limpiar intervalo y timeout al desmontar
     return () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
       }
+      if (tokenRefreshTimeout.current) {
+        clearTimeout(tokenRefreshTimeout.current);
+      }
     };
   }, [mediaId]);
+
+  // Preparar el streaming y obtener token específico
+  useEffect(() => {
+    if (!media) return;
+
+    const prepareStreaming = async () => {
+      try {
+        setLoadingStream(true);
+        console.log("Preparando streaming para medio:", mediaId);
+
+        const token = localStorage.getItem("streamvio_token");
+        if (!token) {
+          setError("Se requiere autenticación para ver este contenido");
+          setLoadingStream(false);
+          return;
+        }
+
+        // Solicitar token específico para streaming
+        const response = await axios.get(
+          `${API_URL}/api/streaming/${mediaId}/prepare`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        console.log("Información de streaming recibida:", response.data);
+
+        // Verificar si hay soporte para HLS
+        setHLSAvailable(response.data.hasHLS);
+
+        // Guardar token específico para streaming
+        setStreamingToken(response.data);
+
+        // Configurar URL según tipo de streaming
+        if (response.data.hasHLS && streamType === "hls") {
+          setStreamUrl(response.data.hlsStreamUrl);
+        } else {
+          setStreamUrl(response.data.directStreamUrl);
+        }
+
+        // Programar renovación del token antes de que expire
+        if (response.data.expiresAt) {
+          const expiresAt = new Date(response.data.expiresAt).getTime();
+          const now = new Date().getTime();
+
+          // Calcular cuánto falta para que expire (en milisegundos)
+          const timeUntilExpiry = expiresAt - now;
+
+          // Programar renovación 15 minutos antes de que expire
+          const refreshTime = Math.max(timeUntilExpiry - 15 * 60 * 1000, 60000); // Al menos 1 minuto
+
+          if (tokenRefreshTimeout.current) {
+            clearTimeout(tokenRefreshTimeout.current);
+          }
+
+          tokenRefreshTimeout.current = setTimeout(() => {
+            console.log("Renovando token de streaming...");
+            prepareStreaming();
+          }, refreshTime);
+        }
+
+        setLoadingStream(false);
+      } catch (err) {
+        console.error("Error al preparar streaming:", err);
+        if (err.response && err.response.data) {
+          setError(
+            err.response.data.message || "Error al preparar la reproducción"
+          );
+        } else {
+          setError(
+            "Error al preparar la reproducción. Intente de nuevo más tarde."
+          );
+        }
+        setLoadingStream(false);
+      }
+    };
+
+    prepareStreaming();
+  }, [media, mediaId, streamType]);
 
   // Actualizar el progreso periódicamente
   useEffect(() => {
@@ -177,41 +213,9 @@ function MediaViewer({ mediaId }) {
     loadProgress();
   }, [media, mediaId]);
 
-  // Actualizar streamUrl cuando cambia el tipo de stream
-  useEffect(() => {
-    if (media) {
-      const token = localStorage.getItem("streamvio_token");
-      const url = generateStreamUrl(media, token, streamType, hlsAvailable);
-      console.log("Actualizando URL del stream:", url);
-      setStreamUrl(url);
-    }
-  }, [streamType, media, hlsAvailable]);
-
-  // Función para generar la URL de streaming con token de autenticación
-  const generateStreamUrl = (
-    mediaData,
-    token,
-    currentStreamType,
-    isHlsAvailable
-  ) => {
-    if (!mediaData || !mediaData.id) return "";
-
-    const authParam = token ? `?auth=${token}` : "";
-
-    // Determinar el tipo de streaming a usar
-    const useHls = currentStreamType === "hls" && isHlsAvailable;
-
-    if (useHls && mediaData.file_path) {
-      // URL para streaming HLS
-      const fileName = mediaData.file_path
-        .split(/[\/\\]/)
-        .pop()
-        .split(".")[0];
-      return `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8${authParam}`;
-    } else {
-      // URL para streaming directo
-      return `${API_URL}/api/media/${mediaData.id}/stream${authParam}`;
-    }
+  // Cambiar tipo de streaming
+  const handleStreamTypeChange = (e) => {
+    setStreamType(e.target.value);
   };
 
   // Guardar progreso en el servidor
@@ -261,12 +265,9 @@ function MediaViewer({ mediaId }) {
     }
   };
 
-  const handleStreamTypeChange = (e) => {
-    setStreamType(e.target.value);
-  };
-
   // Formatear tiempo en formato MM:SS
   const formatTime = (timeInSeconds) => {
+    if (!timeInSeconds) return "00:00";
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
     return `${minutes.toString().padStart(2, "0")}:${seconds
@@ -291,18 +292,24 @@ function MediaViewer({ mediaId }) {
         return (
           <div className="relative">
             <div className="relative pb-[56.25%] bg-black rounded-lg overflow-hidden">
-              <video
-                ref={playerRef}
-                className="absolute inset-0 w-full h-full"
-                controls
-                autoPlay
-                src={streamUrl}
-                onTimeUpdate={handleTimeUpdate}
-                onDurationChange={handleDurationChange}
-                onEnded={() => saveProgress(duration)}
-              >
-                Tu navegador no soporta el elemento de video.
-              </video>
+              {loadingStream ? (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+              ) : (
+                <video
+                  ref={playerRef}
+                  className="absolute inset-0 w-full h-full"
+                  controls
+                  autoPlay
+                  src={streamUrl}
+                  onTimeUpdate={handleTimeUpdate}
+                  onDurationChange={handleDurationChange}
+                  onEnded={() => saveProgress(duration)}
+                >
+                  Tu navegador no soporta el elemento de video.
+                </video>
+              )}
             </div>
 
             <div className="mt-4 flex flex-col sm:flex-row justify-between items-center">
@@ -310,6 +317,7 @@ function MediaViewer({ mediaId }) {
                 <button
                   onClick={() => playerRef.current?.play()}
                   className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded mr-2"
+                  disabled={loadingStream}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -352,6 +360,7 @@ function MediaViewer({ mediaId }) {
                     value={streamType}
                     onChange={handleStreamTypeChange}
                     className="bg-gray-700 text-white border border-gray-600 rounded p-1 text-sm"
+                    disabled={loadingStream}
                   >
                     <option value="direct">Directo</option>
                     <option value="hls">Adaptativo (HLS)</option>
@@ -460,8 +469,21 @@ function MediaViewer({ mediaId }) {
     );
   }
 
+  // Componente principal
   return (
-    <div className="rounded-lg overflow-hidden">{renderMediaPlayer()}</div>
+    <div className="rounded-lg overflow-hidden">
+      {/* Debug info - solo visible en desarrollo */}
+      {process.env.NODE_ENV === "development" && streamingToken && (
+        <div className="bg-blue-900 p-2 text-xs text-white mb-2 rounded">
+          <p>Token de streaming: {streamingToken.token?.substring(0, 15)}...</p>
+          {streamingToken.expiresAt && (
+            <p>Expira: {new Date(streamingToken.expiresAt).toLocaleString()}</p>
+          )}
+        </div>
+      )}
+
+      {renderMediaPlayer()}
+    </div>
   );
 }
 
