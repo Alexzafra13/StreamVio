@@ -4,6 +4,8 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("../config/database");
 const authMiddleware = require("../middleware/auth");
+const settings = require("../config/settings");
+const crypto = require("crypto");
 
 // Crear router
 const router = express.Router();
@@ -77,7 +79,7 @@ router.post("/setup-first-user", async (req, res) => {
     const userId = result.lastID;
     const token = jwt.sign(
       { id: userId, username, email },
-      process.env.JWT_SECRET || "streamvio_secret_key",
+      settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key",
       { expiresIn: "7d" }
     );
 
@@ -88,6 +90,7 @@ router.post("/setup-first-user", async (req, res) => {
       userId,
       username,
       email,
+      isAdmin: true,
     });
   } catch (error) {
     console.error("Error en configuración inicial:", error);
@@ -140,7 +143,7 @@ router.post("/login", async (req, res) => {
     // Generar token JWT
     const token = jwt.sign(
       { id: user.id, username: user.username, email: user.email },
-      process.env.JWT_SECRET || "streamvio_secret_key",
+      settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key",
       { expiresIn: "7d" }
     );
 
@@ -151,6 +154,7 @@ router.post("/login", async (req, res) => {
       userId: user.id,
       username: user.username,
       email: user.email,
+      isAdmin: user.is_admin === 1,
       requirePasswordChange: user.force_password_change === 1,
     });
   } catch (error) {
@@ -181,10 +185,12 @@ router.post("/register", async (req, res) => {
   try {
     // Verificar límite de usuarios (máximo 10 incluyendo admin)
     const userCount = await db.asyncGet("SELECT COUNT(*) as count FROM users");
-    if (userCount && userCount.count >= 10) {
+    const maxUsers = parseInt(process.env.MAX_USERS || "10");
+
+    if (userCount && userCount.count >= maxUsers) {
       return res.status(400).json({
         error: "Límite alcanzado",
-        message: "Se ha alcanzado el límite máximo de 10 usuarios",
+        message: `Se ha alcanzado el límite máximo de ${maxUsers} usuarios`,
       });
     }
 
@@ -216,7 +222,7 @@ router.post("/register", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Insertar nuevo usuario
+    // Insertar nuevo usuario (no admin por defecto)
     const result = await db.asyncRun(
       "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
       [username, email, hashedPassword]
@@ -226,7 +232,7 @@ router.post("/register", async (req, res) => {
     const userId = result.lastID;
     const token = jwt.sign(
       { id: userId, username, email },
-      process.env.JWT_SECRET || "streamvio_secret_key",
+      settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key",
       { expiresIn: "7d" }
     );
 
@@ -237,6 +243,7 @@ router.post("/register", async (req, res) => {
       userId,
       username,
       email,
+      isAdmin: false,
     });
   } catch (error) {
     console.error("Error en registro:", error);
@@ -420,15 +427,17 @@ router.post("/create-invitation", authMiddleware, async (req, res) => {
 
     // Verificar límite de usuarios (máximo 10 incluyendo admin)
     const userCount = await db.asyncGet("SELECT COUNT(*) as count FROM users");
-    if (userCount && userCount.count >= 10) {
+    const maxUsers = parseInt(process.env.MAX_USERS || "10");
+
+    if (userCount && userCount.count >= maxUsers) {
       return res.status(400).json({
         error: "Límite alcanzado",
-        message: "Se ha alcanzado el límite máximo de 10 usuarios",
+        message: `Se ha alcanzado el límite máximo de ${maxUsers} usuarios`,
       });
     }
 
     // Generar código aleatorio
-    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const code = crypto.randomBytes(4).toString("hex").toUpperCase();
 
     // Establecer fecha de expiración (1 hora desde ahora)
     const expiresAt = new Date();
@@ -558,12 +567,14 @@ router.post("/register-with-invitation", async (req, res) => {
   }
 
   try {
-    // Verificar límite de usuarios (máximo 10 incluyendo admin)
+    // Verificar límite de usuarios (máximo según configuración)
     const userCount = await db.asyncGet("SELECT COUNT(*) as count FROM users");
-    if (userCount && userCount.count >= 10) {
+    const maxUsers = parseInt(process.env.MAX_USERS || "10");
+
+    if (userCount && userCount.count >= maxUsers) {
       return res.status(400).json({
         error: "Límite alcanzado",
-        message: "Se ha alcanzado el límite máximo de 10 usuarios",
+        message: `Se ha alcanzado el límite máximo de ${maxUsers} usuarios`,
       });
     }
 
@@ -626,7 +637,7 @@ router.post("/register-with-invitation", async (req, res) => {
     // Generar token JWT
     const token = jwt.sign(
       { id: userId, username, email },
-      process.env.JWT_SECRET || "streamvio_secret_key",
+      settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key",
       { expiresIn: "7d" }
     );
 
@@ -637,6 +648,7 @@ router.post("/register-with-invitation", async (req, res) => {
       userId,
       username,
       email,
+      isAdmin: false,
     });
   } catch (error) {
     console.error("Error en registro con invitación:", error);
@@ -672,7 +684,7 @@ router.post("/refresh-token", authMiddleware, async (req, res) => {
     // Generar nuevo token JWT
     const newToken = jwt.sign(
       { id: user.id, username: user.username, email: user.email },
-      process.env.JWT_SECRET || "streamvio_secret_key",
+      settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key",
       { expiresIn: "7d" }
     );
 
@@ -691,6 +703,39 @@ router.post("/refresh-token", authMiddleware, async (req, res) => {
     res.status(500).json({
       error: "Error del servidor",
       message: "Error al renovar el token",
+    });
+  }
+});
+
+/**
+ * @route   GET /api/auth/verify-admin
+ * @desc    Verificar si el usuario es administrador
+ * @access  Private
+ */
+router.get("/verify-admin", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await db.asyncGet("SELECT is_admin FROM users WHERE id = ?", [
+      userId,
+    ]);
+
+    if (!user || !user.is_admin) {
+      return res.status(403).json({
+        error: "Acceso denegado",
+        message: "El usuario no tiene privilegios de administrador",
+      });
+    }
+
+    res.json({
+      isAdmin: true,
+      message: "El usuario tiene privilegios de administrador",
+    });
+  } catch (error) {
+    console.error("Error al verificar privilegios de administrador:", error);
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al verificar privilegios de administrador",
     });
   }
 });
