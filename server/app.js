@@ -1,10 +1,11 @@
-// server/app.js - Versión completada y corregida
+// server/app.js - Versión unificada para servir frontend y backend desde el mismo puerto
 const express = require("express");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const cors = require("cors");
 const settings = require("./config/settings");
 const permissionsHelper = require("./utils/permissionsHelper");
 require("dotenv").config();
@@ -26,14 +27,86 @@ const authMiddleware = require("./middleware/auth");
 // Crear aplicación Express
 const app = express();
 
+// Función para verificar y crear directorios necesarios con permisos correctos
+async function setupRequiredDirectories() {
+  const requiredDirs = [
+    path.join(__dirname, "data"),
+    path.join(__dirname, "data/thumbnails"),
+    path.join(__dirname, "data/transcoded"),
+    path.join(__dirname, "data/cache"),
+    path.join(__dirname, "data/metadata"),
+  ];
+
+  console.log("Verificando directorios necesarios...");
+
+  for (const dir of requiredDirs) {
+    try {
+      // Verificar si el directorio existe
+      if (!fs.existsSync(dir)) {
+        console.log(`Creando directorio: ${dir}`);
+        fs.mkdirSync(dir, { recursive: true, mode: 0o775 }); // rwxrwxr-x
+      }
+
+      // Verificar permisos
+      try {
+        // Verificar permisos de escritura
+        const testFile = path.join(dir, `.test-${Date.now()}`);
+        fs.writeFileSync(testFile, "test");
+        fs.unlinkSync(testFile);
+        console.log(`✓ Permisos correctos en: ${dir}`);
+      } catch (permError) {
+        console.error(`⚠️ Error de permisos en ${dir}: ${permError.message}`);
+
+        // Intentar corregir permisos en sistemas Unix
+        if (process.platform !== "win32") {
+          try {
+            console.log(`Intentando corregir permisos para ${dir}...`);
+            fs.chmodSync(dir, 0o775); // rwxrwxr-x
+            console.log(`✓ Permisos corregidos para: ${dir}`);
+          } catch (chmodError) {
+            console.error(
+              `⚠️ No se pudieron corregir los permisos: ${chmodError.message}`
+            );
+            console.error(
+              "Puede que necesites ejecutar la aplicación con permisos de administrador"
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `⚠️ Error al verificar/crear directorio ${dir}: ${error.message}`
+      );
+    }
+  }
+}
+
 // Configurar logger personalizado para problemas de permisos
 const logPermissionIssue = permissionsHelper.logPermissionIssue;
 
 // Middleware
+// Configurar CORS para permitir peticiones desde el frontend durante desarrollo
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Permitir peticiones sin origen (como Postman o curl)
+      if (!origin) return callback(null, true);
+      // En producción, todo servirá desde el mismo origen, así que CORS no es un problema
+      callback(null, true);
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+    maxAge: 86400, // Tiempo de cache de preflight en segundos (24 horas)
+  })
+);
+
 app.use(
   helmet({
     contentSecurityPolicy: false, // Desactivar CSP para permitir que el frontend funcione correctamente
     crossOriginEmbedderPolicy: false, // Permitir carga de recursos cross-origin
+    crossOriginResourcePolicy: false, // Permitir recursos cross-origin
+    crossOriginOpenerPolicy: false, // Permite la comunicación entre ventanas/frames cross-origin
   })
 );
 
@@ -50,36 +123,7 @@ app.use(express.json());
 // Función para configurar la aplicación
 async function setupApp() {
   // Verificar y crear directorios necesarios
-  try {
-    const dataDir = path.join(__dirname, "data");
-    const requiredDirs = [
-      dataDir,
-      path.join(dataDir, "thumbnails"),
-      path.join(dataDir, "transcoded"),
-      path.join(dataDir, "cache"),
-      path.join(dataDir, "metadata"),
-    ];
-
-    const dirResult = await permissionsHelper.createRequiredDirectories(
-      requiredDirs
-    );
-
-    if (!dirResult.success) {
-      console.warn(
-        "⚠️ Algunos directorios no pudieron ser creados o no tienen permisos correctos:"
-      );
-      dirResult.failed.forEach((dir) => {
-        console.warn(`  - ${dir}`);
-      });
-      console.warn("El sistema puede presentar problemas de funcionamiento.");
-    } else {
-      console.log(
-        "✓ Directorios de datos creados y configurados correctamente"
-      );
-    }
-  } catch (error) {
-    console.error("Error al configurar directorios:", error);
-  }
+  await setupRequiredDirectories();
 
   // Definir la ruta al directorio del frontend compilado
   const frontendDistPath = path.join(__dirname, "../clients/web/dist");
@@ -98,6 +142,10 @@ async function setupApp() {
     try {
       // Intentar leer un archivo del directorio para verificar permisos
       fs.accessSync(frontendDistPath, fs.constants.R_OK);
+      console.log(
+        "Frontend compilado encontrado y accesible:",
+        frontendDistPath
+      );
     } catch (error) {
       console.error(
         "⚠️ ERROR DE PERMISOS: No se puede acceder al directorio del frontend:",
@@ -453,9 +501,9 @@ let configuredApp = null;
 
 // Inicializar y configurar la aplicación
 setupApp()
-  .then((configuredApp) => {
+  .then((app) => {
     // Guardar la instancia configurada
-    app.configuredApp = configuredApp;
+    configuredApp = app;
 
     // Solo iniciar el servidor si este archivo se ejecuta directamente,
     // no cuando se importa para tests
