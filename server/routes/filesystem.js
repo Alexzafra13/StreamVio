@@ -1,4 +1,4 @@
-// server/routes/filesystem.js - Versión corregida
+// server/routes/filesystem.js - Versión mejorada
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -6,7 +6,7 @@ const { promisify } = require("util");
 const { execSync } = require("child_process");
 const os = require("os");
 const authMiddleware = require("../middleware/auth");
-const db = require("../config/database"); // Añadido import necesario
+const db = require("../config/database"); // Necesario para verificar permisos de admin
 
 const router = express.Router();
 
@@ -14,6 +14,8 @@ const router = express.Router();
 const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
 const mkdir = promisify(fs.mkdir);
+const access = promisify(fs.access);
+const chmod = promisify(fs.chmod);
 
 /**
  * Normaliza una ruta de archivo para que sea consistente en todos los OS
@@ -219,7 +221,20 @@ router.post("/create-directory", authMiddleware, async (req, res) => {
     const normalizedPath = normalizePath(dirPath);
 
     // Crear el directorio de forma recursiva
-    await mkdir(normalizedPath, { recursive: true });
+    await mkdir(normalizedPath, { recursive: true, mode: 0o775 });
+
+    // Intentar establecer permisos adecuados
+    try {
+      // En sistemas Unix, establecer el bit SGID para que los nuevos archivos hereden el grupo
+      if (process.platform !== "win32") {
+        await chmod(normalizedPath, 0o2775); // Agregar el bit SGID (2)
+      }
+    } catch (permError) {
+      console.warn(
+        `Advertencia: no se pudieron establecer todos los permisos: ${permError.message}`
+      );
+      // Continuamos de todas formas, ya que la carpeta se creó
+    }
 
     res.json({
       message: "Directorio creado exitosamente",
@@ -271,80 +286,111 @@ router.post("/check-permissions", authMiddleware, async (req, res) => {
     const normalizedPath = normalizePath(folderPath);
 
     // 1. Verificar si la carpeta existe
+    let result = {
+      path: normalizedPath,
+      exists: false,
+      isDirectory: false,
+      readAccess: false,
+      writeAccess: false,
+      hasAccess: false,
+      message: null,
+      error: null,
+      details: null,
+      canCreate: false,
+    };
+
     try {
-      fs.accessSync(normalizedPath, fs.constants.F_OK);
+      const stats = await stat(normalizedPath);
+      result.exists = true;
+      result.isDirectory = stats.isDirectory();
+
+      if (!result.isDirectory) {
+        result.error = "NOT_A_DIRECTORY";
+        result.message = "La ruta especificada no es un directorio";
+        return res.json(result);
+      }
     } catch (error) {
       if (error.code === "ENOENT") {
-        return res.status(404).json({
-          hasAccess: false,
-          message: "La carpeta no existe",
-          error: error.code,
-          canCreate: true,
-        });
+        result.error = "FOLDER_NOT_FOUND";
+        result.message = "La carpeta no existe";
+
+        // Verificar si podemos crear la carpeta
+        try {
+          // Verificar permisos en el directorio padre
+          const parentDir = path.dirname(normalizedPath);
+          try {
+            await access(parentDir, fs.constants.W_OK);
+            result.canCreate = true;
+            result.details = "Se puede crear automáticamente esta carpeta";
+          } catch (accessError) {
+            result.canCreate = false;
+            result.details = `No se puede crear la carpeta: ${accessError.message}`;
+          }
+        } catch (parentError) {
+          result.canCreate = false;
+          result.details = `Error al verificar directorio padre: ${parentError.message}`;
+        }
+
+        return res.json(result);
       }
 
-      throw error;
+      result.error = error.code || "UNKNOWN_ERROR";
+      result.message = `Error al acceder a la carpeta: ${error.message}`;
+      return res.json(result);
     }
 
     // 2. Verificar permisos de lectura
     try {
-      fs.accessSync(normalizedPath, fs.constants.R_OK);
+      await access(normalizedPath, fs.constants.R_OK);
+      result.readAccess = true;
     } catch (error) {
-      if (error.code === "EACCES") {
-        return res.json({
-          hasAccess: false,
-          message: "No se tiene permiso de lectura para esta carpeta",
-          error: error.code,
-          details:
-            "El usuario del servicio no puede leer el contenido de esta carpeta",
-        });
-      }
-
-      throw error;
+      result.error = "READ_ACCESS_DENIED";
+      result.message = "No se tiene permiso de lectura para esta carpeta";
+      result.details = error.message;
+      return res.json(result);
     }
 
     // 3. Verificar permisos de escritura
     try {
-      fs.accessSync(normalizedPath, fs.constants.W_OK);
+      await access(normalizedPath, fs.constants.W_OK);
+      result.writeAccess = true;
     } catch (error) {
-      if (error.code === "EACCES") {
-        return res.json({
-          hasAccess: false,
-          message: "No se tiene permiso de escritura para esta carpeta",
-          error: error.code,
-          details: "El usuario del servicio no puede escribir en esta carpeta",
-        });
-      }
-
-      throw error;
+      result.error = "WRITE_ACCESS_DENIED";
+      result.message = "No se tiene permiso de escritura para esta carpeta";
+      result.details = error.message;
+      return res.json(result);
     }
 
     // 4. Intentar crear un archivo temporal para verificar escritura efectiva
     const testFilePath = path.join(
       normalizedPath,
-      ".streamvio-test-" + Date.now()
+      `.streamvio-test-${Date.now()}`
     );
-
     try {
       // Intentar escribir un archivo temporal
       fs.writeFileSync(testFilePath, "test");
       // Si llega aquí, la escritura fue exitosa, eliminar el archivo
       fs.unlinkSync(testFilePath);
+      result.effectiveWrite = true;
     } catch (error) {
-      return res.json({
-        hasAccess: false,
-        message: "No se pudo escribir en la carpeta",
-        error: error.code,
-        details: `Error al intentar crear un archivo de prueba: ${error.message}`,
-      });
+      result.effectiveWrite = false;
+      result.writeError = error.code;
+      result.details = `Error al crear archivo de prueba: ${error.message}`;
+
+      // Si no se puede escribir a pesar de tener permisos, es posible que sea un problema de ACL
+      if (result.writeAccess) {
+        result.error = "EFFECTIVE_WRITE_FAILED";
+        result.message =
+          "No se pudo escribir a pesar de tener permisos aparentes";
+      }
+
+      return res.json(result);
     }
 
-    // Si llegamos aquí, todo está bien
-    res.json({
-      hasAccess: true,
-      message: "Permisos correctos",
-      path: normalizedPath,
-    });
+    // Si llegamos aquí, todos los permisos están correctos
+    result.hasAccess = true;
+    result.message = "La carpeta tiene los permisos correctos";
+    return res.json(result);
   } catch (error) {
     console.error(`Error al verificar permisos para ${folderPath}:`, error);
 
@@ -427,64 +473,116 @@ router.post("/fix-permissions", authMiddleware, async (req, res) => {
     const serviceUser = process.env.SERVICE_USER || "streamvio";
     const serviceGroup = process.env.SERVICE_GROUP || "streamvio";
 
-    let fixCommand;
+    let success = false;
+    let message = "";
+    let details = "";
+    let suggestedCommand = "";
+    let warning = "";
 
     // 2. Intentar reparar permisos según el sistema operativo
     if (process.platform === "win32") {
-      // En Windows, usar icacls para dar permisos
-      fixCommand = `icacls "${normalizedPath}" /grant:r "${
-        os.userInfo().username
-      }":(OI)(CI)F /Q`;
-    } else {
-      // En Linux/Unix, usar chown y chmod
-      // Primero intentamos con comando específico para el usuario del servicio
+      // Windows: usar icacls para dar permisos completos al usuario actual
+      const username = os.userInfo().username;
+
       try {
-        if (process.getuid && process.getuid() === 0) {
-          // Si estamos ejecutando como root, podemos cambiar el propietario
+        // Ejecutar comando de Windows para dar permisos completos
+        execSync(
+          `icacls "${normalizedPath}" /grant:r "${username}":(OI)(CI)F /Q`
+        );
+        success = true;
+        message = "Permisos reparados correctamente en Windows";
+        details = `Permisos otorgados a ${username}`;
+      } catch (error) {
+        console.error(`Error al ejecutar icacls: ${error.message}`);
+
+        // Intentar con un método alternativo
+        try {
+          fs.chmodSync(normalizedPath, 0o777); // rwxrwxrwx - permisos amplios
+          success = true;
+          message = "Permisos reparados usando método alternativo";
+          warning =
+            "Se han establecido permisos muy permisivos. Considere ajustarlos manualmente.";
+        } catch (chmodError) {
+          success = false;
+          message = "Error al reparar permisos en Windows";
+          details = `No se pudo aplicar ningún método de reparación: ${error.message}`;
+          suggestedCommand = `icacls "${normalizedPath}" /grant:r "Todos":(OI)(CI)F /Q`;
+        }
+      }
+    } else {
+      // Linux/Unix: usar chown y chmod
+
+      // Si estamos ejecutando como root, podemos cambiar el propietario
+      if (process.getuid && process.getuid() === 0) {
+        try {
           execSync(
             `chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}"`
           );
           execSync(`chmod -R 775 "${normalizedPath}"`);
-
-          // Opcional: Establecer el bit SGID para heredar el grupo
           execSync(`find "${normalizedPath}" -type d -exec chmod g+s {} \\;`);
 
-          return res.json({
-            success: true,
-            message: "Permisos reparados correctamente como root",
-            details: `Se cambió el propietario a ${serviceUser}:${serviceGroup} y se establecieron permisos 775`,
-          });
+          success = true;
+          message = "Permisos reparados correctamente como root";
+          details = `Se cambió el propietario a ${serviceUser}:${serviceGroup} y se establecieron permisos 775`;
+        } catch (error) {
+          console.error("Error al reparar permisos como root:", error);
+          // Continuar con método alternativo
         }
-      } catch (error) {
-        console.error("Error al reparar permisos como root:", error);
-        // Continuar con alternativa si falla
       }
 
-      // Alternativa: usar chmod para dar permisos a todos
-      try {
-        execSync(`chmod -R 777 "${normalizedPath}"`);
-        return res.json({
-          success: true,
-          message: "Permisos reparados correctamente (modo permisivo)",
-          details:
-            "Se establecieron permisos 777 en la carpeta. Es recomendable ajustar a permisos más restrictivos manualmente.",
-          warning:
-            "Los permisos actuales son muy permisivos. Considera ejecutar el script add-media-folder.sh como root para configurar permisos más seguros.",
-        });
-      } catch (error) {
-        console.error("Error al reparar permisos con chmod:", error);
-        // Si también falla, intentar sugerir un comando sudo
+      // Si no estamos como root o el método anterior falló, intentar con chmod 777
+      if (!success) {
+        try {
+          execSync(`chmod -R 777 "${normalizedPath}"`);
 
-        return res.status(500).json({
-          success: false,
-          message: "No se pudieron reparar los permisos automáticamente",
-          error: error.message,
-          suggestedCommand: `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`,
-          details:
-            "Ejecuta el comando sugerido en una terminal con permisos de administrador",
-        });
+          success = true;
+          message = "Permisos reparados en modo permisivo";
+          details =
+            "Se establecieron permisos 777 (lecturas/escritura/ejecución para todos los usuarios)";
+          warning =
+            "Los permisos actuales son muy permisivos. Considera ejecutar el script add-media-folder.sh como root para una configuración más segura.";
+        } catch (error) {
+          success = false;
+          message = "No se pudieron reparar los permisos automáticamente";
+          details = `Error: ${error.message}`;
+          suggestedCommand = `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`;
+        }
       }
     }
+
+    // 3. Verificar si los permisos se aplicaron correctamente
+    if (success) {
+      // Hacer una prueba de escritura para confirmar
+      try {
+        const testFilePath = path.join(
+          normalizedPath,
+          `.streamvio-test-${Date.now()}`
+        );
+        fs.writeFileSync(testFilePath, "test");
+        fs.unlinkSync(testFilePath);
+      } catch (testError) {
+        // La reparación no funcionó completamente
+        success = false;
+        message = "La reparación no fue completamente exitosa";
+        details = `Se aplicaron los cambios pero sigue habiendo problemas: ${testError.message}`;
+        if (!suggestedCommand) {
+          suggestedCommand =
+            process.platform === "win32"
+              ? `icacls "${normalizedPath}" /grant:r "Todos":(OI)(CI)F /Q`
+              : `sudo chmod -R 777 "${normalizedPath}"`;
+        }
+      }
+    }
+
+    // 4. Devolver resultado
+    return res.json({
+      success,
+      message,
+      details,
+      suggestedCommand,
+      warning,
+      path: normalizedPath,
+    });
   } catch (error) {
     console.error(`Error al reparar permisos para ${folderPath}:`, error);
 
