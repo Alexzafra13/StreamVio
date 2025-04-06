@@ -398,10 +398,44 @@ function ImprovedLibraryManager() {
 
       {error && (
         <div className="bg-red-600 text-white p-4 rounded mb-6">
-          {error}
-          <button onClick={() => setError(null)} className="float-right">
-            &times;
-          </button>
+          <div className="flex justify-between">
+            <div>
+              <p className="font-semibold mb-1">Error:</p>
+              <p>{error}</p>
+
+              {error.includes("crear carpeta") && (
+                <ul className="list-disc list-inside mt-2 text-sm">
+                  <li>Verifica que la ruta seleccionada sea accesible</li>
+                  <li>
+                    Asegúrate de que el usuario del servidor tenga permisos para
+                    escribir en esa ubicación
+                  </li>
+                  <li>
+                    Intenta crear la carpeta en una ubicación diferente con
+                    menos restricciones
+                  </li>
+                  <li>
+                    En Linux puede ser necesario ejecutar el script
+                    add-media-folder.sh como sudo
+                  </li>
+                </ul>
+              )}
+
+              {error.includes("permisos") && (
+                <p className="mt-2 text-sm">
+                  Usa la función "Verificar permisos" para diagnosticar y
+                  reparar problemas de acceso.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-white hover:text-gray-200 font-bold text-xl"
+              title="Cerrar mensaje"
+            >
+              &times;
+            </button>
+          </div>
         </div>
       )}
 
@@ -425,6 +459,29 @@ function ImprovedLibraryManager() {
             onSelect={handleDirectorySelect}
             onCancel={handleBrowserCancel}
           />
+          <div className="mt-3 bg-blue-900 bg-opacity-50 p-3 rounded-lg text-sm">
+            <h4 className="font-semibold mb-1">
+              Consejos para bibliotecas de medios:
+            </h4>
+            <ul className="list-disc list-inside text-gray-300 space-y-1">
+              <li>
+                Selecciona una carpeta donde tengas permisos de
+                lectura/escritura
+              </li>
+              <li>En Windows, evita rutas en C:/Windows o C:/Program Files</li>
+              <li>
+                En Linux, considera usar carpetas en /home/usuario o /var/media
+              </li>
+              <li>
+                Si encuentras errores de permisos, usa la función "Verificar
+                permisos"
+              </li>
+              <li>
+                Para carpetas de red, asegúrate de que estén montadas antes de
+                escanear
+              </li>
+            </ul>
+          </div>
         </div>
       )}
 

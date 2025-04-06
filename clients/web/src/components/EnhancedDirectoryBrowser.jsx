@@ -66,12 +66,22 @@ function EnhancedDirectoryBrowser({ initialPath = "", onSelect, onCancel }) {
     // Determinar la ruta base según el sistema operativo
     let basePath = "";
 
-    // En sistemas Windows, usar C:\streamviomedia
-    // En sistemas Unix/Linux, usar /opt/streamviomedia
+    // En sistemas Windows, intentar ubicaciones más accesibles primero
     if (rootDirectories.some((dir) => dir.path.includes("C:"))) {
+      // En Windows, intentar crear en la raíz del disco C:
       basePath = "C:/streamviomedia";
     } else {
-      basePath = "/opt/streamviomedia";
+      // En Unix/Linux, intentar ubicaciones con más probabilidad de tener permisos
+      // Primero intentamos carpeta home del usuario actual
+      const homeDir = rootDirectories.find(
+        (dir) => dir.path.includes("home") || dir.path.includes("Users")
+      );
+      if (homeDir) {
+        basePath = `${homeDir.path}/streamviomedia`;
+      } else {
+        // Ubicación alternativa más permisiva
+        basePath = "/tmp/streamviomedia";
+      }
     }
 
     try {
@@ -90,15 +100,50 @@ function EnhancedDirectoryBrowser({ initialPath = "", onSelect, onCancel }) {
 
       // Si no existe, crearla
       if (!checkResponse.data.exists) {
-        await axios.post(
-          `${API_URL}/api/filesystem/create-directory`,
-          { path: basePath },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+        try {
+          await axios.post(
+            `${API_URL}/api/filesystem/create-directory`,
+            { path: basePath },
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          console.log("Carpeta por defecto creada con éxito:", basePath);
+        } catch (createError) {
+          console.error("Error al crear carpeta por defecto:", createError);
+
+          // Si falla, intentar con una ubicación alternativa
+          if (basePath.includes("C:")) {
+            // Si estamos en Windows e intentó C:, probar en Documentos
+            basePath = "C:/Users/Public/Documents/streamviomedia";
+          } else {
+            // En Linux, intentar una ubicación más permisiva
+            basePath = "/tmp/streamviomedia";
           }
-        );
+
+          // Intentar crear la carpeta alternativa
+          try {
+            await axios.post(
+              `${API_URL}/api/filesystem/create-directory`,
+              { path: basePath },
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+            console.log("Carpeta alternativa creada con éxito:", basePath);
+          } catch (finalError) {
+            console.error(
+              "No se pudo crear carpeta en ubicación alternativa:",
+              finalError
+            );
+            // En caso de fallo, simplemente continuamos sin crear carpeta
+            return;
+          }
+        }
       }
 
       // Navegar a esa carpeta
@@ -155,6 +200,15 @@ function EnhancedDirectoryBrowser({ initialPath = "", onSelect, onCancel }) {
       return;
     }
 
+    // Validar que el nombre no contenga caracteres no permitidos
+    const invalidChars = /[\\/:*?"<>|]/;
+    if (invalidChars.test(newFolderName)) {
+      setError(
+        'El nombre contiene caracteres no permitidos: \\ / : * ? " < > |'
+      );
+      return;
+    }
+
     try {
       setCreatingFolder(true);
       const token = localStorage.getItem("streamvio_token");
@@ -167,26 +221,42 @@ function EnhancedDirectoryBrowser({ initialPath = "", onSelect, onCancel }) {
         ? `${currentPath}/${newFolderName}`.replace(/\/\//g, "/")
         : newFolderName;
 
-      await axios.post(
-        `${API_URL}/api/filesystem/create-directory`,
-        { path: folderPath },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+      console.log("Intentando crear carpeta en:", folderPath);
+
+      try {
+        await axios.post(
+          `${API_URL}/api/filesystem/create-directory`,
+          { path: folderPath },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        // Refrescar el directorio actual
+        browseDirectory(currentPath);
+
+        // Limpiar estado
+        setNewFolderName("");
+        setShowNewFolderInput(false);
+        setError(null);
+      } catch (err) {
+        console.error("Error al crear carpeta:", err);
+
+        if (err.response && err.response.status === 500) {
+          setError(
+            "Error del servidor al crear la carpeta. Es posible que no tengas permisos suficientes en esta ubicación. Intenta en otra ubicación o contacta al administrador."
+          );
+        } else if (err.response && err.response.status === 403) {
+          setError("No tienes permiso para crear carpetas en esta ubicación.");
+        } else {
+          setError(err.response?.data?.message || "Error al crear carpeta");
         }
-      );
-
-      // Refrescar el directorio actual
-      browseDirectory(currentPath);
-
-      // Limpiar estado
-      setNewFolderName("");
-      setShowNewFolderInput(false);
-      setError(null);
+      }
     } catch (err) {
-      console.error("Error al crear carpeta:", err);
-      setError(err.response?.data?.message || "Error al crear carpeta");
+      console.error("Error general al crear carpeta:", err);
+      setError("Error inesperado al intentar crear la carpeta.");
     } finally {
       setCreatingFolder(false);
     }
