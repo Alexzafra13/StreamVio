@@ -1309,6 +1309,12 @@ mkdir -p "$INSTALL_DIR/server/scripts/system"
 SUDOERS_FILE="$INSTALL_DIR/server/scripts/system/streamvio_sudoers"
 SUDOERS_DEST="/etc/sudoers.d/streamvio"
 
+# Verificar que INSTALL_DIR no esté vacío
+if [ -z "$INSTALL_DIR" ]; then
+    log_error "INSTALL_DIR no está definido. No se puede configurar sudoers."
+    exit 1
+fi
+
 # Crear el archivo de configuración de sudoers
 cat > "$SUDOERS_FILE" << EOF
 # Permitir al usuario streamvio ejecutar comandos específicos sin contraseña
@@ -1318,6 +1324,12 @@ $STREAMVIO_USER ALL=(root) NOPASSWD: \
     /bin/chmod -R 755 $INSTALL_DIR/clients/web/dist
 EOF
 
+# Verificar que el archivo se creó correctamente
+if [ ! -f "$SUDOERS_FILE" ]; then
+    log_error "No se pudo crear el archivo de sudoers en $SUDOERS_FILE"
+    exit 1
+fi
+
 # Intentar instalar la configuración de sudoers si se ejecuta como root
 if [ "$EUID" -eq 0 ]; then
     # Asegurarse de que el directorio /etc/sudoers.d existe
@@ -1326,6 +1338,12 @@ if [ "$EUID" -eq 0 ]; then
     # Copiar el archivo de configuración
     cp "$SUDOERS_FILE" "$SUDOERS_DEST"
     
+    # Comprobar que se copió correctamente
+    if [ ! -f "$SUDOERS_DEST" ]; then
+        log_error "No se pudo copiar el archivo de sudoers a $SUDOERS_DEST"
+        exit 1
+    fi
+
     # Establecer permisos correctos
     chmod 440 "$SUDOERS_DEST"
     
@@ -1336,6 +1354,7 @@ if [ "$EUID" -eq 0 ]; then
         log_error "Error en la configuración de sudoers"
         # Eliminar el archivo si la validación falla
         rm -f "$SUDOERS_DEST"
+        exit 1
     fi
 else
     log "${YELLOW}Para habilitar reparación de permisos, ejecuta como root:${NC}"
