@@ -1,23 +1,23 @@
-// server/routes/media.js - Versión mejorada con mejor manejo de tokens
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const router = express.Router();
 const db = require("../config/database");
-const authMiddleware = require("../middleware/auth");
+const enhancedAuthMiddleware = require("../middleware/enhancedAuth"); // Usamos enhancedAuthMiddleware consistentemente
 const jwt = require("jsonwebtoken"); // Añadimos JWT para decodificar tokens en query params
 const libraryAccessMiddleware = require("../middleware/libraryAccess");
+const settings = require("../config/settings"); // Añadimos la importación faltante de settings
 
 // Middleware de autenticación para todas las rutas de este router
 // Excepto para stream y thumbnail que necesitan manejo especial de tokens
-router.use(/^(?!.*\/(stream|thumbnail)).*$/, authMiddleware);
+router.use(/^(?!.*\/(stream|thumbnail)).*$/, enhancedAuthMiddleware);
 
 /**
  * @route   GET /api/media
  * @desc    Obtener todos los elementos multimedia con filtros
  * @access  Private
  */
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", enhancedAuthMiddleware, async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -280,7 +280,7 @@ router.get("/", authMiddleware, async (req, res) => {
  * @desc    Obtener un elemento multimedia por ID
  * @access  Private
  */
-router.get("/:id", authMiddleware, async (req, res) => {
+router.get("/:id", enhancedAuthMiddleware, async (req, res) => {
   const mediaId = req.params.id;
 
   try {
@@ -424,7 +424,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
  * @desc    Actualizar un elemento multimedia
  * @access  Private
  */
-router.put("/:id", authMiddleware, async (req, res) => {
+router.put("/:id", enhancedAuthMiddleware, async (req, res) => {
   const mediaId = req.params.id;
   const {
     title,
@@ -670,7 +670,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
  * @desc    Eliminar un elemento multimedia
  * @access  Private
  */
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.delete("/:id", enhancedAuthMiddleware, async (req, res) => {
   const mediaId = req.params.id;
 
   try {
@@ -937,7 +937,7 @@ router.get("/:id/stream", async (req, res) => {
  * @desc    Guardar el progreso de reproducción
  * @access  Private
  */
-router.post("/:id/progress", authMiddleware, async (req, res) => {
+router.post("/:id/progress", enhancedAuthMiddleware, async (req, res) => {
   const mediaId = req.params.id;
   const userId = req.user.id;
   const { position, completed } = req.body;
@@ -1039,7 +1039,7 @@ router.post("/:id/progress", authMiddleware, async (req, res) => {
  * @desc    Obtener el progreso de reproducción
  * @access  Private
  */
-router.get("/:id/progress", authMiddleware, async (req, res) => {
+router.get("/:id/progress", enhancedAuthMiddleware, async (req, res) => {
   const mediaId = req.params.id;
   const userId = req.user.id;
 
