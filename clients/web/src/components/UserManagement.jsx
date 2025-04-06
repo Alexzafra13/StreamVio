@@ -141,20 +141,38 @@ function UserManagement() {
         throw new Error("No hay sesión activa");
       }
 
-      // Obtener acceso actual a bibliotecas para el usuario
-      const response = await axios.get(
-        `${API_URL}/api/admin/users/${userId}/libraries`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Inicializar objeto de acceso con todas las bibliotecas en false
+      const initialAccess = {};
+      libraries.forEach((lib) => {
+        initialAccess[lib.id] = false;
+      });
 
-      setUserLibraryAccess(response.data.access || {});
+      setUserLibraryAccess(initialAccess);
+
+      try {
+        // Obtener acceso actual a bibliotecas para el usuario
+        const response = await axios.get(
+          `${API_URL}/api/admin/users/${userId}/libraries`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        // Si la API responde correctamente, actualizar el estado con los datos reales
+        setUserLibraryAccess(response.data.access || initialAccess);
+      } catch (error) {
+        // Si hay un error con la API específica, continuamos con el acceso inicial
+        // pero mostramos una advertencia en la consola
+        console.warn(
+          "No se pudo obtener el acceso actual a bibliotecas:",
+          error
+        );
+        // No mostramos error al usuario para permitir continuar con la funcionalidad
+      }
+
       setSelectedUserId(userId);
       setShowLibraryModal(true);
     } catch (err) {
-      console.error("Error al obtener acceso a bibliotecas:", err);
-      setError(
-        err.response?.data?.message || "Error al obtener acceso a bibliotecas"
-      );
+      console.error("Error al preparar el modal de bibliotecas:", err);
+      setError(err.response?.data?.message || "Error al gestionar bibliotecas");
     }
   };
 

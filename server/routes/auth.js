@@ -442,14 +442,19 @@ router.post("/create-invitation", authMiddleware, async (req, res) => {
     // Generar código aleatorio
     const code = crypto.randomBytes(4).toString("hex").toUpperCase();
 
-    // Calcular fecha de expiración (1 hora desde ahora)
-    // IMPORTANTE: Modificar esta parte para usar formato compatible con SQLite
-    // En lugar de usar un objeto Date, usamos directamente una expresión SQL
+    // Calcular fecha de expiración con formato explícito para SQLite (1 hora desde ahora)
+    // Asegurar que estamos usando el formato correcto para SQLite
+    const nowTime = Math.floor(Date.now() / 1000); // Tiempo actual en segundos
+    const oneHourInSeconds = 60 * 60; // 1 hora en segundos
+    const expiryTime = nowTime + oneHourInSeconds;
+
+    // Usar timestamp directo en formato de cadena ISO para SQLite
+    const expiryDate = new Date(expiryTime * 1000).toISOString();
 
     await db.asyncRun(
       `INSERT INTO invitation_codes (code, created_by, expires_at) 
-       VALUES (?, ?, datetime('now', '+1 hour'))`,
-      [code, userId]
+       VALUES (?, ?, ?)`,
+      [code, userId, expiryDate]
     );
 
     // Obtener la fecha de expiración para incluirla en la respuesta
@@ -530,10 +535,12 @@ router.get("/verify-invitation", async (req, res) => {
   }
 
   try {
-    // Verificar si el código es válido y no ha expirado
+    // Verificar si el código es válido y no ha expirado usando comparación adecuada para SQLite
     const invitation = await db.asyncGet(
       `SELECT * FROM invitation_codes 
-       WHERE code = ? AND used = 0 AND expires_at > datetime('now')`,
+       WHERE code = ? 
+       AND used = 0 
+       AND datetime(expires_at) > datetime('now')`,
       [code]
     );
 
