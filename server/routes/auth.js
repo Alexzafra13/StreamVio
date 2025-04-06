@@ -442,21 +442,26 @@ router.post("/create-invitation", authMiddleware, async (req, res) => {
     // Generar código aleatorio
     const code = crypto.randomBytes(4).toString("hex").toUpperCase();
 
-    // Establecer fecha de expiración (1 hora desde ahora)
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1);
+    // Calcular fecha de expiración (1 hora desde ahora)
+    // IMPORTANTE: Modificar esta parte para usar formato compatible con SQLite
+    // En lugar de usar un objeto Date, usamos directamente una expresión SQL
 
-    // Guardar código en la base de datos
     await db.asyncRun(
       `INSERT INTO invitation_codes (code, created_by, expires_at) 
-       VALUES (?, ?, datetime(?))`,
-      [code, userId, expiresAt.toISOString()]
+       VALUES (?, ?, datetime('now', '+1 hour'))`,
+      [code, userId]
+    );
+
+    // Obtener la fecha de expiración para incluirla en la respuesta
+    const invitation = await db.asyncGet(
+      "SELECT code, expires_at FROM invitation_codes WHERE code = ?",
+      [code]
     );
 
     res.status(201).json({
       message: "Código de invitación creado exitosamente",
       code,
-      expiresAt,
+      expiresAt: invitation.expires_at,
     });
   } catch (error) {
     console.error("Error al crear código de invitación:", error);
@@ -739,6 +744,213 @@ router.get("/verify-admin", authMiddleware, async (req, res) => {
     res.status(500).json({
       error: "Error del servidor",
       message: "Error al verificar privilegios de administrador",
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/admin/users/:id
+ * @desc    Eliminar un usuario
+ * @access  Admin
+ */
+router.delete("/users/:id", async (req, res) => {
+  const userId = req.params.id;
+
+  try {
+    // Verificar que el usuario existe
+    const user = await db.asyncGet("SELECT * FROM users WHERE id = ?", [
+      userId,
+    ]);
+
+    if (!user) {
+      return res.status(404).json({
+        error: "No encontrado",
+        message: "Usuario no encontrado",
+      });
+    }
+
+    // No permitir eliminar al propio usuario administrador
+    if (userId == req.user.id) {
+      return res.status(400).json({
+        error: "Operación no permitida",
+        message: "No puedes eliminar tu propio usuario",
+      });
+    }
+
+    // Comenzar transacción para eliminar usuario y sus datos relacionados
+    await db.asyncRun("BEGIN TRANSACTION");
+
+    // Eliminar datos relacionados (favoritos, historial, etc.)
+    await db.asyncRun("DELETE FROM favorites WHERE user_id = ?", [userId]);
+    await db.asyncRun("DELETE FROM watch_history WHERE user_id = ?", [userId]);
+    await db.asyncRun("DELETE FROM user_settings WHERE user_id = ?", [userId]);
+    await db.asyncRun("DELETE FROM sessions WHERE user_id = ?", [userId]);
+
+    // Finalmente eliminar el usuario
+    await db.asyncRun("DELETE FROM users WHERE id = ?", [userId]);
+
+    // Confirmar transacción
+    await db.asyncRun("COMMIT");
+
+    res.json({
+      message: "Usuario eliminado correctamente",
+      userId: userId,
+    });
+  } catch (error) {
+    // Hacer rollback en caso de error
+    await db.asyncRun("ROLLBACK");
+
+    console.error(`Error al eliminar usuario ${userId}:`, error);
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al eliminar el usuario",
+    });
+  }
+});
+
+/**
+ * @route   GET /api/admin/users/:id/libraries
+ * @desc    Obtener acceso a bibliotecas de un usuario
+ * @access  Admin
+ */
+router.get("/users/:id/libraries", async (req, res) => {
+  const userId = req.params.id;
+
+  try {
+    // Verificar que el usuario existe
+    const user = await db.asyncGet("SELECT id FROM users WHERE id = ?", [
+      userId,
+    ]);
+
+    if (!user) {
+      return res.status(404).json({
+        error: "No encontrado",
+        message: "Usuario no encontrado",
+      });
+    }
+
+    // Obtener todas las bibliotecas
+    const libraries = await db.asyncAll("SELECT id FROM libraries");
+
+    // Obtener permisos actuales del usuario
+    const userPermissions = await db.asyncAll(
+      "SELECT library_id, has_access FROM user_library_access WHERE user_id = ?",
+      [userId]
+    );
+
+    // Convertir a un objeto para fácil acceso
+    const access = {};
+    userPermissions.forEach((perm) => {
+      access[perm.library_id] = perm.has_access === 1;
+    });
+
+    // Los administradores tienen acceso implícito a todas las bibliotecas
+    const isAdmin = await db.asyncGet(
+      "SELECT is_admin FROM users WHERE id = ?",
+      [userId]
+    );
+    const implicitAccess = isAdmin && isAdmin.is_admin === 1;
+
+    // Si el usuario es admin, establecer acceso a todas las bibliotecas
+    if (implicitAccess) {
+      libraries.forEach((library) => {
+        if (access[library.id] === undefined) {
+          access[library.id] = true;
+        }
+      });
+    }
+
+    res.json({
+      userId,
+      access,
+      implicitAccess,
+    });
+  } catch (error) {
+    console.error(
+      `Error al obtener acceso a bibliotecas para usuario ${userId}:`,
+      error
+    );
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al obtener acceso a bibliotecas",
+    });
+  }
+});
+
+/**
+ * @route   POST /api/admin/users/:id/libraries
+ * @desc    Actualizar acceso a bibliotecas de un usuario
+ * @access  Admin
+ */
+router.post("/users/:id/libraries", async (req, res) => {
+  const userId = req.params.id;
+  const { access } = req.body;
+
+  if (!access || typeof access !== "object") {
+    return res.status(400).json({
+      error: "Datos inválidos",
+      message: "Se requiere un objeto 'access' con los permisos",
+    });
+  }
+
+  try {
+    // Verificar que el usuario existe
+    const user = await db.asyncGet(
+      "SELECT id, is_admin FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        error: "No encontrado",
+        message: "Usuario no encontrado",
+      });
+    }
+
+    // Si el usuario es administrador, no necesita permisos específicos
+    if (user.is_admin === 1) {
+      return res.json({
+        message: "Los administradores tienen acceso a todas las bibliotecas",
+        userId,
+      });
+    }
+
+    // Iniciar transacción
+    await db.asyncRun("BEGIN TRANSACTION");
+
+    // Eliminar permisos actuales
+    await db.asyncRun("DELETE FROM user_library_access WHERE user_id = ?", [
+      userId,
+    ]);
+
+    // Insertar nuevos permisos
+    for (const [libraryId, hasAccess] of Object.entries(access)) {
+      if (hasAccess) {
+        await db.asyncRun(
+          "INSERT INTO user_library_access (user_id, library_id, has_access) VALUES (?, ?, 1)",
+          [userId, libraryId]
+        );
+      }
+    }
+
+    // Confirmar transacción
+    await db.asyncRun("COMMIT");
+
+    res.json({
+      message: "Acceso a bibliotecas actualizado correctamente",
+      userId,
+    });
+  } catch (error) {
+    // Hacer rollback en caso de error
+    await db.asyncRun("ROLLBACK");
+
+    console.error(
+      `Error al actualizar permisos de biblioteca para usuario ${userId}:`,
+      error
+    );
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al actualizar acceso a bibliotecas",
     });
   }
 });

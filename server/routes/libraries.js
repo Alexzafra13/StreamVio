@@ -6,6 +6,7 @@ const router = express.Router();
 const db = require("../config/database");
 const authMiddleware = require("../middleware/auth");
 const mediaScanner = require("../services/mediaScanner");
+const libraryAccessMiddleware = require("../middleware/libraryAccess");
 
 // Middleware de autenticación para todas las rutas de este router
 router.use(authMiddleware);
@@ -17,9 +18,29 @@ router.use(authMiddleware);
  */
 router.get("/", async (req, res) => {
   try {
-    const libraries = await db.asyncAll(
-      "SELECT * FROM libraries ORDER BY name"
-    );
+    // Verificar si el usuario es administrador (admin ve todas las bibliotecas)
+    const userId = req.user.id;
+    const user = await db.asyncGet("SELECT is_admin FROM users WHERE id = ?", [
+      userId,
+    ]);
+    const isAdmin = user && user.is_admin === 1;
+
+    let libraries;
+
+    if (isAdmin) {
+      // Obtener todas las bibliotecas para los administradores
+      libraries = await db.asyncAll("SELECT * FROM libraries ORDER BY name");
+    } else {
+      // Para usuarios normales, solo mostrar bibliotecas a las que tienen acceso
+      libraries = await db.asyncAll(
+        `SELECT l.* 
+         FROM libraries l
+         JOIN user_library_access ula ON l.id = ula.library_id
+         WHERE ula.user_id = ? AND ula.has_access = 1
+         ORDER BY l.name`,
+        [userId]
+      );
+    }
 
     // Para cada biblioteca, obtener el número de elementos
     for (let i = 0; i < libraries.length; i++) {
@@ -45,7 +66,7 @@ router.get("/", async (req, res) => {
  * @desc    Obtener una biblioteca por ID
  * @access  Private
  */
-router.get("/:id", async (req, res) => {
+router.get("/:id", libraryAccessMiddleware, async (req, res) => {
   const libraryId = req.params.id;
 
   try {
@@ -147,6 +168,20 @@ router.post("/", async (req, res) => {
 
     const libraryId = result.lastID;
 
+    // Verificar si el usuario es administrador
+    const userId = req.user.id;
+    const user = await db.asyncGet("SELECT is_admin FROM users WHERE id = ?", [
+      userId,
+    ]);
+
+    // Si no es administrador, dar acceso a la biblioteca recién creada
+    if (!user || user.is_admin !== 1) {
+      await db.asyncRun(
+        "INSERT INTO user_library_access (user_id, library_id, has_access) VALUES (?, ?, 1)",
+        [userId, libraryId]
+      );
+    }
+
     // Obtener la biblioteca recién creada
     const newLibrary = await db.asyncGet(
       "SELECT * FROM libraries WHERE id = ?",
@@ -171,7 +206,7 @@ router.post("/", async (req, res) => {
  * @desc    Actualizar una biblioteca
  * @access  Private
  */
-router.put("/:id", async (req, res) => {
+router.put("/:id", libraryAccessMiddleware, async (req, res) => {
   const libraryId = req.params.id;
   const { name, path: libraryPath, type, scan_automatically } = req.body;
 
@@ -296,7 +331,7 @@ router.put("/:id", async (req, res) => {
  * @desc    Eliminar una biblioteca
  * @access  Private
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", libraryAccessMiddleware, async (req, res) => {
   const libraryId = req.params.id;
 
   try {
@@ -314,6 +349,11 @@ router.delete("/:id", async (req, res) => {
 
     // Eliminar los elementos de la biblioteca
     await db.asyncRun("DELETE FROM media_items WHERE library_id = ?", [
+      libraryId,
+    ]);
+
+    // Eliminar los permisos de acceso asociados a esta biblioteca
+    await db.asyncRun("DELETE FROM user_library_access WHERE library_id = ?", [
       libraryId,
     ]);
 
@@ -338,7 +378,7 @@ router.delete("/:id", async (req, res) => {
  * @desc    Escanear una biblioteca
  * @access  Private
  */
-router.post("/:id/scan", async (req, res) => {
+router.post("/:id/scan", libraryAccessMiddleware, async (req, res) => {
   const libraryId = req.params.id;
 
   try {
@@ -395,7 +435,7 @@ router.post("/:id/scan", async (req, res) => {
  * @desc    Obtener elementos multimedia de una biblioteca
  * @access  Private
  */
-router.get("/:id/media", async (req, res) => {
+router.get("/:id/media", libraryAccessMiddleware, async (req, res) => {
   const libraryId = req.params.id;
   const { page = 1, limit = 20, sort = "title", order = "asc" } = req.query;
 
@@ -470,6 +510,199 @@ router.get("/:id/media", async (req, res) => {
     res.status(500).json({
       error: "Error del servidor",
       message: "Error al obtener elementos multimedia",
+    });
+  }
+});
+
+/**
+ * @route   POST /api/libraries/:id/users
+ * @desc    Agregar o eliminar acceso de usuario a una biblioteca
+ * @access  Private (Admins)
+ */
+router.post("/:id/users", authMiddleware, async (req, res) => {
+  const libraryId = req.params.id;
+  const { userId, hasAccess } = req.body;
+
+  // Validar datos
+  if (userId === undefined) {
+    return res.status(400).json({
+      error: "Datos incompletos",
+      message: "Se requiere especificar un ID de usuario",
+    });
+  }
+
+  const access = hasAccess === undefined ? true : !!hasAccess;
+
+  try {
+    // Verificar si el usuario actual es administrador
+    const currentUserId = req.user.id;
+    const currentUser = await db.asyncGet(
+      "SELECT is_admin FROM users WHERE id = ?",
+      [currentUserId]
+    );
+
+    if (!currentUser || currentUser.is_admin !== 1) {
+      return res.status(403).json({
+        error: "Acceso denegado",
+        message:
+          "Solo los administradores pueden gestionar el acceso a bibliotecas",
+      });
+    }
+
+    // Verificar si la biblioteca existe
+    const library = await db.asyncGet("SELECT * FROM libraries WHERE id = ?", [
+      libraryId,
+    ]);
+    if (!library) {
+      return res.status(404).json({
+        error: "No encontrado",
+        message: "Biblioteca no encontrada",
+      });
+    }
+
+    // Verificar si el usuario existe
+    const user = await db.asyncGet("SELECT * FROM users WHERE id = ?", [
+      userId,
+    ]);
+    if (!user) {
+      return res.status(404).json({
+        error: "No encontrado",
+        message: "Usuario no encontrado",
+      });
+    }
+
+    // Los administradores no necesitan permisos explícitos
+    if (user.is_admin === 1) {
+      return res.json({
+        message:
+          "Los administradores tienen acceso implícito a todas las bibliotecas",
+        libraryId: Number(libraryId),
+        userId: Number(userId),
+        hasAccess: true,
+      });
+    }
+
+    // Verificar si ya existe un registro para este usuario y biblioteca
+    const existingAccess = await db.asyncGet(
+      "SELECT * FROM user_library_access WHERE user_id = ? AND library_id = ?",
+      [userId, libraryId]
+    );
+
+    if (existingAccess) {
+      if (access) {
+        // Actualizar a acceso permitido
+        await db.asyncRun(
+          "UPDATE user_library_access SET has_access = 1 WHERE user_id = ? AND library_id = ?",
+          [userId, libraryId]
+        );
+      } else {
+        // Eliminar acceso
+        await db.asyncRun(
+          "DELETE FROM user_library_access WHERE user_id = ? AND library_id = ?",
+          [userId, libraryId]
+        );
+      }
+    } else if (access) {
+      // Crear nuevo acceso si se está otorgando
+      await db.asyncRun(
+        "INSERT INTO user_library_access (user_id, library_id, has_access) VALUES (?, ?, 1)",
+        [userId, libraryId]
+      );
+    }
+
+    res.json({
+      message: access
+        ? "Acceso a biblioteca otorgado correctamente"
+        : "Acceso a biblioteca eliminado correctamente",
+      libraryId: Number(libraryId),
+      userId: Number(userId),
+      hasAccess: access,
+    });
+  } catch (error) {
+    console.error(
+      `Error al gestionar acceso a biblioteca ${libraryId}:`,
+      error
+    );
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al gestionar acceso a biblioteca",
+    });
+  }
+});
+
+/**
+ * @route   GET /api/libraries/:id/users
+ * @desc    Obtener usuarios con acceso a una biblioteca
+ * @access  Private (Admins)
+ */
+router.get("/:id/users", authMiddleware, async (req, res) => {
+  const libraryId = req.params.id;
+
+  try {
+    // Verificar si el usuario actual es administrador
+    const currentUserId = req.user.id;
+    const currentUser = await db.asyncGet(
+      "SELECT is_admin FROM users WHERE id = ?",
+      [currentUserId]
+    );
+
+    if (!currentUser || currentUser.is_admin !== 1) {
+      return res.status(403).json({
+        error: "Acceso denegado",
+        message:
+          "Solo los administradores pueden ver los permisos de una biblioteca",
+      });
+    }
+
+    // Verificar si la biblioteca existe
+    const library = await db.asyncGet("SELECT * FROM libraries WHERE id = ?", [
+      libraryId,
+    ]);
+    if (!library) {
+      return res.status(404).json({
+        error: "No encontrado",
+        message: "Biblioteca no encontrada",
+      });
+    }
+
+    // Obtener usuarios con acceso explícito
+    const usersWithAccess = await db.asyncAll(
+      `SELECT u.id, u.username, u.email, u.is_admin, ula.has_access, ula.created_at as access_granted_at
+       FROM users u
+       LEFT JOIN user_library_access ula ON u.id = ula.user_id AND ula.library_id = ?
+       ORDER BY u.username`,
+      [libraryId]
+    );
+
+    // Formatear respuesta para indicar explícitamente quién tiene acceso
+    // (los administradores tienen acceso implícito)
+    const formattedUsers = usersWithAccess.map((user) => ({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.is_admin === 1,
+      hasAccess: user.is_admin === 1 || user.has_access === 1,
+      accessType:
+        user.is_admin === 1
+          ? "admin"
+          : user.has_access === 1
+          ? "explicit"
+          : "none",
+      accessGrantedAt: user.access_granted_at || null,
+    }));
+
+    res.json({
+      libraryId: Number(libraryId),
+      users: formattedUsers,
+    });
+  } catch (error) {
+    console.error(
+      `Error al obtener usuarios con acceso a biblioteca ${libraryId}:`,
+      error
+    );
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al obtener usuarios con acceso a biblioteca",
     });
   }
 });

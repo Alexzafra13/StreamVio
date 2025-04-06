@@ -361,6 +361,20 @@ async function initialize() {
     )`);
     console.log(`${colors.green}✓ Tabla streaming_tokens${colors.reset}`);
 
+    // Tabla para permisos de acceso a bibliotecas por usuario
+    await dbAsync.asyncRun(`CREATE TABLE IF NOT EXISTS user_library_access (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      library_id INTEGER NOT NULL,
+      has_access BOOLEAN DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+      FOREIGN KEY (library_id) REFERENCES libraries (id) ON DELETE CASCADE,
+      UNIQUE(user_id, library_id)
+    )`);
+    console.log(`${colors.green}✓ Tabla user_library_access${colors.reset}`);
+
     // Crear índices útiles para búsquedas frecuentes
     await dbAsync.asyncRun(
       `CREATE INDEX IF NOT EXISTS idx_media_items_library ON media_items(library_id)`
@@ -373,6 +387,12 @@ async function initialize() {
     );
     await dbAsync.asyncRun(
       `CREATE INDEX IF NOT EXISTS idx_media_items_parent ON media_items(parent_id)`
+    );
+    await dbAsync.asyncRun(
+      `CREATE INDEX IF NOT EXISTS idx_user_library_access_user ON user_library_access(user_id)`
+    );
+    await dbAsync.asyncRun(
+      `CREATE INDEX IF NOT EXISTS idx_user_library_access_library ON user_library_access(library_id)`
     );
     console.log(`${colors.green}✓ Índices creados${colors.reset}`);
 

@@ -1,7 +1,9 @@
+// clients/web/src/components/AdminDashboard.jsx
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
 import EnhancedInvitationManager from "./EnhancedInvitationManager";
+import UserManagement from "./UserManagement";
 
 const API_URL = apiConfig.API_URL;
 
@@ -263,10 +265,7 @@ function AdminDashboard() {
 
       {activeTab === "users" && (
         <div>
-          <h2 className="text-2xl font-bold mb-6">Gestión de Usuarios</h2>
-          <p className="text-gray-400">
-            Esta función estará disponible en la próxima versión.
-          </p>
+          <UserManagement />
         </div>
       )}
 
