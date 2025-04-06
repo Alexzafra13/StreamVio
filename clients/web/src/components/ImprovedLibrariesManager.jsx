@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
-import EnhancedDirectoryBrowser from "./EnhancedDirectoryBrowser";
+import EnhancedSystemDirectoryBrowser from "./EnhancedSystemDirectoryBrowser";
 import FolderPermissionsManager from "./FolderPermissionsManager";
 
 const API_URL = apiConfig.API_URL;
@@ -454,7 +454,7 @@ function ImprovedLibraryManager() {
       {/* Navegador de directorios */}
       {showBrowser && (
         <div className="mb-6">
-          <EnhancedDirectoryBrowser
+          <EnhancedSystemDirectoryBrowser
             initialPath={formData.path}
             onSelect={handleDirectorySelect}
             onCancel={handleBrowserCancel}
@@ -481,7 +481,6 @@ function ImprovedLibraryManager() {
                 escanear
               </li>
             </ul>
-
             <div className="mt-2 p-2 bg-yellow-800 bg-opacity-40 rounded">
               <p className="font-semibold text-yellow-200">
                 Creación de ubicaciones para bibliotecas:

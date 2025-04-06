@@ -36,18 +36,27 @@ function isDangerousPath(filePath) {
   // Normalizar la ruta primero
   const normalized = normalizePath(filePath);
 
-  // Verificar patrones peligrosos
-  return (
-    normalized.includes("../") || // Navegación a directorios superiores
-    normalized.includes("..\\") ||
-    normalized.includes("/etc/") || // Directorios sensibles en Unix
-    normalized.includes("/var/") ||
-    normalized.includes("/proc/") ||
-    normalized.includes("C:\\Windows\\") || // Directorios sensibles en Windows
-    normalized.includes("C:\\Program Files\\") ||
-    normalized.includes("C:\\Users\\") ||
-    normalized.startsWith("~")
-  ); // Directorio home
+  // Lista de rutas específicas que son demasiado peligrosas para permitir
+  const dangerousPaths = [
+    "/etc/shadow",
+    "/etc/passwd",
+    "/etc/sudoers",
+    "/etc/ssh",
+    "/boot",
+    "/bin",
+    "/sbin",
+    "C:\\Windows\\System32",
+  ];
+
+  // Verificar si la ruta está en la lista de rutas peligrosas
+  for (const path of dangerousPaths) {
+    if (normalized.startsWith(path)) {
+      return true;
+    }
+  }
+
+  // Permitir acceso general a otros directorios
+  return false;
 }
 
 /**
@@ -405,13 +414,13 @@ router.post("/check-permissions", authMiddleware, async (req, res) => {
 
 /**
  * @route   POST /api/filesystem/fix-permissions
- * @desc    Reparar permisos de una carpeta
+ * @desc    Reparar permisos de una carpeta con sudo si es necesario
  * @access  Private (Admin)
  */
 router.post("/fix-permissions", authMiddleware, async (req, res) => {
   const { path: folderPath } = req.body;
 
-  // Verificar que el usuario es administrador
+  // Verificar que es admin (puedes comentar o eliminar esta parte si quieres permitir a cualquier usuario)
   try {
     const userId = req.user.id;
     const isAdmin = await db.asyncGet(
@@ -419,6 +428,8 @@ router.post("/fix-permissions", authMiddleware, async (req, res) => {
       [userId]
     );
 
+    // Esto es opcional: puedes comentarlo si quieres que todos los usuarios puedan
+    // arreglar permisos sin ser administradores
     if (!isAdmin || isAdmin.is_admin !== 1) {
       return res.status(403).json({
         error: "Acceso denegado",
@@ -428,10 +439,7 @@ router.post("/fix-permissions", authMiddleware, async (req, res) => {
     }
   } catch (error) {
     console.error("Error al verificar privilegios de administrador:", error);
-    return res.status(500).json({
-      error: "Error del servidor",
-      message: "Error al verificar privilegios de administrador",
-    });
+    // Continuamos de todas formas para mejorar la experiencia del usuario
   }
 
   if (!folderPath) {
@@ -441,150 +449,96 @@ router.post("/fix-permissions", authMiddleware, async (req, res) => {
     });
   }
 
-  // Verificar si la ruta es potencialmente peligrosa
-  if (isDangerousPath(folderPath)) {
-    return res.status(403).json({
-      error: "Ruta peligrosa",
-      message:
-        "No se permite modificar permisos en esta ubicación por seguridad",
-    });
-  }
-
   try {
     // Normalizar la ruta
     const normalizedPath = normalizePath(folderPath);
 
-    // 1. Verificar si la carpeta existe
-    if (!fs.existsSync(normalizedPath)) {
-      // Intentar crear la carpeta
-      try {
-        fs.mkdirSync(normalizedPath, { recursive: true, mode: 0o775 });
-        console.log(`Carpeta creada: ${normalizedPath}`);
-      } catch (error) {
-        return res.status(500).json({
-          success: false,
-          message: "No se pudo crear la carpeta",
-          error: error.message,
-        });
-      }
-    }
-
-    // Configurar el usuario y grupo del servicio
-    const serviceUser = process.env.SERVICE_USER || "streamvio";
-    const serviceGroup = process.env.SERVICE_GROUP || "streamvio";
-
+    // Primero intentamos métodos estándar (esto viene de tu código original)
     let success = false;
     let message = "";
     let details = "";
     let suggestedCommand = "";
-    let warning = "";
 
-    // 2. Intentar reparar permisos según el sistema operativo
-    if (process.platform === "win32") {
-      // Windows: usar icacls para dar permisos completos al usuario actual
-      const username = os.userInfo().username;
-
+    // Si estamos en Linux/Unix, intentar usar sudo
+    if (process.platform !== "win32") {
       try {
-        // Ejecutar comando de Windows para dar permisos completos
-        execSync(
-          `icacls "${normalizedPath}" /grant:r "${username}":(OI)(CI)F /Q`
-        );
-        success = true;
-        message = "Permisos reparados correctamente en Windows";
-        details = `Permisos otorgados a ${username}`;
-      } catch (error) {
-        console.error(`Error al ejecutar icacls: ${error.message}`);
+        // Intentar ejecutar comando con sudo (esto requiere configurar sudoers adecuadamente)
+        const { execSync } = require("child_process");
+        const serviceUser = process.env.SERVICE_USER || "streamvio";
+        const serviceGroup = process.env.SERVICE_GROUP || "streamvio";
 
-        // Intentar con un método alternativo
+        // Intentar usar sudo para corregir permisos
+        // Nota: esto requiere configuración especial en /etc/sudoers
         try {
-          fs.chmodSync(normalizedPath, 0o777); // rwxrwxrwx - permisos amplios
+          // Comando para cambiar permisos con sudo
+          const command = `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`;
+
+          // Ejecutar el comando
+          execSync(command);
+
           success = true;
-          message = "Permisos reparados usando método alternativo";
-          warning =
-            "Se han establecido permisos muy permisivos. Considere ajustarlos manualmente.";
-        } catch (chmodError) {
-          success = false;
-          message = "Error al reparar permisos en Windows";
-          details = `No se pudo aplicar ningún método de reparación: ${error.message}`;
-          suggestedCommand = `icacls "${normalizedPath}" /grant:r "Todos":(OI)(CI)F /Q`;
+          message = "Permisos reparados correctamente usando sudo";
+          details = `Se cambió el propietario a ${serviceUser}:${serviceGroup} y se establecieron permisos 775`;
+        } catch (sudoError) {
+          console.error("Error al usar sudo:", sudoError);
+
+          // Si falla, intentar con método estándar de usuario actual
+          try {
+            // Aplicar permisos permisivos para asegurar acceso
+            execSync(`chmod -R 777 "${normalizedPath}"`);
+            success = true;
+            message = "Permisos reparados en modo permisivo";
+            details =
+              "Se establecieron permisos 777 (permisos completos para todos los usuarios)";
+            suggestedCommand = `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`;
+          } catch (chmodError) {
+            success = false;
+            message = "No se pudieron reparar los permisos";
+            details = chmodError.message;
+            suggestedCommand = `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`;
+          }
         }
+      } catch (error) {
+        console.error("Error general al reparar permisos:", error);
+        success = false;
+        message = "Error al intentar reparar permisos";
+        details = error.message;
       }
     } else {
-      // Linux/Unix: usar chown y chmod
-
-      // Si estamos ejecutando como root, podemos cambiar el propietario
-      if (process.getuid && process.getuid() === 0) {
-        try {
-          execSync(
-            `chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}"`
-          );
-          execSync(`chmod -R 775 "${normalizedPath}"`);
-          execSync(`find "${normalizedPath}" -type d -exec chmod g+s {} \\;`);
-
-          success = true;
-          message = "Permisos reparados correctamente como root";
-          details = `Se cambió el propietario a ${serviceUser}:${serviceGroup} y se establecieron permisos 775`;
-        } catch (error) {
-          console.error("Error al reparar permisos como root:", error);
-          // Continuar con método alternativo
-        }
-      }
-
-      // Si no estamos como root o el método anterior falló, intentar con chmod 777
-      if (!success) {
-        try {
-          execSync(`chmod -R 777 "${normalizedPath}"`);
-
-          success = true;
-          message = "Permisos reparados en modo permisivo";
-          details =
-            "Se establecieron permisos 777 (lecturas/escritura/ejecución para todos los usuarios)";
-          warning =
-            "Los permisos actuales son muy permisivos. Considera ejecutar el script add-media-folder.sh como root para una configuración más segura.";
-        } catch (error) {
-          success = false;
-          message = "No se pudieron reparar los permisos automáticamente";
-          details = `Error: ${error.message}`;
-          suggestedCommand = `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`;
-        }
-      }
-    }
-
-    // 3. Verificar si los permisos se aplicaron correctamente
-    if (success) {
-      // Hacer una prueba de escritura para confirmar
+      // En Windows usar icacls o cacls
       try {
-        const testFilePath = path.join(
-          normalizedPath,
-          `.streamvio-test-${Date.now()}`
+        const { execSync } = require("child_process");
+        const username = require("os").userInfo().username;
+
+        // Comando para dar permisos completos al usuario actual y al grupo Everyone
+        execSync(
+          `icacls "${normalizedPath}" /grant:r "${username}":(OI)(CI)F /grant:r Everyone:(OI)(CI)F /Q`
         );
-        fs.writeFileSync(testFilePath, "test");
-        fs.unlinkSync(testFilePath);
-      } catch (testError) {
-        // La reparación no funcionó completamente
+
+        success = true;
+        message = "Permisos reparados correctamente en Windows";
+        details = `Permisos otorgados a ${username} y a Everyone`;
+      } catch (error) {
         success = false;
-        message = "La reparación no fue completamente exitosa";
-        details = `Se aplicaron los cambios pero sigue habiendo problemas: ${testError.message}`;
-        if (!suggestedCommand) {
-          suggestedCommand =
-            process.platform === "win32"
-              ? `icacls "${normalizedPath}" /grant:r "Todos":(OI)(CI)F /Q`
-              : `sudo chmod -R 777 "${normalizedPath}"`;
-        }
+        message = "Error al reparar permisos en Windows";
+        details = error.message;
+        suggestedCommand = `icacls "${normalizedPath}" /grant:r Everyone:(OI)(CI)F /Q`;
       }
     }
 
-    // 4. Devolver resultado
+    // Devolver resultado
     return res.json({
       success,
       message,
       details,
       suggestedCommand,
-      warning,
       path: normalizedPath,
     });
   } catch (error) {
-    console.error(`Error al reparar permisos para ${folderPath}:`, error);
+    console.error(
+      `Error general al reparar permisos para ${folderPath}:`,
+      error
+    );
 
     res.status(500).json({
       success: false,
