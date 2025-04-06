@@ -11,7 +11,7 @@ const permissionsHelper = require("./utils/permissionsHelper");
 require("dotenv").config();
 
 // Importar rutas
-const authRoutes = require("./routes/auth");
+const authRoutes = require("./routes/auth"); // Añadido: importar rutas de autenticación
 const librariesRoutes = require("./routes/libraries");
 const mediaRoutes = require("./routes/media");
 const adminRoutes = require("./routes/admin");
@@ -24,7 +24,7 @@ const setupRoutes = require("./routes/setup");
 // Importar servicios
 const streamingTokenService = require("./services/streamingTokenService");
 
-// Importar middleware de autenticación
+// Importar middleware de autenticación (solo una vez)
 const enhancedAuthMiddleware = require("./middleware/enhancedAuth");
 
 // Crear aplicación Express
@@ -44,27 +44,22 @@ async function setupRequiredDirectories() {
 
   for (const dir of requiredDirs) {
     try {
-      // Verificar si el directorio existe
       if (!fs.existsSync(dir)) {
         console.log(`Creando directorio: ${dir}`);
-        fs.mkdirSync(dir, { recursive: true, mode: 0o775 }); // rwxrwxr-x
+        fs.mkdirSync(dir, { recursive: true, mode: 0o775 });
       }
 
-      // Verificar permisos
       try {
-        // Verificar permisos de escritura
         const testFile = path.join(dir, `.test-${Date.now()}`);
         fs.writeFileSync(testFile, "test");
         fs.unlinkSync(testFile);
         console.log(`✓ Permisos correctos en: ${dir}`);
       } catch (permError) {
         console.error(`⚠️ Error de permisos en ${dir}: ${permError.message}`);
-
-        // Intentar corregir permisos en sistemas Unix
         if (process.platform !== "win32") {
           try {
             console.log(`Intentando corregir permisos para ${dir}...`);
-            fs.chmodSync(dir, 0o775); // rwxrwxr-x
+            fs.chmodSync(dir, 0o775);
             console.log(`✓ Permisos corregidos para: ${dir}`);
           } catch (chmodError) {
             console.error(
@@ -88,13 +83,10 @@ async function setupRequiredDirectories() {
 const logPermissionIssue = permissionsHelper.logPermissionIssue;
 
 // Middleware
-// Configurar CORS para permitir peticiones desde el frontend durante desarrollo
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Permitir peticiones sin origen (como Postman o curl)
       if (!origin) return callback(null, true);
-      // En producción, todo servirá desde el mismo origen, así que CORS no es un problema
       callback(null, true);
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -106,20 +98,19 @@ app.use(
     ],
     exposedHeaders: ["x-new-stream-token"],
     credentials: true,
-    maxAge: 86400, // Tiempo de cache de preflight en segundos (24 horas)
+    maxAge: 86400,
   })
 );
 
 app.use(
   helmet({
-    contentSecurityPolicy: false, // Desactivar CSP para permitir que el frontend funcione correctamente
-    crossOriginEmbedderPolicy: false, // Permitir carga de recursos cross-origin
-    crossOriginResourcePolicy: false, // Permitir recursos cross-origin
-    crossOriginOpenerPolicy: false, // Permite la comunicación entre ventanas/frames cross-origin
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: false,
+    crossOriginOpenerPolicy: false,
   })
 );
 
-// Configurar un formato de log detallado para debugging
 morgan.token("user-id", (req) => req.user?.id || "no-auth");
 app.use(
   morgan(
@@ -132,9 +123,7 @@ app.use(express.json());
 // Ejecutar migraciones de base de datos necesarias
 const runDatabaseMigrations = async () => {
   try {
-    // Si es necesario ejecutar migraciones específicas, se haría aquí
     console.log("Verificando migraciones de base de datos...");
-    // En un entorno real, aquí ejecutarías las migraciones necesarias
     console.log("Migraciones completadas");
   } catch (error) {
     console.error("Error durante la migración de base de datos:", error);
@@ -143,16 +132,11 @@ const runDatabaseMigrations = async () => {
 
 // Función para configurar la aplicación
 async function setupApp() {
-  // Verificar y crear directorios necesarios
   await setupRequiredDirectories();
-
-  // Ejecutar migraciones de base de datos
   await runDatabaseMigrations();
 
-  // Definir la ruta al directorio del frontend compilado
   const frontendDistPath = path.join(__dirname, "../clients/web/dist");
 
-  // Verificar que el directorio del frontend compilado existe
   if (!fs.existsSync(frontendDistPath)) {
     console.error(
       "ADVERTENCIA: El directorio del frontend compilado no existe:",
@@ -162,9 +146,7 @@ async function setupApp() {
       "Por favor, ejecuta 'npm run build' en el directorio clients/web"
     );
   } else {
-    // Verificar permisos de lectura
     try {
-      // Intentar leer un archivo del directorio para verificar permisos
       fs.accessSync(frontendDistPath, fs.constants.R_OK);
       console.log(
         "Frontend compilado encontrado y accesible:",
@@ -176,7 +158,7 @@ async function setupApp() {
         frontendDistPath
       );
       console.error(
-        `⚠️ Asegúrate de que el usuario que ejecuta el servicio tenga permisos de lectura`
+        "⚠️ Asegúrate de que el usuario que ejecuta el servicio tenga permisos de lectura"
       );
       console.error(`⚠️ Error: ${error.message}`);
     }
@@ -199,14 +181,14 @@ async function setupApp() {
   app.use("/api/auth", authRoutes);
   app.use("/api/setup", setupRoutes);
 
-  // Rutas protegidas
-  app.use("/api/libraries", librariesRoutes);
-  app.use("/api/media", mediaRoutes);
-  app.use("/api/admin", adminRoutes);
-  app.use("/api/transcoding", transcodingRoutes);
-  app.use("/api/metadata", metadataRoutes);
-  app.use("/api/filesystem", filesystemRoutes);
-  app.use("/api/streaming", streamingRoutes);
+  // Rutas protegidas con enhancedAuthMiddleware
+  app.use("/api/libraries", enhancedAuthMiddleware, librariesRoutes);
+  app.use("/api/media", enhancedAuthMiddleware, mediaRoutes);
+  app.use("/api/admin", enhancedAuthMiddleware, adminRoutes);
+  app.use("/api/transcoding", enhancedAuthMiddleware, transcodingRoutes);
+  app.use("/api/metadata", enhancedAuthMiddleware, metadataRoutes);
+  app.use("/api/filesystem", enhancedAuthMiddleware, filesystemRoutes);
+  app.use("/api/streaming", enhancedAuthMiddleware, streamingRoutes);
 
   // Ruta para verificar si un usuario es administrador
   app.get(
@@ -246,7 +228,6 @@ async function setupApp() {
     }
   );
 
-  // Configurar directorio de datos para servir archivos estáticos
   const dataDir = path.join(__dirname, "data");
   if (!fs.existsSync(dataDir)) {
     try {
@@ -255,7 +236,6 @@ async function setupApp() {
       console.error(
         `⚠️ ERROR: No se pudo crear el directorio de datos: ${error.message}`
       );
-      // Intentar determinar el problema
       if (error.code === "EACCES") {
         console.error(
           "⚠️ Error de permisos. Asegúrate de que el usuario pueda escribir en el directorio padre."
@@ -264,21 +244,15 @@ async function setupApp() {
     }
   }
 
-  // Middleware mejorado para manejar archivos estáticos con mejor manejo de errores
   const serveStaticWithErrorHandling = (directory) => {
     return (req, res, next) => {
-      // Decodificar URL para manejar caracteres especiales correctamente
       const decodedPath = decodeURIComponent(req.path);
       const filePath = path.join(directory, decodedPath);
 
-      // Primero verificar si la ruta existe
       fs.stat(filePath, (err, stats) => {
         if (err) {
-          if (err.code === "ENOENT") {
-            // Si el archivo no existe, continuar con el siguiente middleware
-            return next();
-          } else if (err.code === "EACCES") {
-            // Error de permisos
+          if (err.code === "ENOENT") return next();
+          if (err.code === "EACCES") {
             logPermissionIssue(filePath, err);
             return res.status(403).json({
               error: "Error de permisos",
@@ -287,54 +261,36 @@ async function setupApp() {
               suggestion:
                 "Ejecuta el script add-media-folder.sh para configurar los permisos",
             });
-          } else {
-            // Otro error
-            console.error(`Error al acceder a ${filePath}:`, err);
-            return res.status(500).json({
-              error: "Error del servidor",
-              message: `Error al acceder al archivo: ${err.message}`,
-            });
           }
+          console.error(`Error al acceder a ${filePath}:`, err);
+          return res.status(500).json({
+            error: "Error del servidor",
+            message: `Error al acceder al archivo: ${err.message}`,
+          });
         }
 
-        // Verificar si estamos tratando con un directorio o un archivo
         if (stats.isDirectory()) {
-          // Si es un directorio, buscar un index.html en ese directorio
           const indexPath = path.join(filePath, "index.html");
-
           fs.access(indexPath, fs.constants.R_OK, (err) => {
-            if (err) {
-              // No hay un index.html, pasar al siguiente middleware
-              return next();
-            } else {
-              // Hay un index.html, enviarlo
-              res.sendFile(indexPath, (err) => {
-                if (err) {
-                  console.error(
-                    `Error al enviar index.html ${indexPath}:`,
-                    err
-                  );
-                  if (!res.headersSent) {
-                    res.status(500).json({
-                      error: "Error del servidor",
-                      message: `Error al enviar el archivo: ${err.message}`,
-                    });
-                  }
-                }
-              });
-            }
-          });
-        } else {
-          // Es un archivo, enviarlo directamente
-          res.sendFile(filePath, (err) => {
-            if (err) {
-              console.error(`Error al enviar archivo ${filePath}:`, err);
-              if (!res.headersSent) {
+            if (err) return next();
+            res.sendFile(indexPath, (err) => {
+              if (err && !res.headersSent) {
+                console.error(`Error al enviar index.html ${indexPath}:`, err);
                 res.status(500).json({
                   error: "Error del servidor",
                   message: `Error al enviar el archivo: ${err.message}`,
                 });
               }
+            });
+          });
+        } else {
+          res.sendFile(filePath, (err) => {
+            if (err && !res.headersSent) {
+              console.error(`Error al enviar archivo ${filePath}:`, err);
+              res.status(500).json({
+                error: "Error del servidor",
+                message: `Error al enviar el archivo: ${err.message}`,
+              });
             }
           });
         }
@@ -342,35 +298,28 @@ async function setupApp() {
     };
   };
 
-  // Servir archivos estáticos desde el directorio data con autenticación y mejor manejo de errores
   app.use(
     "/data",
     enhancedAuthMiddleware,
     serveStaticWithErrorHandling(dataDir)
   );
 
-  // Inicializar y configurar el transcodificador
   const enhancedTranscoder = require("./services/enhancedTranscoderService");
 
-  // Escuchar eventos del transcodificador para logging
   enhancedTranscoder.on("jobStarted", (data) => {
     console.log(
       `Trabajo de transcodificación iniciado: ${data.jobId} para media ${data.mediaId}`
     );
   });
-
   enhancedTranscoder.on("jobCompleted", (data) => {
     console.log(
       `Trabajo de transcodificación completado: ${data.jobId}, archivo: ${data.outputPath}`
     );
   });
-
   enhancedTranscoder.on("jobFailed", (data) => {
     console.error(
       `Trabajo de transcodificación fallido: ${data.jobId}, error: ${data.error}`
     );
-
-    // Verificar si es un error de permisos
     if (data.error.includes("EACCES") || data.error.includes("permission")) {
       logPermissionIssue(data.outputPath || "ruta desconocida", {
         code: "EACCES",
@@ -379,7 +328,6 @@ async function setupApp() {
     }
   });
 
-  // Programar limpieza periódica de tokens de streaming expirados (cada 1 hora)
   setInterval(async () => {
     try {
       const tokensRemoved = await streamingTokenService.periodicTokenCleanup();
@@ -393,21 +341,11 @@ async function setupApp() {
     }
   }, 60 * 60 * 1000);
 
-  // Servir archivos estáticos del frontend compilado con mejor manejo de errores
   app.use(serveStaticWithErrorHandling(frontendDistPath));
 
-  // Para cualquier otra ruta que no sea /api, servir el index.html del frontend
-  // Esto permite que la navegación en el frontend funcione correctamente con rutas dinámicas
   app.get("*", (req, res, next) => {
-    // Si la ruta comienza con /api, pasar al siguiente middleware (que será el manejador 404 para API)
-    if (req.path.startsWith("/api/")) {
-      return next();
-    }
-
-    // Servir el index.html para cualquier otra ruta
+    if (req.path.startsWith("/api/")) return next();
     const indexPath = path.join(frontendDistPath, "index.html");
-
-    // Verificar si el archivo existe y es accesible
     fs.access(indexPath, fs.constants.R_OK, (err) => {
       if (err) {
         console.error(`Error al acceder a index.html: ${err.message}`);
@@ -423,26 +361,22 @@ async function setupApp() {
               </body>
             </html>
           `);
-        } else {
-          return res.status(500).send(`
-            <html>
-              <head><title>Error</title></head>
-              <body style="font-family: Arial, sans-serif; padding: 2rem; text-align: center;">
-                <h1 style="color: #e53e3e;">Error al cargar la aplicación</h1>
-                <p>No se pudo acceder al archivo principal de la aplicación.</p>
-                <p>Error: ${err.message}</p>
-              </body>
-            </html>
-          `);
         }
+        return res.status(500).send(`
+          <html>
+            <head><title>Error</title></head>
+            <body style="font-family: Arial, sans-serif; padding: 2rem; text-align: center;">
+              <h1 style="color: #e53e3e;">Error al cargar la aplicación</h1>
+              <p>No se pudo acceder al archivo principal de la aplicación.</p>
+              <p>Error: ${err.message}</p>
+            </body>
+          </html>
+        `);
       }
-
-      // Si no hay error, servir el archivo
       res.sendFile(indexPath);
     });
   });
 
-  // Manejar errores 404 para rutas de API
   app.use("/api/*", (req, res) => {
     res.status(404).json({
       error: "Ruta no encontrada",
@@ -450,11 +384,8 @@ async function setupApp() {
     });
   });
 
-  // Manejar errores globales
   app.use((err, req, res, next) => {
     console.error("Error en la aplicación:", err);
-
-    // Si la URL comienza con /api, devolver un error JSON
     if (req.path.startsWith("/api/")) {
       return res.status(500).json({
         error: "Error interno del servidor",
@@ -464,8 +395,6 @@ async function setupApp() {
             : "Ocurrió un error inesperado",
       });
     }
-
-    // Para errores en otras rutas, mostrar una página de error HTML simple
     res.status(500).send(`
       <html>
         <head>
@@ -486,7 +415,6 @@ async function setupApp() {
             <h1>¡Ups! Algo salió mal</h1>
             <p>Ocurrió un error en el servidor. Por favor, inténtalo de nuevo más tarde.</p>
             <a href="/" class="back-button">Volver al inicio</a>
-            
             ${
               process.env.NODE_ENV === "development"
                 ? `<div class="error-details">
@@ -504,14 +432,11 @@ async function setupApp() {
   return app;
 }
 
-// Función mejorada para obtener la dirección IP local IPv4
 const getLocalIP = () => {
   try {
     const interfaces = os.networkInterfaces();
-    // Filtrar solo interfaces IPv4 y no internas
     for (const name of Object.keys(interfaces)) {
       for (const iface of interfaces[name]) {
-        // Filtrar solo IPv4 y no loopback
         if (iface.family === "IPv4" && !iface.internal) {
           console.log(
             `Interfaz de red detectada: ${name}, IP: ${iface.address}`
@@ -520,32 +445,22 @@ const getLocalIP = () => {
         }
       }
     }
-    // Si no encuentra ninguna IP válida, usar localhost
     console.warn("No se detectó ninguna IP válida, usando 0.0.0.0");
     return "0.0.0.0";
   } catch (error) {
     console.error("Error al detectar IP local:", error);
-    return "0.0.0.0"; // En caso de error, usar 0.0.0.0
+    return "0.0.0.0";
   }
 };
 
-// Variable para almacenar la instancia de la aplicación configurada
 let configuredApp = null;
 
-// Inicializar y configurar la aplicación
 setupApp()
   .then((app) => {
-    // Guardar la instancia configurada
     configuredApp = app;
-
-    // Solo iniciar el servidor si este archivo se ejecuta directamente,
-    // no cuando se importa para tests
     if (require.main === module) {
-      // Configurar el puerto unificado
       const PORT = process.env.PORT || settings.port || 45000;
       const LOCAL_IP = getLocalIP();
-
-      // Escuchar en todas las interfaces (0.0.0.0)
       app.listen(PORT, "0.0.0.0", () => {
         console.log(`\n==============================================`);
         console.log(`Servidor StreamVio ejecutándose en el puerto ${PORT}`);
