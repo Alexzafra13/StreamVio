@@ -5,7 +5,7 @@ import apiConfig from "../config/api";
 const API_URL = apiConfig.API_URL;
 
 /**
- * Componente mejorado para verificar y reparar permisos de carpetas
+ * Componente para verificar y reparar permisos de carpetas
  * @param {Object} props - Propiedades del componente
  * @param {string} props.folderPath - Ruta de la carpeta a verificar
  * @param {function} props.onPermissionsFixed - Callback para cuando se completa la reparación de permisos
@@ -152,19 +152,21 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
     <div className="bg-gray-700 p-4 rounded-lg">
       <h4 className="font-medium mb-2">Verificación de permisos</h4>
 
-      {!permissionStatus ? (
+      {loading ? (
+        <div className="flex items-center">
+          <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500 mr-3"></div>
+          <span className="text-gray-300">Verificando permisos...</span>
+        </div>
+      ) : !permissionStatus ? (
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-300">
             Verifica que el servicio tenga acceso a esta carpeta
           </p>
           <button
             onClick={checkPermissions}
-            disabled={loading}
-            className={`ml-4 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm ${
-              loading ? "opacity-50 cursor-wait" : ""
-            }`}
+            className="ml-4 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
           >
-            {loading ? "Verificando..." : "Verificar acceso"}
+            Verificar acceso
           </button>
         </div>
       ) : permissionStatus.hasAccess ? (
