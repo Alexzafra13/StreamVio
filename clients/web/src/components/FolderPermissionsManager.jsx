@@ -1,18 +1,29 @@
-// clients/web/src/components/FolderPermissionsManager.jsx
-import React, { useState } from "react";
-import { checkFolderPermissions, fixFolderPermissions } from "../utils/auth";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import apiConfig from "../config/api";
+
+const API_URL = apiConfig.API_URL;
 
 /**
- * Componente para verificar y reparar permisos de carpetas
+ * Componente mejorado para verificar y reparar permisos de carpetas
  * @param {Object} props - Propiedades del componente
- * @param {string} props.folderPath - Ruta de la carpeta
- * @param {function} props.onPermissionsFixed - Callback para cuando se reparan los permisos
+ * @param {string} props.folderPath - Ruta de la carpeta a verificar
+ * @param {function} props.onPermissionsFixed - Callback para cuando se completa la reparación de permisos
  */
 function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [permissionStatus, setPermissionStatus] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [fixingPermissions, setFixingPermissions] = useState(false);
+  const [fixResult, setFixResult] = useState(null);
+
+  // Efecto para verificar permisos cuando se proporciona una ruta
+  useEffect(() => {
+    if (folderPath) {
+      checkPermissions();
+    }
+  }, [folderPath]);
 
   // Verificar permisos de la carpeta
   const checkPermissions = async () => {
@@ -23,21 +34,46 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
 
     setLoading(true);
     setError(null);
+    setFixResult(null);
 
     try {
-      const result = await checkFolderPermissions(folderPath);
-      setPermissionStatus(result);
+      const token = localStorage.getItem("streamvio_token");
+      if (!token) {
+        throw new Error("No hay sesión activa");
+      }
+
+      const response = await axios.post(
+        `${API_URL}/api/filesystem/check-permissions`,
+        { path: folderPath },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setPermissionStatus(response.data);
 
       // Mostrar detalles si hay problemas
-      if (!result.hasAccess) {
+      if (!response.data.hasAccess) {
         setShowDetails(true);
       }
     } catch (err) {
       console.error("Error al verificar permisos:", err);
-      setError(
-        err.response?.data?.message ||
-          "Error al verificar permisos de la carpeta"
-      );
+
+      // Manejar diferentes tipos de errores
+      if (err.response && err.response.status === 404) {
+        setError(
+          "La carpeta no existe. Puedes crearla desde el explorador de archivos."
+        );
+      } else if (err.response && err.response.status === 403) {
+        setError("No tienes permiso para verificar esta carpeta.");
+      } else {
+        setError(
+          err.response?.data?.message ||
+            "Error al verificar permisos de la carpeta. Verifica la ruta o tus permisos."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -50,24 +86,60 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
       return;
     }
 
-    setLoading(true);
+    setFixingPermissions(true);
     setError(null);
+    setFixResult(null);
 
     try {
-      const result = await fixFolderPermissions(folderPath);
-      setPermissionStatus(result);
+      const token = localStorage.getItem("streamvio_token");
+      if (!token) {
+        throw new Error("No hay sesión activa");
+      }
 
-      // Notificar que se repararon los permisos
-      if (onPermissionsFixed) {
-        onPermissionsFixed(result);
+      const response = await axios.post(
+        `${API_URL}/api/filesystem/fix-permissions`,
+        { path: folderPath },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setFixResult(response.data);
+
+      // Si la reparación fue exitosa, volver a verificar los permisos
+      if (response.data.success) {
+        // Pequeña pausa para asegurar que los cambios han tenido efecto
+        setTimeout(() => {
+          checkPermissions();
+
+          // Notificar que se repararon los permisos
+          if (onPermissionsFixed) {
+            onPermissionsFixed(response.data);
+          }
+        }, 1000);
       }
     } catch (err) {
       console.error("Error al reparar permisos:", err);
-      setError(
-        err.response?.data?.message || "Error al reparar permisos de la carpeta"
-      );
+
+      if (err.response && err.response.status === 403) {
+        setError(
+          "No tienes permiso para reparar esta carpeta. Necesitas permisos de administrador."
+        );
+      } else {
+        setError(
+          err.response?.data?.message ||
+            "Error al reparar permisos de la carpeta. Puede que necesites ejecutar como administrador."
+        );
+      }
+
+      setFixResult({
+        success: false,
+        error: err.response?.data?.message || "Error desconocido",
+      });
     } finally {
-      setLoading(false);
+      setFixingPermissions(false);
     }
   };
 
@@ -77,7 +149,7 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
   }
 
   return (
-    <div className="mt-4 bg-gray-700 p-4 rounded-lg">
+    <div className="bg-gray-700 p-4 rounded-lg">
       <h4 className="font-medium mb-2">Verificación de permisos</h4>
 
       {!permissionStatus ? (
@@ -164,28 +236,75 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
                   <strong>Detalles:</strong> {permissionStatus.details}
                 </p>
               )}
+              {permissionStatus.error && (
+                <p className="mt-1">
+                  <strong>Error:</strong> {permissionStatus.error}
+                </p>
+              )}
               <p className="mt-2">
                 Para solucionar este problema, el servidor necesita tener
                 permisos de lectura y escritura en esta carpeta.
               </p>
+              {permissionStatus.canCreate && (
+                <p className="mt-1 text-yellow-400">
+                  Esta carpeta no existe pero puede ser creada automáticamente.
+                </p>
+              )}
             </div>
           )}
 
           <div className="flex justify-end mt-3">
             <button
               onClick={repairPermissions}
-              disabled={loading}
+              disabled={fixingPermissions}
               className={`bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm ${
-                loading ? "opacity-50 cursor-wait" : ""
+                fixingPermissions ? "opacity-50 cursor-wait" : ""
               }`}
             >
-              {loading ? "Reparando..." : "Reparar permisos automáticamente"}
+              {fixingPermissions
+                ? "Reparando..."
+                : "Reparar permisos automáticamente"}
             </button>
           </div>
         </div>
       )}
 
       {error && <div className="mt-2 text-sm text-red-400">{error}</div>}
+
+      {fixResult && (
+        <div
+          className={`mt-4 p-3 rounded ${
+            fixResult.success ? "bg-green-800" : "bg-red-800"
+          }`}
+        >
+          <p
+            className={`font-medium ${
+              fixResult.success ? "text-green-200" : "text-red-200"
+            }`}
+          >
+            {fixResult.success
+              ? "✓ Reparación completada"
+              : "✗ Error en reparación"}
+          </p>
+          {fixResult.message && (
+            <p className="text-sm mt-1">{fixResult.message}</p>
+          )}
+          {fixResult.suggestedCommand && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-300">Comando sugerido:</p>
+              <pre className="mt-1 p-2 bg-gray-900 rounded text-xs overflow-x-auto">
+                {fixResult.suggestedCommand}
+              </pre>
+              <p className="text-xs mt-1">
+                Ejecuta este comando en el servidor como administrador (root)
+              </p>
+            </div>
+          )}
+          {fixResult.details && (
+            <p className="text-xs mt-1 text-gray-300">{fixResult.details}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
