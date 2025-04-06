@@ -25,7 +25,6 @@ const setupRoutes = require("./routes/setup");
 const streamingTokenService = require("./services/streamingTokenService");
 
 // Importar middleware de autenticación
-const authMiddleware = require("./middleware/auth");
 const enhancedAuthMiddleware = require("./middleware/enhancedAuth");
 
 // Crear aplicación Express
@@ -210,35 +209,42 @@ async function setupApp() {
   app.use("/api/streaming", streamingRoutes);
 
   // Ruta para verificar si un usuario es administrador
-  app.get("/api/auth/verify-admin", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const db = require("./config/database");
+  app.get(
+    "/api/auth/verify-admin",
+    enhancedAuthMiddleware,
+    async (req, res) => {
+      try {
+        const userId = req.user.id;
+        const db = require("./config/database");
 
-      const user = await db.asyncGet(
-        "SELECT is_admin FROM users WHERE id = ?",
-        [userId]
-      );
+        const user = await db.asyncGet(
+          "SELECT is_admin FROM users WHERE id = ?",
+          [userId]
+        );
 
-      if (!user || !user.is_admin) {
-        return res.status(403).json({
-          error: "Acceso denegado",
-          message: "El usuario no tiene privilegios de administrador",
+        if (!user || !user.is_admin) {
+          return res.status(403).json({
+            error: "Acceso denegado",
+            message: "El usuario no tiene privilegios de administrador",
+          });
+        }
+
+        res.json({
+          isAdmin: true,
+          message: "El usuario tiene privilegios de administrador",
+        });
+      } catch (error) {
+        console.error(
+          "Error al verificar privilegios de administrador:",
+          error
+        );
+        res.status(500).json({
+          error: "Error del servidor",
+          message: "Error al verificar privilegios de administrador",
         });
       }
-
-      res.json({
-        isAdmin: true,
-        message: "El usuario tiene privilegios de administrador",
-      });
-    } catch (error) {
-      console.error("Error al verificar privilegios de administrador:", error);
-      res.status(500).json({
-        error: "Error del servidor",
-        message: "Error al verificar privilegios de administrador",
-      });
     }
-  });
+  );
 
   // Configurar directorio de datos para servir archivos estáticos
   const dataDir = path.join(__dirname, "data");

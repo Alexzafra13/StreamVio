@@ -1128,24 +1128,46 @@ router.get("/:id/progress", authMiddleware, async (req, res) => {
 router.get("/:id/thumbnail", async (req, res) => {
   const mediaId = req.params.id;
 
-  // Verificar token manualmente
-  const decoded = getVerifiedToken(req);
-  if (!decoded) {
+  // Obtener token de autenticación de los headers o query params
+  let token = null;
+  const authHeader = req.headers.authorization;
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  } else if (req.query.auth) {
+    token = req.query.auth;
+  }
+
+  if (!token) {
     return res.status(401).json({
       error: "No autorizado",
-      message: "Token no proporcionado o inválido",
+      message: "Se requiere autenticación para acceder a este recurso",
     });
   }
 
   try {
+    // Verificar el token JWT
+    const jwtSecret =
+      settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key";
+    const decoded = jwt.verify(token, jwtSecret);
+
+    // Si llegamos aquí, el token es válido
+    const userId = decoded.id;
+
     // Obtener el elemento multimedia
     const mediaItem = await db.asyncGet(
       "SELECT thumbnail_path, library_id FROM media_items WHERE id = ?",
       [mediaId]
     );
 
-    if (!mediaItem || !mediaItem.thumbnail_path) {
-      return res.status(404).send("Thumbnail not found");
+    if (!mediaItem) {
+      return res.status(404).send("Elemento multimedia no encontrado");
+    }
+
+    if (!mediaItem.thumbnail_path) {
+      return res
+        .status(404)
+        .send("La miniatura no está disponible para este elemento");
     }
 
     // Si el elemento pertenece a una biblioteca, verificar acceso
@@ -1153,15 +1175,15 @@ router.get("/:id/thumbnail", async (req, res) => {
       // Verificar si el usuario es administrador
       const user = await db.asyncGet(
         "SELECT is_admin FROM users WHERE id = ?",
-        [decoded.id]
+        [userId]
       );
       const isAdmin = user && user.is_admin === 1;
 
+      // Si no es admin, verificar acceso específico a la biblioteca
       if (!isAdmin) {
-        // Verificar acceso específico para usuarios normales
         const access = await db.asyncGet(
           "SELECT has_access FROM user_library_access WHERE user_id = ? AND library_id = ?",
-          [decoded.id, mediaItem.library_id]
+          [userId, mediaItem.library_id]
         );
 
         if (!access || access.has_access !== 1) {
@@ -1171,18 +1193,33 @@ router.get("/:id/thumbnail", async (req, res) => {
           });
         }
       }
-      // Si es admin o tiene acceso específico, continuar
     }
 
     // Verificar que el archivo existe
     if (!fs.existsSync(mediaItem.thumbnail_path)) {
-      return res.status(404).send("Thumbnail file not found");
+      return res.status(404).send("Archivo de miniatura no encontrado");
     }
 
+    // Enviar el archivo de miniatura
     res.sendFile(mediaItem.thumbnail_path);
   } catch (error) {
     console.error(`Error al obtener thumbnail para ${mediaId}:`, error);
-    res.status(500).send("Server error");
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        error: "Token expirado",
+        message: "La sesión ha expirado. Por favor, inicie sesión nuevamente.",
+      });
+    }
+
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        error: "Token inválido",
+        message: "Token de autenticación inválido",
+      });
+    }
+
+    res.status(500).send("Error del servidor al procesar la solicitud");
   }
 });
 

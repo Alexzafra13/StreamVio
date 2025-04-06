@@ -158,294 +158,277 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     );
   }
 
-  // Función mejorada para obtener la URL de miniatura con autenticación
   const getThumbnail = (item) => {
     // Verificar si el elemento existe
     if (!item) return "/assets/default-media.jpg";
 
     // Obtener token de autenticación
     const token = localStorage.getItem("streamvio_token");
-    const authParam = token ? `?auth=${token}` : "";
+    if (!token) return "/assets/default-media.jpg";
 
-    if (item.thumbnail_path) {
-      // Si la ruta de la miniatura comienza con /, es una ruta relativa a la API
-      if (item.thumbnail_path.startsWith("/")) {
-        return `${API_URL}/api/media/${item.id}/thumbnail${authParam}`;
-      }
-      // Si no, podría ser una URL completa ya formada o una ruta del servidor
-      // Añadir el token si la ruta apunta a nuestra API
-      if (
-        item.thumbnail_path.includes(`${API_URL}/api/`) ||
-        item.thumbnail_path.includes(`${API_URL}/data/`)
-      ) {
-        // Verificar si ya hay parámetros en la URL
-        const hasParams = item.thumbnail_path.includes("?");
-        const separator = hasParams ? "&" : "?";
-        return `${item.thumbnail_path}${separator}auth=${token}`;
-      }
-      return item.thumbnail_path;
-    }
-
-    // Imágenes por defecto según tipo de medio
-    const defaultThumbnails = {
-      movie: "/assets/default-movie.jpg",
-      series: "/assets/default-series.jpg",
-      episode: "/assets/default-episode.jpg",
-      music: "/assets/default-music.jpg",
-      photo: "/assets/default-photo.jpg",
-    };
-
-    return defaultThumbnails[item.type] || "/assets/default-media.jpg";
+    // Construir URL con token de autenticación
+    return `${API_URL}/api/media/${item.id}/thumbnail?auth=${token}`;
   };
 
-  const formatDuration = (seconds) => {
-    if (!seconds) return "Desconocida";
-
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${remainingSeconds}s`;
-    } else {
-      return `${minutes}m ${remainingSeconds}s`;
-    }
+  // Imágenes por defecto según tipo de medio
+  const defaultThumbnails = {
+    movie: "/assets/default-movie.jpg",
+    series: "/assets/default-series.jpg",
+    episode: "/assets/default-episode.jpg",
+    music: "/assets/default-music.jpg",
+    photo: "/assets/default-photo.jpg",
   };
 
-  const formatSize = (bytes) => {
-    if (!bytes) return "Desconocido";
-
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
-    if (bytes === 0) return "0 B";
-
-    const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)), 10);
-    if (i === 0) return `${bytes} ${sizes[i]}`;
-
-    return `${(bytes / 1024 ** i).toFixed(2)} ${sizes[i]}`;
-  };
-
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <h2 className="text-2xl font-semibold mb-4 md:mb-0">
-          {activeFilters.type
-            ? activeFilters.type.charAt(0).toUpperCase() +
-              activeFilters.type.slice(1)
-            : "Todos los medios"}
-        </h2>
-
-        <div className="w-full md:w-auto">
-          <form onSubmit={handleSearchSubmit} className="flex">
-            <input
-              type="text"
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-              placeholder="Buscar..."
-              className="bg-gray-700 text-white border border-gray-600 rounded-l p-2 focus:outline-none focus:border-blue-500 w-full"
-            />
-            <button
-              type="submit"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-r transition"
-            >
-              Buscar
-            </button>
-          </form>
-        </div>
-      </div>
-
-      {error && (
-        <div className="bg-red-600 text-white p-4 rounded mb-6">
-          {error}
-          <button
-            onClick={() => setError(null)}
-            className="float-right"
-            aria-label="Cerrar"
-          >
-            &times;
-          </button>
-        </div>
-      )}
-
-      <div className="mb-4 flex justify-between items-center flex-wrap">
-        <div className="flex space-x-2 mb-2 md:mb-0">
-          <button
-            onClick={() => handleSortChange("title")}
-            className={`px-3 py-1 rounded transition text-sm ${
-              sort === "title"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-            }`}
-          >
-            Título {sort === "title" && (order === "asc" ? "↑" : "↓")}
-          </button>
-          <button
-            onClick={() => handleSortChange("created_at")}
-            className={`px-3 py-1 rounded transition text-sm ${
-              sort === "created_at"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-            }`}
-          >
-            Fecha {sort === "created_at" && (order === "asc" ? "↑" : "↓")}
-          </button>
-          <button
-            onClick={() => handleSortChange("duration")}
-            className={`px-3 py-1 rounded transition text-sm ${
-              sort === "duration"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-            }`}
-          >
-            Duración {sort === "duration" && (order === "asc" ? "↑" : "↓")}
-          </button>
-        </div>
-
-        <div className="text-sm text-gray-400">
-          {pagination.total} elementos encontrados
-        </div>
-      </div>
-
-      {media.length === 0 ? (
-        <div className="bg-gray-800 rounded-lg p-8 text-center">
-          <p className="text-gray-400 mb-4">
-            No se encontraron elementos multimedia.
-          </p>
-          {activeFilters.search && (
-            <button
-              onClick={() => {
-                setActiveFilters((prev) => ({ ...prev, search: "" }));
-                setLocalSearch("");
-              }}
-              className="text-blue-400 hover:text-blue-300 transition"
-            >
-              Limpiar búsqueda
-            </button>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {media.map((item) => (
-              <div
-                key={item.id}
-                className="bg-gray-800 rounded-lg overflow-hidden shadow-lg"
-              >
-                <div className="relative pb-[56.25%]">
-                  <img
-                    src={getThumbnail(item)}
-                    alt={item.title}
-                    className="absolute inset-0 w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = "/assets/default-media.jpg";
-                    }}
-                  />
-                  {item.type && (
-                    <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-xs text-white px-2 py-1 rounded">
-                      {item.type === "movie" && "Película"}
-                      {item.type === "series" && "Serie"}
-                      {item.type === "episode" && "Episodio"}
-                      {item.type === "music" && "Música"}
-                      {item.type === "photo" && "Foto"}
-                    </div>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h3
-                    className="text-lg font-semibold text-white truncate"
-                    title={item.title}
-                  >
-                    {item.title}
-                  </h3>
-                  {item.description && (
-                    <p className="text-gray-400 mt-1 text-sm line-clamp-2">
-                      {item.description}
-                    </p>
-                  )}
-                  <div className="flex justify-between text-gray-500 text-xs mt-2">
-                    {item.duration ? (
-                      <span>{formatDuration(item.duration)}</span>
-                    ) : (
-                      <span>{formatSize(item.size)}</span>
-                    )}
-                    {item.year && <span>{item.year}</span>}
-                  </div>
-                  <a
-                    href={`/media/${item.id}`}
-                    className="mt-3 inline-block w-full text-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                  >
-                    {item.type === "movie" || item.type === "episode"
-                      ? "Reproducir"
-                      : item.type === "photo"
-                      ? "Ver"
-                      : "Escuchar"}
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {pagination.totalPages > 1 && (
-            <div className="flex justify-center mt-8">
-              <nav className="flex space-x-2" aria-label="Pagination">
-                <button
-                  onClick={() => handlePageChange(1)}
-                  disabled={pagination.page === 1}
-                  className={`px-4 py-2 rounded-md ${
-                    pagination.page === 1
-                      ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                >
-                  Primera
-                </button>
-                <button
-                  onClick={() => handlePageChange(pagination.page - 1)}
-                  disabled={pagination.page === 1}
-                  className={`px-4 py-2 rounded-md ${
-                    pagination.page === 1
-                      ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                >
-                  Anterior
-                </button>
-
-                <div className="flex items-center px-4">
-                  <span className="text-gray-300">
-                    Página {pagination.page} de {pagination.totalPages}
-                  </span>
-                </div>
-
-                <button
-                  onClick={() => handlePageChange(pagination.page + 1)}
-                  disabled={pagination.page === pagination.totalPages}
-                  className={`px-4 py-2 rounded-md ${
-                    pagination.page === pagination.totalPages
-                      ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                >
-                  Siguiente
-                </button>
-                <button
-                  onClick={() => handlePageChange(pagination.totalPages)}
-                  disabled={pagination.page === pagination.totalPages}
-                  className={`px-4 py-2 rounded-md ${
-                    pagination.page === pagination.totalPages
-                      ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                >
-                  Última
-                </button>
-              </nav>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+  return defaultThumbnails[item.type] || "/assets/default-media.jpg";
 }
+
+const formatDuration = (seconds) => {
+  if (!seconds) return "Desconocida";
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${remainingSeconds}s`;
+  } else {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+};
+
+const formatSize = (bytes) => {
+  if (!bytes) return "Desconocido";
+
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  if (bytes === 0) return "0 B";
+
+  const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)), 10);
+  if (i === 0) return `${bytes} ${sizes[i]}`;
+
+  return `${(bytes / 1024 ** i).toFixed(2)} ${sizes[i]}`;
+};
+
+return (
+  <div className="max-w-6xl mx-auto">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+      <h2 className="text-2xl font-semibold mb-4 md:mb-0">
+        {activeFilters.type
+          ? activeFilters.type.charAt(0).toUpperCase() +
+            activeFilters.type.slice(1)
+          : "Todos los medios"}
+      </h2>
+
+      <div className="w-full md:w-auto">
+        <form onSubmit={handleSearchSubmit} className="flex">
+          <input
+            type="text"
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
+            placeholder="Buscar..."
+            className="bg-gray-700 text-white border border-gray-600 rounded-l p-2 focus:outline-none focus:border-blue-500 w-full"
+          />
+          <button
+            type="submit"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-r transition"
+          >
+            Buscar
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {error && (
+      <div className="bg-red-600 text-white p-4 rounded mb-6">
+        {error}
+        <button
+          onClick={() => setError(null)}
+          className="float-right"
+          aria-label="Cerrar"
+        >
+          &times;
+        </button>
+      </div>
+    )}
+
+    <div className="mb-4 flex justify-between items-center flex-wrap">
+      <div className="flex space-x-2 mb-2 md:mb-0">
+        <button
+          onClick={() => handleSortChange("title")}
+          className={`px-3 py-1 rounded transition text-sm ${
+            sort === "title"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+          }`}
+        >
+          Título {sort === "title" && (order === "asc" ? "↑" : "↓")}
+        </button>
+        <button
+          onClick={() => handleSortChange("created_at")}
+          className={`px-3 py-1 rounded transition text-sm ${
+            sort === "created_at"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+          }`}
+        >
+          Fecha {sort === "created_at" && (order === "asc" ? "↑" : "↓")}
+        </button>
+        <button
+          onClick={() => handleSortChange("duration")}
+          className={`px-3 py-1 rounded transition text-sm ${
+            sort === "duration"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+          }`}
+        >
+          Duración {sort === "duration" && (order === "asc" ? "↑" : "↓")}
+        </button>
+      </div>
+
+      <div className="text-sm text-gray-400">
+        {pagination.total} elementos encontrados
+      </div>
+    </div>
+
+    {media.length === 0 ? (
+      <div className="bg-gray-800 rounded-lg p-8 text-center">
+        <p className="text-gray-400 mb-4">
+          No se encontraron elementos multimedia.
+        </p>
+        {activeFilters.search && (
+          <button
+            onClick={() => {
+              setActiveFilters((prev) => ({ ...prev, search: "" }));
+              setLocalSearch("");
+            }}
+            className="text-blue-400 hover:text-blue-300 transition"
+          >
+            Limpiar búsqueda
+          </button>
+        )}
+      </div>
+    ) : (
+      <>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {media.map((item) => (
+            <div
+              key={item.id}
+              className="bg-gray-800 rounded-lg overflow-hidden shadow-lg"
+            >
+              <div className="relative pb-[56.25%]">
+                <img
+                  src={getThumbnail(item)}
+                  alt={item.title}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "/assets/default-media.jpg";
+                  }}
+                />
+                {item.type && (
+                  <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-xs text-white px-2 py-1 rounded">
+                    {item.type === "movie" && "Película"}
+                    {item.type === "series" && "Serie"}
+                    {item.type === "episode" && "Episodio"}
+                    {item.type === "music" && "Música"}
+                    {item.type === "photo" && "Foto"}
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <h3
+                  className="text-lg font-semibold text-white truncate"
+                  title={item.title}
+                >
+                  {item.title}
+                </h3>
+                {item.description && (
+                  <p className="text-gray-400 mt-1 text-sm line-clamp-2">
+                    {item.description}
+                  </p>
+                )}
+                <div className="flex justify-between text-gray-500 text-xs mt-2">
+                  {item.duration ? (
+                    <span>{formatDuration(item.duration)}</span>
+                  ) : (
+                    <span>{formatSize(item.size)}</span>
+                  )}
+                  {item.year && <span>{item.year}</span>}
+                </div>
+                <a
+                  href={`/media/${item.id}`}
+                  className="mt-3 inline-block w-full text-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                >
+                  {item.type === "movie" || item.type === "episode"
+                    ? "Reproducir"
+                    : item.type === "photo"
+                    ? "Ver"
+                    : "Escuchar"}
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {pagination.totalPages > 1 && (
+          <div className="flex justify-center mt-8">
+            <nav className="flex space-x-2" aria-label="Pagination">
+              <button
+                onClick={() => handlePageChange(1)}
+                disabled={pagination.page === 1}
+                className={`px-4 py-2 rounded-md ${
+                  pagination.page === 1
+                    ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
+              >
+                Primera
+              </button>
+              <button
+                onClick={() => handlePageChange(pagination.page - 1)}
+                disabled={pagination.page === 1}
+                className={`px-4 py-2 rounded-md ${
+                  pagination.page === 1
+                    ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
+              >
+                Anterior
+              </button>
+
+              <div className="flex items-center px-4">
+                <span className="text-gray-300">
+                  Página {pagination.page} de {pagination.totalPages}
+                </span>
+              </div>
+
+              <button
+                onClick={() => handlePageChange(pagination.page + 1)}
+                disabled={pagination.page === pagination.totalPages}
+                className={`px-4 py-2 rounded-md ${
+                  pagination.page === pagination.totalPages
+                    ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
+              >
+                Siguiente
+              </button>
+              <button
+                onClick={() => handlePageChange(pagination.totalPages)}
+                disabled={pagination.page === pagination.totalPages}
+                className={`px-4 py-2 rounded-md ${
+                  pagination.page === pagination.totalPages
+                    ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
+              >
+                Última
+              </button>
+            </nav>
+          </div>
+        )}
+      </>
+    )}
+  </div>
+);
 
 export default MediaBrowser;
