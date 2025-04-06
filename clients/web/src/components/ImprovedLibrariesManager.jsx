@@ -481,6 +481,30 @@ function ImprovedLibraryManager() {
                 escanear
               </li>
             </ul>
+
+            <div className="mt-2 p-2 bg-yellow-800 bg-opacity-40 rounded">
+              <p className="font-semibold text-yellow-200">
+                Creación de ubicaciones para bibliotecas:
+              </p>
+              <ol className="list-decimal list-inside text-gray-300 mt-1 space-y-1">
+                <li>
+                  Durante la instalación del servidor, se crea una carpeta
+                  "streamviomedia" en una ubicación accesible
+                </li>
+                <li>
+                  Si prefieres usar tus propias carpetas, selecciona la
+                  ubicación donde ya están tus medios
+                </li>
+                <li>
+                  Puedes crear tantas bibliotecas como necesites en diferentes
+                  ubicaciones
+                </li>
+                <li>
+                  Para evitar problemas de permisos, no uses carpetas temporales
+                  (/tmp) para tus bibliotecas
+                </li>
+              </ol>
+            </div>
           </div>
         </div>
       )}
