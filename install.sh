@@ -1222,6 +1222,8 @@ if [ -f "/etc/systemd/system/streamvio.service" ]; then
     
     # Recrear el archivo de servicio
     cat > /etc/systemd/system/streamvio.service << EOL
+
+    
 [Unit]
 Description=StreamVio Unified Server
 After=network.target
@@ -1298,73 +1300,6 @@ EOL
         systemctl status streamvio.service --no-pager
     fi
 fi
-
-# 5. Script para configuración de sudoers
-log "Creando configuración de sudoers para permisos automáticos..."
-
-# Crear el directorio si no existe
-mkdir -p "$INSTALL_DIR/server/scripts/system"
-
-# Ruta completa del archivo de sudoers
-SUDOERS_FILE="$INSTALL_DIR/server/scripts/system/streamvio_sudoers"
-SUDOERS_DEST="/etc/sudoers.d/streamvio"
-
-# Verificar que INSTALL_DIR no esté vacío
-if [ -z "$INSTALL_DIR" ]; then
-    log_error "INSTALL_DIR no está definido. No se puede configurar sudoers."
-    exit 1
-fi
-
-# Crear el archivo de configuración de sudoers
-cat > "$SUDOERS_FILE" << EOF
-# Permitir al usuario streamvio ejecutar comandos específicos sin contraseña
-$STREAMVIO_USER ALL=(root) NOPASSWD: \
-    /bin/chown -R $STREAMVIO_USER:$STREAMVIO_GROUP $INSTALL_DIR/*, \
-    /bin/chmod -R 775 $INSTALL_DIR/server/data, \
-    /bin/chmod -R 755 $INSTALL_DIR/clients/web/dist
-EOF
-
-# Verificar que el archivo se creó correctamente
-if [ ! -f "$SUDOERS_FILE" ]; then
-    log_error "No se pudo crear el archivo de sudoers en $SUDOERS_FILE"
-    exit 1
-fi
-
-# Intentar instalar la configuración de sudoers si se ejecuta como root
-if [ "$EUID" -eq 0 ]; then
-    # Asegurarse de que el directorio /etc/sudoers.d existe
-    mkdir -p /etc/sudoers.d
-
-    # Copiar el archivo de configuración
-    cp "$SUDOERS_FILE" "$SUDOERS_DEST"
-    
-    # Comprobar que se copió correctamente
-    if [ ! -f "$SUDOERS_DEST" ]; then
-        log_error "No se pudo copiar el archivo de sudoers a $SUDOERS_DEST"
-        exit 1
-    fi
-
-    # Establecer permisos correctos
-    chmod 440 "$SUDOERS_DEST"
-    
-    # Validar la configuración de sudoers
-    if visudo -c -f "$SUDOERS_DEST"; then
-        log "${GREEN}✓ Configuración de sudoers instalada con éxito${NC}"
-    else
-        log_error "Error en la configuración de sudoers"
-        # Eliminar el archivo si la validación falla
-        rm -f "$SUDOERS_DEST"
-        exit 1
-    fi
-else
-    log "${YELLOW}Para habilitar reparación de permisos, ejecuta como root:${NC}"
-    log "  sudo cp $SUDOERS_FILE $SUDOERS_DEST"
-    log "  sudo chmod 440 $SUDOERS_DEST"
-    log "  sudo visudo -c -f $SUDOERS_DEST"
-fi
-
-# Asegurar que el archivo local tiene permisos seguros
-chmod 640 "$SUDOERS_FILE"
 
 echo -e "\n${GREEN}¡Reparación completada!${NC}"
 echo -e "${BLUE}=================== INFORMACIÓN IMPORTANTE ===================${NC}"
