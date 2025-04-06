@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
-import FolderPermissionsManager from "./FolderPermissionsManager";
 
 const API_URL = apiConfig.API_URL;
 
@@ -9,7 +8,6 @@ function ImprovedLibrariesManager() {
   const [libraries, setLibraries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [formVisible, setFormVisible] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     path: "",
@@ -27,10 +25,19 @@ function ImprovedLibrariesManager() {
   });
   const [showPermissionCheck, setShowPermissionCheck] = useState(false);
   const [permissionsFixed, setPermissionsFixed] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
 
-  // Cargar bibliotecas
+  // Cargar bibliotecas al iniciar
+  useEffect(() => {
+    fetchLibraries();
+  }, []);
+
+  // Función para cargar bibliotecas
   const fetchLibraries = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem("streamvio_token");
       if (!token) {
         setError("Debes iniciar sesión para acceder a esta función");
@@ -54,10 +61,6 @@ function ImprovedLibrariesManager() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchLibraries();
-  }, []);
 
   // Manejar cambios en el formulario
   const handleInputChange = (e) => {
@@ -149,7 +152,10 @@ function ImprovedLibrariesManager() {
 
       // Resetear formulario y cerrar
       resetForm();
-      setFormVisible(false);
+      setDirectoryBrowser({
+        ...directoryBrowser,
+        visible: false,
+      });
     } catch (err) {
       console.error("Error al guardar biblioteca:", err);
       setError(err.response?.data?.message || "Error al guardar la biblioteca");
@@ -165,7 +171,10 @@ function ImprovedLibrariesManager() {
       scan_automatically: !!library.scan_automatically,
     });
     setEditingId(library.id);
-    setFormVisible(true);
+    setDirectoryBrowser({
+      ...directoryBrowser,
+      visible: false,
+    });
     // Ocultar validación de permisos para edición
     setShowPermissionCheck(false);
   };
@@ -207,6 +216,9 @@ function ImprovedLibrariesManager() {
 
     try {
       const token = localStorage.getItem("streamvio_token");
+      if (!token) {
+        throw new Error("No hay sesión activa");
+      }
 
       // Marcar como escaneando
       setScanningLibraries([...scanningLibraries, id]);
@@ -235,12 +247,12 @@ function ImprovedLibrariesManager() {
 
   // Explorar directorio
   const browseDirectory = async (path = null) => {
-    setDirectoryBrowser({
-      ...directoryBrowser,
-      loading: true,
-    });
-
     try {
+      setDirectoryBrowser({
+        ...directoryBrowser,
+        loading: true,
+      });
+
       const token = localStorage.getItem("streamvio_token");
       if (!token) {
         throw new Error("Se requiere autenticación");
@@ -262,18 +274,111 @@ function ImprovedLibrariesManager() {
       setDirectoryBrowser({
         visible: true,
         currentPath: response.data.path,
-        contents: response.data.contents,
+        contents: response.data.contents || [],
         loading: false,
       });
+
+      // Si cambiamos de directorio, verificar permisos
+      if (path !== directoryBrowser.currentPath) {
+        checkPermissions(response.data.path);
+      }
     } catch (err) {
       console.error("Error al explorar directorio:", err);
       setDirectoryBrowser({
         ...directoryBrowser,
         loading: false,
+        error: err.response?.data?.message || "Error al explorar el directorio",
       });
       setError(
         err.response?.data?.message || "Error al explorar el directorio"
       );
+    }
+  };
+
+  // Verificar permisos de carpeta
+  const checkPermissions = async (folderPath) => {
+    if (!folderPath) return;
+
+    try {
+      const token = localStorage.getItem("streamvio_token");
+      if (!token) throw new Error("No hay sesión activa");
+
+      const response = await axios.post(
+        `${API_URL}/api/filesystem/check-permissions`,
+        { path: folderPath },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // Si tiene permisos, actualizar estado
+      if (response.data.hasAccess) {
+        setPermissionsFixed(true);
+        setShowPermissionCheck(true);
+      } else {
+        setPermissionsFixed(false);
+        setShowPermissionCheck(true);
+      }
+
+      return response.data;
+    } catch (err) {
+      console.error("Error al verificar permisos:", err);
+      setShowPermissionCheck(true);
+      setPermissionsFixed(false);
+      return {
+        hasAccess: false,
+        message: err.response?.data?.message || "Error al verificar permisos",
+      };
+    }
+  };
+
+  // Crear nueva carpeta en el directorio actual
+  const createFolder = async () => {
+    if (!newFolderName.trim()) {
+      setError("Debes ingresar un nombre para la carpeta");
+      return;
+    }
+
+    try {
+      setCreatingFolder(true);
+
+      const token = localStorage.getItem("streamvio_token");
+      if (!token) throw new Error("No hay sesión activa");
+
+      // Construir ruta de la nueva carpeta
+      const folderPath = directoryBrowser.currentPath
+        ? `${directoryBrowser.currentPath}/${newFolderName}`.replace(
+            /\/\//g,
+            "/"
+          )
+        : newFolderName;
+
+      await axios.post(
+        `${API_URL}/api/filesystem/create-directory`,
+        { path: folderPath },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // Actualizar directorio actual
+      await browseDirectory(directoryBrowser.currentPath);
+
+      // Resetear estado
+      setNewFolderName("");
+      setShowNewFolderInput(false);
+      setCreatingFolder(false);
+
+      // Verificar permisos de la nueva carpeta
+      checkPermissions(folderPath);
+    } catch (err) {
+      console.error("Error al crear carpeta:", err);
+      setError(err.response?.data?.message || "Error al crear la carpeta");
+      setCreatingFolder(false);
     }
   };
 
@@ -291,6 +396,19 @@ function ImprovedLibrariesManager() {
     // Mostrar comprobación de permisos al seleccionar un directorio
     setShowPermissionCheck(true);
     setPermissionsFixed(false);
+    checkPermissions(path);
+  };
+
+  // Ir al directorio padre
+  const navigateToParent = () => {
+    if (directoryBrowser.currentPath) {
+      const parentPath = directoryBrowser.currentPath
+        .split("/")
+        .slice(0, -1)
+        .join("/");
+
+      browseDirectory(parentPath || "/");
+    }
   };
 
   // Resetear formulario
@@ -316,7 +434,6 @@ function ImprovedLibrariesManager() {
   // Cancelar edición/creación
   const handleCancel = () => {
     resetForm();
-    setFormVisible(false);
   };
 
   // Manejar cuando los permisos se han arreglado
@@ -325,11 +442,10 @@ function ImprovedLibrariesManager() {
       setPermissionsFixed(true);
       // Mostrar mensaje de éxito temporal
       setError(null);
-      // Opcional: mostrar mensaje de éxito
     }
   };
 
-  if (loading) {
+  if (loading && libraries.length === 0) {
     return (
       <div className="text-center py-8">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
@@ -345,7 +461,10 @@ function ImprovedLibrariesManager() {
         <button
           onClick={() => {
             resetForm();
-            setFormVisible(true);
+            setDirectoryBrowser({
+              ...directoryBrowser,
+              visible: true,
+            });
           }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition"
         >
@@ -362,7 +481,8 @@ function ImprovedLibrariesManager() {
         </div>
       )}
 
-      {formVisible && (
+      {/* Formulario de biblioteca */}
+      {(directoryBrowser.visible || showPermissionCheck) && (
         <div className="bg-gray-800 p-6 rounded-lg mb-6">
           <h3 className="text-xl font-semibold mb-4">
             {editingId ? "Editar biblioteca" : "Añadir nueva biblioteca"}
@@ -401,7 +521,13 @@ function ImprovedLibrariesManager() {
                   />
                   <button
                     type="button"
-                    onClick={() => browseDirectory()}
+                    onClick={() =>
+                      setDirectoryBrowser({
+                        ...directoryBrowser,
+                        visible: true,
+                        currentPath: formData.path || "",
+                      })
+                    }
                     className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-r"
                   >
                     Explorar
@@ -447,10 +573,89 @@ function ImprovedLibrariesManager() {
 
             {/* Componente de verificación de permisos */}
             {showPermissionCheck && formData.path && (
-              <FolderPermissionsManager
-                folderPath={formData.path}
-                onPermissionsFixed={handlePermissionsFixed}
-              />
+              <div className="mt-4 bg-gray-700 p-4 rounded">
+                <h4 className="font-medium mb-2">Verificación de permisos</h4>
+
+                {permissionsFixed ? (
+                  <div className="flex items-center text-green-400">
+                    <svg
+                      className="h-5 w-5 mr-2"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <p>La carpeta tiene los permisos correctos</p>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center text-red-400 mb-3">
+                      <svg
+                        className="h-5 w-5 mr-2"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <p>
+                        Es posible que el servicio no tenga permiso para esta
+                        carpeta
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Reparar permisos
+                        try {
+                          const token = localStorage.getItem("streamvio_token");
+                          if (!token) throw new Error("No hay sesión activa");
+
+                          axios
+                            .post(
+                              `${API_URL}/api/filesystem/fix-permissions`,
+                              { path: formData.path },
+                              {
+                                headers: {
+                                  Authorization: `Bearer ${token}`,
+                                },
+                              }
+                            )
+                            .then((response) => {
+                              if (response.data.success) {
+                                setPermissionsFixed(true);
+                              } else {
+                                setError(
+                                  "No se pudieron reparar los permisos automáticamente. " +
+                                    (response.data.message || "")
+                                );
+                              }
+                            })
+                            .catch((err) => {
+                              setError(
+                                err.response?.data?.message ||
+                                  "Error al reparar permisos"
+                              );
+                            });
+                        } catch (err) {
+                          setError("Error al reparar permisos: " + err.message);
+                        }
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
+                    >
+                      Reparar permisos automáticamente
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="flex justify-end space-x-3 mt-6">
@@ -470,144 +675,167 @@ function ImprovedLibrariesManager() {
             </div>
           </form>
 
-          {/* Explorador de directorios */}
+          {/* Navegador de directorios */}
           {directoryBrowser.visible && (
             <div className="mt-6 bg-gray-900 p-4 rounded-lg border border-gray-700">
               <div className="flex justify-between items-center mb-4">
-                <h4 className="font-semibold">
-                  Explorar: {directoryBrowser.currentPath}
+                <h4 className="font-semibold flex items-center">
+                  <span className="mr-2">Explorar:</span>
+                  <span className="font-mono text-sm bg-gray-800 px-2 py-1 rounded">
+                    {directoryBrowser.currentPath || "/"}
+                  </span>
                 </h4>
-                <button
-                  onClick={() =>
-                    setDirectoryBrowser({ ...directoryBrowser, visible: false })
-                  }
-                  className="text-gray-400 hover:text-white"
-                >
-                  &times;
-                </button>
+                <div className="flex items-center">
+                  {showNewFolderInput ? (
+                    <div className="flex items-center mr-2">
+                      <input
+                        type="text"
+                        value={newFolderName}
+                        onChange={(e) => setNewFolderName(e.target.value)}
+                        placeholder="Nombre de carpeta"
+                        className="bg-gray-800 text-white border border-gray-600 rounded-l p-1 text-sm"
+                      />
+                      <button
+                        onClick={createFolder}
+                        disabled={creatingFolder || !newFolderName.trim()}
+                        className={`bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-r text-sm ${
+                          creatingFolder || !newFolderName.trim()
+                            ? "opacity-50 cursor-not-allowed"
+                            : ""
+                        }`}
+                      >
+                        {creatingFolder ? "..." : "Crear"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowNewFolderInput(true)}
+                      className="mr-2 bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-sm"
+                      title="Crear carpeta"
+                    >
+                      Nueva carpeta
+                    </button>
+                  )}
+                  <button
+                    onClick={() =>
+                      setDirectoryBrowser({
+                        ...directoryBrowser,
+                        visible: false,
+                      })
+                    }
+                    className="text-gray-400 hover:text-white"
+                  >
+                    &times;
+                  </button>
+                </div>
               </div>
+
+              {/* Botón para subir un nivel */}
+              {directoryBrowser.currentPath && (
+                <button
+                  onClick={navigateToParent}
+                  className="bg-gray-700 text-gray-300 hover:bg-gray-600 px-3 py-1 rounded mb-3 text-sm flex items-center"
+                >
+                  <svg
+                    className="h-4 w-4 mr-1"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Subir un nivel
+                </button>
+              )}
 
               {directoryBrowser.loading ? (
                 <div className="flex justify-center py-4">
                   <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
                 </div>
               ) : (
-                <>
-                  {/* Botón para subir un nivel */}
-                  {directoryBrowser.currentPath &&
-                    directoryBrowser.currentPath !== "/" && (
-                      <button
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+                  {directoryBrowser.contents &&
+                  directoryBrowser.contents.length > 0 ? (
+                    directoryBrowser.contents.map((item, index) => (
+                      <div
+                        key={index}
+                        className={`p-2 rounded ${
+                          item.isDirectory
+                            ? "bg-blue-800 hover:bg-blue-700 cursor-pointer"
+                            : "bg-gray-700 opacity-50"
+                        } text-sm flex items-center`}
                         onClick={() => {
-                          const parentPath = directoryBrowser.currentPath
-                            .split("/")
-                            .slice(0, -1)
-                            .join("/");
-                          browseDirectory(parentPath || "/");
+                          if (item.isDirectory) {
+                            browseDirectory(item.path);
+                          }
                         }}
-                        className="bg-gray-700 text-gray-300 hover:bg-gray-600 px-3 py-1 rounded mb-3 text-sm flex items-center"
+                        onDoubleClick={() => {
+                          if (item.isDirectory) {
+                            selectDirectory(item.path);
+                          }
+                        }}
                       >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4 mr-1"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 19l-7-7 7-7"
-                          />
-                        </svg>
-                        Subir un nivel
-                      </button>
-                    )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
-                    {directoryBrowser.contents.length > 0 ? (
-                      directoryBrowser.contents.map((item) => (
-                        <div
-                          key={item.path}
-                          className={`p-2 rounded ${
-                            item.isDirectory
-                              ? "bg-blue-800 hover:bg-blue-700 cursor-pointer"
-                              : "bg-gray-700"
-                          } text-sm`}
-                          onClick={() => {
-                            if (item.isDirectory) {
-                              browseDirectory(item.path);
-                            }
-                          }}
-                        >
-                          <div className="flex items-center">
-                            <span className="mr-2">
-                              {item.isDirectory ? (
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  className="h-5 w-5 text-yellow-400"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                                  />
-                                </svg>
-                              ) : (
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  className="h-5 w-5 text-gray-400"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                  />
-                                </svg>
-                              )}
-                            </span>
-                            <span className="truncate">{item.name}</span>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-gray-400 col-span-3 py-4 text-center">
-                        Directorio vacío
+                        {item.isDirectory ? (
+                          <svg
+                            className="h-5 w-5 text-yellow-400 mr-2"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M2 6a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1H8a3 3 0 00-3 3v1.5a1.5 1.5 0 01-3 0V6z"
+                              clipRule="evenodd"
+                            />
+                            <path d="M6 12a2 2 0 012-2h8a2 2 0 012 2v2a2 2 0 01-2 2H2h2a2 2 0 002-2v-2z" />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="h-5 w-5 text-gray-400 mr-2"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                        <span className="truncate">{item.name}</span>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="flex justify-between mt-4">
-                    <button
-                      onClick={() =>
-                        setDirectoryBrowser({
-                          ...directoryBrowser,
-                          visible: false,
-                        })
-                      }
-                      className="text-gray-400 hover:text-white"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={() =>
-                        selectDirectory(directoryBrowser.currentPath)
-                      }
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
-                    >
-                      Seleccionar esta carpeta
-                    </button>
-                  </div>
-                </>
+                    ))
+                  ) : (
+                    <div className="col-span-3 text-center py-4 text-gray-400">
+                      Directorio vacío
+                    </div>
+                  )}
+                </div>
               )}
+
+              <div className="flex justify-between mt-4">
+                <button
+                  onClick={() =>
+                    setDirectoryBrowser({ ...directoryBrowser, visible: false })
+                  }
+                  className="text-gray-400 hover:text-white px-3 py-1 rounded"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => selectDirectory(directoryBrowser.currentPath)}
+                  disabled={!directoryBrowser.currentPath}
+                  className={`bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded ${
+                    !directoryBrowser.currentPath
+                      ? "opacity-50 cursor-not-allowed"
+                      : ""
+                  }`}
+                >
+                  Seleccionar esta carpeta
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -617,7 +845,14 @@ function ImprovedLibrariesManager() {
         <div className="bg-gray-800 rounded-lg p-8 text-center">
           <p className="text-gray-400 mb-4">No hay bibliotecas configuradas.</p>
           <button
-            onClick={() => setFormVisible(true)}
+            onClick={() =>
+              setDirectoryBrowser({
+                visible: true,
+                currentPath: "",
+                contents: [],
+                loading: false,
+              })
+            }
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition"
           >
             Añadir tu primera biblioteca
@@ -734,7 +969,6 @@ function ImprovedLibrariesManager() {
                       path: library.path,
                     });
                     setShowPermissionCheck(true);
-                    setFormVisible(true);
                     setEditingId(library.id);
                   }}
                   className="text-sm text-gray-400 hover:text-blue-400"
