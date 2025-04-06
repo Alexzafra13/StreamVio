@@ -351,11 +351,14 @@ async function initialize() {
     // Tabla para tokens de streaming
     await dbAsync.asyncRun(`CREATE TABLE IF NOT EXISTS streaming_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id TEXT NOT NULL UNIQUE,
       user_id INTEGER NOT NULL,
       media_id INTEGER NOT NULL,
-      token TEXT NOT NULL UNIQUE,
+      ip_address TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       expires_at TIMESTAMP NOT NULL,
+      revoked BOOLEAN DEFAULT 0,
+      revoked_at TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
       FOREIGN KEY (media_id) REFERENCES media_items (id) ON DELETE CASCADE
     )`);
@@ -383,7 +386,13 @@ async function initialize() {
       `CREATE INDEX IF NOT EXISTS idx_media_items_type ON media_items(type)`
     );
     await dbAsync.asyncRun(
-      `CREATE INDEX IF NOT EXISTS idx_streaming_tokens_token ON streaming_tokens(token)`
+      `CREATE INDEX IF NOT EXISTS idx_streaming_tokens_token_id ON streaming_tokens(token_id)`
+    );
+    await dbAsync.asyncRun(
+      `CREATE INDEX IF NOT EXISTS idx_streaming_tokens_user_id ON streaming_tokens(user_id)`
+    );
+    await dbAsync.asyncRun(
+      `CREATE INDEX IF NOT EXISTS idx_streaming_tokens_expires ON streaming_tokens(expires_at)`
     );
     await dbAsync.asyncRun(
       `CREATE INDEX IF NOT EXISTS idx_media_items_parent ON media_items(parent_id)`

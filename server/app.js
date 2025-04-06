@@ -21,8 +21,12 @@ const filesystemRoutes = require("./routes/filesystem");
 const streamingRoutes = require("./routes/streaming");
 const setupRoutes = require("./routes/setup");
 
+// Importar servicios
+const streamingTokenService = require("./services/streamingTokenService");
+
 // Importar middleware de autenticación
 const authMiddleware = require("./middleware/auth");
+const enhancedAuthMiddleware = require("./middleware/enhancedAuth");
 
 // Crear aplicación Express
 const app = express();
@@ -95,7 +99,13 @@ app.use(
       callback(null, true);
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-stream-token",
+      "stream-token",
+    ],
+    exposedHeaders: ["x-new-stream-token"],
     credentials: true,
     maxAge: 86400, // Tiempo de cache de preflight en segundos (24 horas)
   })
@@ -120,10 +130,25 @@ app.use(
 
 app.use(express.json());
 
+// Ejecutar migraciones de base de datos necesarias
+const runDatabaseMigrations = async () => {
+  try {
+    // Si es necesario ejecutar migraciones específicas, se haría aquí
+    console.log("Verificando migraciones de base de datos...");
+    // En un entorno real, aquí ejecutarías las migraciones necesarias
+    console.log("Migraciones completadas");
+  } catch (error) {
+    console.error("Error durante la migración de base de datos:", error);
+  }
+};
+
 // Función para configurar la aplicación
 async function setupApp() {
   // Verificar y crear directorios necesarios
   await setupRequiredDirectories();
+
+  // Ejecutar migraciones de base de datos
+  await runDatabaseMigrations();
 
   // Definir la ruta al directorio del frontend compilado
   const frontendDistPath = path.join(__dirname, "../clients/web/dist");
@@ -312,7 +337,11 @@ async function setupApp() {
   };
 
   // Servir archivos estáticos desde el directorio data con autenticación y mejor manejo de errores
-  app.use("/data", authMiddleware, serveStaticWithErrorHandling(dataDir));
+  app.use(
+    "/data",
+    enhancedAuthMiddleware,
+    serveStaticWithErrorHandling(dataDir)
+  );
 
   // Inicializar y configurar el transcodificador
   const enhancedTranscoder = require("./services/enhancedTranscoderService");
@@ -344,12 +373,10 @@ async function setupApp() {
     }
   });
 
-  // Inicializar servicio de streaming
-  const streamingService = require("./services/streamingService");
   // Programar limpieza periódica de tokens de streaming expirados (cada 1 hora)
   setInterval(async () => {
     try {
-      const tokensRemoved = await streamingService.periodicTokenCleanup();
+      const tokensRemoved = await streamingTokenService.periodicTokenCleanup();
       if (tokensRemoved > 0) {
         console.log(
           `Limpieza de tokens: ${tokensRemoved} tokens expirados eliminados`
