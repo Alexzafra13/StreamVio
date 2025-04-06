@@ -1300,17 +1300,26 @@ EOL
 fi
 
 # 5. Script para configuración de sudoers
+log "Creando configuración de sudoers para permisos automáticos..."
+
+# Crear el directorio si no existe
 mkdir -p "$INSTALL_DIR/server/scripts/system"
+
+# Crear el archivo de configuración de sudoers
 cat > "$INSTALL_DIR/server/scripts/system/streamvio_sudoers" << EOF
 # Permitir al usuario streamvio ejecutar comandos específicos sin contraseña
 $STREAMVIO_USER ALL=(root) NOPASSWD: \
-    /bin/chown -R $STREAMVIO_USER\\:$STREAMVIO_GROUP $INSTALL_DIR/*, \
+    /bin/chown -R $STREAMVIO_USER:$STREAMVIO_GROUP $INSTALL_DIR/*, \
     /bin/chmod -R 775 $INSTALL_DIR/server/data, \
     /bin/chmod -R 755 $INSTALL_DIR/clients/web/dist
 EOF
 
 # Intentar instalar la configuración de sudoers si se ejecuta como root
 if [ "$EUID" -eq 0 ]; then
+    # Asegurarse de que el directorio /etc/sudoers.d existe
+    mkdir -p /etc/sudoers.d
+
+    # Copiar el archivo de configuración
     cp "$INSTALL_DIR/server/scripts/system/streamvio_sudoers" /etc/sudoers.d/streamvio
     
     # Establecer permisos correctos
@@ -1318,17 +1327,20 @@ if [ "$EUID" -eq 0 ]; then
     
     # Validar la configuración de sudoers
     if visudo -c -f /etc/sudoers.d/streamvio; then
-        echo -e "${GREEN}✓ Configuración de sudoers instalada con éxito${NC}"
+        log "${GREEN}✓ Configuración de sudoers instalada con éxito${NC}"
     else
-        echo -e "${RED}Error en la configuración de sudoers${NC}"
+        log_error "Error en la configuración de sudoers"
+        # Eliminar el archivo si la validación falla
+        rm -f /etc/sudoers.d/streamvio
     fi
 else
-    echo -e "${YELLOW}Para habilitar reparación de permisos, ejecuta como root:${NC}"
-    echo "  sudo cp $INSTALL_DIR/server/scripts/system/streamvio_sudoers /etc/sudoers.d/streamvio"
-    echo "  sudo chmod 440 /etc/sudoers.d/streamvio"
-    echo "  sudo visudo -c -f /etc/sudoers.d/streamvio"
+    log "${YELLOW}Para habilitar reparación de permisos, ejecuta como root:${NC}"
+    log "  sudo cp $INSTALL_DIR/server/scripts/system/streamvio_sudoers /etc/sudoers.d/streamvio"
+    log "  sudo chmod 440 /etc/sudoers.d/streamvio"
+    log "  sudo visudo -c -f /etc/sudoers.d/streamvio"
 fi
 
+# Asegurar que el archivo local tiene permisos seguros
 chmod 640 "$INSTALL_DIR/server/scripts/system/streamvio_sudoers"
 
 echo -e "\n${GREEN}¡Reparación completada!${NC}"
