@@ -1222,32 +1222,6 @@ if [ -f "/etc/systemd/system/streamvio.service" ]; then
     
     # Recrear el archivo de servicio
     cat > /etc/systemd/system/streamvio.service << EOL
-
-    # 5. Script para configuración de sudoers
-log "Creando configuración de sudoers para permisos automáticos..."
-
-mkdir -p "$INSTALL_DIR/server/scripts/system"
-cat > "$INSTALL_DIR/server/scripts/system/streamvio_sudoers" << EOF
-# Permitir al usuario streamvio ejecutar comandos específicos sin contraseña
-$STREAMVIO_USER ALL=(ALL) NOPASSWD: /bin/chown -R $STREAMVIO_USER\\:$STREAMVIO_GROUP /*, /bin/chmod -R 775 /*
-EOF
-
-# Intentar instalar la configuración de sudoers si se ejecuta como root
-if [ "$EUID" -eq 0 ]; then
-    cp "$INSTALL_DIR/server/scripts/system/streamvio_sudoers" /etc/sudoers.d/streamvio
-    chmod 440 /etc/sudoers.d/streamvio
-    check_result "Instalación de configuración sudoers para reparación automática de permisos"
-    log "${GREEN}✓ Configuración de sudo instalada. StreamVio podrá reparar permisos automáticamente${NC}"
-else
-    log "${YELLOW}Para habilitar la reparación automática de permisos, ejecuta los siguientes comandos como root:${NC}"
-    echo "  sudo cp $INSTALL_DIR/server/scripts/system/streamvio_sudoers /etc/sudoers.d/streamvio"
-    echo "  sudo chmod 440 /etc/sudoers.d/streamvio"
-fi
-
-chmod +x "$INSTALL_DIR/server/scripts/system/streamvio_sudoers"
-check_result "Creación del archivo de configuración de sudoers"
-
-
 [Unit]
 Description=StreamVio Unified Server
 After=network.target
@@ -1324,6 +1298,38 @@ EOL
         systemctl status streamvio.service --no-pager
     fi
 fi
+
+# 5. Script para configuración de sudoers
+mkdir -p "$INSTALL_DIR/server/scripts/system"
+cat > "$INSTALL_DIR/server/scripts/system/streamvio_sudoers" << EOF
+# Permitir al usuario streamvio ejecutar comandos específicos sin contraseña
+$STREAMVIO_USER ALL=(root) NOPASSWD: \
+    /bin/chown -R $STREAMVIO_USER\\:$STREAMVIO_GROUP $INSTALL_DIR/*, \
+    /bin/chmod -R 775 $INSTALL_DIR/server/data, \
+    /bin/chmod -R 755 $INSTALL_DIR/clients/web/dist
+EOF
+
+# Intentar instalar la configuración de sudoers si se ejecuta como root
+if [ "$EUID" -eq 0 ]; then
+    cp "$INSTALL_DIR/server/scripts/system/streamvio_sudoers" /etc/sudoers.d/streamvio
+    
+    # Establecer permisos correctos
+    chmod 440 /etc/sudoers.d/streamvio
+    
+    # Validar la configuración de sudoers
+    if visudo -c -f /etc/sudoers.d/streamvio; then
+        echo -e "${GREEN}✓ Configuración de sudoers instalada con éxito${NC}"
+    else
+        echo -e "${RED}Error en la configuración de sudoers${NC}"
+    fi
+else
+    echo -e "${YELLOW}Para habilitar reparación de permisos, ejecuta como root:${NC}"
+    echo "  sudo cp $INSTALL_DIR/server/scripts/system/streamvio_sudoers /etc/sudoers.d/streamvio"
+    echo "  sudo chmod 440 /etc/sudoers.d/streamvio"
+    echo "  sudo visudo -c -f /etc/sudoers.d/streamvio"
+fi
+
+chmod 640 "$INSTALL_DIR/server/scripts/system/streamvio_sudoers"
 
 echo -e "\n${GREEN}¡Reparación completada!${NC}"
 echo -e "${BLUE}=================== INFORMACIÓN IMPORTANTE ===================${NC}"
