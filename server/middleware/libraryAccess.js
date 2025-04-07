@@ -10,6 +10,10 @@ module.exports = async (req, res, next) => {
     const userId = req.user.id;
     let libraryId = req.params.libraryId || req.query.library || null;
 
+    console.log(
+      `Verificando acceso - User ID: ${userId}, Library ID: ${libraryId}`
+    );
+
     // Convertir libraryId a número si es una cadena
     if (libraryId && typeof libraryId === "string") {
       libraryId = parseInt(libraryId, 10);

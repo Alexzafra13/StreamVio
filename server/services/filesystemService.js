@@ -325,20 +325,11 @@ class FilesystemService {
       };
     }
 
-    // Verificar si la ruta es potencialmente peligrosa
-    if (this.isDangerousPath(folderPath)) {
-      return {
-        hasAccess: false,
-        message: "Ruta potencialmente peligrosa",
-        details: "No se permite acceder a este tipo de rutas por seguridad",
-      };
-    }
-
     try {
       // Normalizar la ruta
       const normalizedPath = this.normalizePath(folderPath);
 
-      // Resultado base
+      // Resultado base con más detalles
       const result = {
         path: normalizedPath,
         exists: false,
@@ -346,24 +337,22 @@ class FilesystemService {
         readAccess: false,
         writeAccess: false,
         hasAccess: false,
-        message: null,
+        message: "Permisos no verificados",
         error: null,
         details: null,
         canCreate: false,
+        suggestedFix: null,
       };
 
-      // 1. Verificar si la carpeta existe
+      // 1. Verificar existencia y tipo
       try {
         const stats = await stat(normalizedPath);
         result.exists = true;
         result.isDirectory = stats.isDirectory();
-
-        // Añadir información adicional útil
         result.owner = stats.uid;
         result.group = stats.gid;
         result.permissions = stats.mode.toString(8).slice(-3);
 
-        // Si no es un directorio, devolver error
         if (!result.isDirectory) {
           result.error = "NOT_A_DIRECTORY";
           result.message = "La ruta especificada no es un directorio";
@@ -371,40 +360,20 @@ class FilesystemService {
         }
       } catch (error) {
         if (error.code === "ENOENT") {
-          result.error = "FOLDER_NOT_FOUND";
-          result.message = "La carpeta no existe";
-
-          // Verificar si podemos crear la carpeta
+          // Carpeta no existe, intentar crear
+          const parentDir = path.dirname(normalizedPath);
           try {
-            // Verificar permisos en el directorio padre
-            const parentDir = path.dirname(normalizedPath);
-            try {
-              await access(parentDir, fs.constants.W_OK);
-              result.canCreate = true;
-              result.details = "Se puede crear automáticamente esta carpeta";
-
-              // Información adicional sobre el padre
-              try {
-                const parentStats = await stat(parentDir);
-                result.parentPermissions = parentStats.mode
-                  .toString(8)
-                  .slice(-3);
-              } catch (err) {
-                // No es crítico si esto falla
-              }
-            } catch (accessError) {
-              result.canCreate = false;
-              result.details = `No se puede crear la carpeta: ${accessError.message}`;
-            }
-          } catch (parentError) {
-            result.canCreate = false;
-            result.details = `Error al verificar directorio padre: ${parentError.message}`;
+            await access(parentDir, fs.constants.W_OK);
+            result.canCreate = true;
+            result.message = "La carpeta no existe pero puede crearse";
+            result.suggestedFix = `mkdir -p "${normalizedPath}" && chmod 775 "${normalizedPath}"`;
+          } catch {
+            result.message = "No se puede crear la carpeta";
           }
-
           return result;
         }
 
-        result.error = error.code || "UNKNOWN_ERROR";
+        result.error = error.code;
         result.message = `Error al acceder a la carpeta: ${error.message}`;
         return result;
       }
@@ -414,9 +383,8 @@ class FilesystemService {
         await access(normalizedPath, fs.constants.R_OK);
         result.readAccess = true;
       } catch (error) {
-        result.error = "READ_ACCESS_DENIED";
-        result.message = "No se tiene permiso de lectura para esta carpeta";
-        result.details = error.message;
+        result.message = "Sin permiso de lectura";
+        result.suggestedFix = `chmod +r "${normalizedPath}"`;
         return result;
       }
 
@@ -425,48 +393,38 @@ class FilesystemService {
         await access(normalizedPath, fs.constants.W_OK);
         result.writeAccess = true;
       } catch (error) {
-        result.error = "WRITE_ACCESS_DENIED";
-        result.message = "No se tiene permiso de escritura para esta carpeta";
-        result.details = error.message;
+        result.message = "Sin permiso de escritura";
+        result.suggestedFix = `chmod +w "${normalizedPath}"`;
         return result;
       }
 
-      // 4. Intentar crear un archivo temporal para verificar escritura efectiva
+      // 4. Prueba de escritura efectiva
       const testFilePath = path.join(
         normalizedPath,
         `.streamvio-test-${Date.now()}`
       );
       try {
-        // Intentar escribir un archivo temporal
         fs.writeFileSync(testFilePath, "test");
-        // Si llega aquí, la escritura fue exitosa, eliminar el archivo
         fs.unlinkSync(testFilePath);
         result.effectiveWrite = true;
       } catch (error) {
         result.effectiveWrite = false;
-        result.writeError = error.code;
-        result.details = `Error al crear archivo de prueba: ${error.message}`;
-
-        // Si no se puede escribir a pesar de tener permisos, es posible que sea un problema de ACL
-        if (result.writeAccess) {
-          result.error = "EFFECTIVE_WRITE_FAILED";
-          result.message =
-            "No se pudo escribir a pesar de tener permisos aparentes";
-        }
-
+        result.message = "Escritura efectiva fallida";
+        result.suggestedFix = `chmod 775 "${normalizedPath}"`;
         return result;
       }
 
-      // Si llegamos aquí, todos los permisos están correctos
+      // Permisos completamente verificados
       result.hasAccess = true;
-      result.message = "La carpeta tiene los permisos correctos";
+      result.message = "Permisos correctos";
       return result;
     } catch (error) {
-      throw {
-        status: 500,
-        error: "Error del servidor",
-        message: "Error al verificar permisos de la carpeta",
+      console.error("Error inesperado en verificación de permisos:", error);
+      return {
+        hasAccess: false,
+        message: "Error inesperado",
         details: error.message,
+        suggestedFix: "Verificar manualmente los permisos",
       };
     }
   }
