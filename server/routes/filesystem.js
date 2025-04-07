@@ -5,7 +5,7 @@ const path = require("path");
 const { promisify } = require("util");
 const { execSync } = require("child_process");
 const os = require("os");
-const authMiddleware = require("../middleware/auth");
+const authMiddleware = require("../middleware/enhancedAuth");
 const db = require("../config/database"); // Necesario para verificar permisos de admin
 
 const router = express.Router();

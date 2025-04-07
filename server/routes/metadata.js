@@ -1,7 +1,7 @@
 // server/routes/metadata.js
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../middleware/auth");
+const authMiddleware = require("../middleware/enhancedAuth");
 const tmdbService = require("../services/tmdbService");
 const db = require("../config/database");
 

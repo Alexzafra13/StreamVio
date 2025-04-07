@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const router = express.Router();
 const db = require("../config/database");
-const authMiddleware = require("../middleware/auth");
+const authMiddleware = require("../middleware/enhancedAuth");
 const mediaScanner = require("../services/mediaScanner");
 const libraryAccessMiddleware = require("../middleware/libraryAccess");
 

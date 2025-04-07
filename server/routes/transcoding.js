@@ -1,7 +1,7 @@
 // server/routes/transcoding.js
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../middleware/auth");
+const authMiddleware = require("../middleware/enhancedAuth");
 const db = require("../config/database");
 const enhancedTranscoder = require("../services/enhancedTranscoderService");
 const path = require("path");
