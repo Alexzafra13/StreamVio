@@ -10,12 +10,12 @@ StreamVio es un servicio de streaming multimedia personal que te permite organiz
 - **Streaming HLS**: Soporte para streaming adaptativo que ajusta la calidad según la conexión del usuario
 - **Gestión de usuarios**: Múltiples usuarios con perfiles y preferencias personalizadas
 - **Historial y favoritos**: Lleva un registro de lo que has visto y marca tu contenido favorito
-- **Interfaz intuitiva**: Diseño moderno y fácil de usar en cualquier dispositivo
-- **Seguridad mejorada**: Usuario administrador predeterminado con cambio de contraseña obligatorio
+- **Interfaz unificada**: Diseño moderno y fácil de usar accesible desde un único puerto
+- **Configuración inicial sencilla**: Crea tu cuenta de administrador en el primer acceso
 
 ## Requisitos
 
-- **Node.js** (v14 o superior)
+- **Node.js** (v18.2 o superior)
 - **FFmpeg** (opcional pero recomendado para transcodificación)
 - Sistema operativo: Linux, macOS o Windows
 
@@ -26,59 +26,116 @@ StreamVio es un servicio de streaming multimedia personal que te permite organiz
 La forma más sencilla de instalar StreamVio es utilizando el script de instalación automática:
 
 ```bash
-# Clonar el repositorio
-git clone https://github.com/Alexzafra13/StreamVio.git
-cd StreamVio
+# Navegar al directorio de instalación
+cd /opt/streamvio
+
+# Dar permisos de ejecución al script
+sudo chmod +x install.sh
 
 # Ejecutar el script de instalación
-chmod +x setup.sh
-./setup.sh
+sudo ./install.sh
 ```
 
 Este script realizará automáticamente todos los pasos necesarios:
 
 - Verificar e instalar las dependencias necesarias (Node.js, FFmpeg)
 - Configurar la estructura de directorios
-- Inicializar la base de datos con un usuario administrador predeterminado
-- Configurar la aplicación como servicio del sistema (en Linux)
+- Inicializar la base de datos
+- Configurar la aplicación como servicio del sistema
 - Abrir los puertos necesarios en el firewall
 
-Una vez completada la instalación, la aplicación estará lista para usar.
+### Configuración de permisos adicionales (recomendado)
+
+Para asegurar que StreamVio pueda acceder correctamente a las carpetas multimedia, es recomendable ajustar la configuración del servicio:
+
+```bash
+# Editar la configuración del servicio
+sudo systemctl edit streamvio
+```
+
+Y añadir el siguiente contenido:
+
+```
+[Service]
+User=streamvio
+Group=streamvio
+ReadWritePaths=/opt/streamvio/server/data
+ReadWritePaths=/opt
+ReadWritePaths=/mnt
+ReadWritePaths=/media
+ProtectSystem=no
+ProtectHome=no
+PrivateTmp=no
+PrivateDevices=no
+```
+
+Después de guardar, reinicia el servicio:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart streamvio
+```
 
 ## Uso
 
 ### Acceso a la aplicación
 
-- **Interfaz web**: http://localhost:4321 (o la IP de tu servidor)
-- **API**: http://localhost:8000 (o la IP de tu servidor)
+- **Aplicación completa**: http://tu-ip-del-servidor:45000
 
-### Primer inicio de sesión
+StreamVio ahora utiliza un puerto único (45000) tanto para la API como para la interfaz web.
 
-Por razones de seguridad, StreamVio viene con un usuario administrador predeterminado que requiere cambiar la contraseña en el primer inicio de sesión:
+### Configuración inicial
 
-1. Accede a la interfaz web e inicia sesión con:
+En tu primer acceso a StreamVio, serás recibido con una pantalla de configuración inicial:
 
-   - **Usuario**: admin@streamvio.local
-   - **Contraseña**: admin
+1. Crea tu cuenta de administrador proporcionando:
 
-2. Se te solicitará cambiar la contraseña inmediatamente. Elige una contraseña segura.
+   - Nombre de usuario
+   - Correo electrónico
+   - Contraseña
 
-3. Una vez cambiada la contraseña, podrás acceder a todas las funcionalidades de la aplicación.
+2. Una vez completado el registro, podrás iniciar sesión con las credenciales que acabas de crear.
 
-## Transcodificación
+3. Ahora puedes comenzar a configurar tus bibliotecas multimedia.
 
-StreamVio incluye un sistema avanzado de transcodificación con:
+## Gestión de bibliotecas
 
-- **Perfiles preconfigurados**: Optimizados para diferentes dispositivos (móvil, tablet, TV)
-- **Aceleración por hardware**: Utiliza GPU cuando está disponible para un procesamiento más rápido
-- **Streaming adaptativo (HLS)**: Se ajusta dinámicamente a la calidad de conexión del usuario
-- **Generación de miniaturas y storyboards**: Para previsualización de contenido
+Para añadir una nueva biblioteca de medios:
 
-Para transcodificar un elemento multimedia:
+1. Navega a "Gestionar Bibliotecas" en el menú principal
+2. Haz clic en "Añadir biblioteca"
+3. Selecciona la ubicación de tu contenido multimedia usando el explorador de archivos
+4. Asigna un nombre descriptivo a la biblioteca
+5. Selecciona el tipo de contenido (Películas, Series, Música o Fotos)
+6. Haz clic en "Guardar"
 
-1. Navega a la página de detalles del elemento
-2. En el panel lateral, selecciona un perfil de calidad
-3. Haz clic en "Iniciar Transcodificación" o "Crear Streaming Adaptativo (HLS)"
+Si encuentras problemas de permisos, puedes usar el script incluido para configurar los permisos adecuados:
+
+```bash
+sudo /opt/streamvio/add-media-folder.sh /ruta/a/tu/carpeta/multimedia
+```
+
+## Solución de problemas
+
+Si experimentas problemas con StreamVio, puedes utilizar los siguientes scripts de mantenimiento:
+
+### Verificar permisos
+
+```bash
+sudo /opt/streamvio/check-permissions.sh
+```
+
+### Reiniciar servicio
+
+```bash
+sudo /opt/streamvio/restart-service.sh
+```
+
+### Reparar instalación
+
+```bash
+sudo /opt/streamvio/repair-installation.sh
+```
 
 ## Estructura del proyecto
 
@@ -97,66 +154,9 @@ streamvio/
 │   ├── scripts/            # Scripts de utilidad
 │   ├── services/           # Servicios de negocio
 │   └── app.js              # Punto de entrada del servidor
-├── core/                   # Núcleo de procesamiento multimedia
-│   ├── include/            # Archivos de cabecera C++
-│   ├── src/                # Código fuente C++
-│   └── CMakeLists.txt      # Configuración de compilación
-└── setup.sh                # Script de instalación
+└── install.sh              # Script de instalación
 ```
-
-## Guía de desarrollo
-
-### Servidor API
-
-El servidor API está construido con Express.js y utiliza SQLite para almacenar los datos. Las principales rutas de la API son:
-
-- `/api/auth`: Autenticación y gestión de usuarios
-- `/api/libraries`: Gestión de bibliotecas multimedia
-- `/api/media`: Gestión y reproducción de contenido multimedia
-- `/api/admin`: Funciones administrativas
-- `/api/transcoding`: Gestión de transcodificación y streaming adaptativo
-
-### Cliente web
-
-El cliente web está construido con Astro y React, utilizando Tailwind CSS para los estilos. Los principales componentes son:
-
-- `Navigation.jsx`: Barra de navegación principal
-- `MediaBrowser.jsx`: Explorador de contenido multimedia
-- `MediaViewer.jsx`: Reproductor/visor universal de elementos multimedia
-- `TranscodingManager.jsx`: Gestión de transcodificación y perfiles
-- `LibrariesManagement.jsx`: Gestión de bibliotecas
-- `AuthForm.jsx`: Formularios de inicio de sesión y registro
-- `PasswordChangeModal.jsx`: Modal para cambio de contraseña forzado
-
-### Transcodificador
-
-El sistema incluye un transcodificador nativo escrito en C++ que utiliza FFmpeg para procesar archivos multimedia. El transcodificador se encarga de:
-
-- Extraer metadatos de archivos multimedia
-- Convertir archivos a diferentes formatos
-- Generar miniaturas y storyboards para videos
-- Crear streaming adaptativo (HLS)
-- Adaptar la calidad del streaming según el dispositivo
-
-## Próximas características
-
-- [ ] Soporte para subtítulos
-- [ ] Aplicaciones móviles (iOS, Android)
-- [ ] Recomendaciones personalizadas
-- [ ] Estadísticas de uso
-- [ ] Reconocimiento facial en fotos
-- [ ] Integración con servicios de metadatos externos
-
-## Contribuciones
-
-Las contribuciones son bienvenidas. Por favor, sigue estos pasos:
-
-1. Haz un fork del repositorio
-2. Crea una rama para tu característica (`git checkout -b feature/amazing-feature`)
-3. Haz commit de tus cambios (`git commit -m 'Add some amazing feature'`)
-4. Haz push a la rama (`git push origin feature/amazing-feature`)
-5. Abre un Pull Request
 
 ## Licencia
 
-Este proyecto está licenciado bajo la Licencia MIT - ver el archivo LICENSE.md para más detalles.
+Este proyecto es desarrollado por Alejandro Osuna y está protegido bajo licencia ISC.
