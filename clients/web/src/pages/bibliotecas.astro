@@ -1,15 +1,14 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import ImprovedLibrariesManager from '../components/ImprovedLibrariesManager';
+import MediaLibraryManager from '../components/MediaLibraryManager.jsx';
 ---
-
 <Layout title="Gestión de Bibliotecas | StreamVio">
   <main class="container mx-auto px-4 py-8">
     <div class="max-w-6xl mx-auto mt-8">
       <h1 class="text-3xl font-bold mb-8 text-center text-blue-500">Gestión de Bibliotecas</h1>
       
       <div id="libraries-manager-container">
-        <ImprovedLibrariesManager client:load />
+        <MediaLibraryManager client:load />
       </div>
       
       <div id="unauthorized-message" class="hidden text-center py-8">
@@ -22,7 +21,6 @@ import ImprovedLibrariesManager from '../components/ImprovedLibrariesManager';
     </div>
   </main>
 </Layout>
-
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('streamvio_token');
