@@ -7,7 +7,6 @@ const fs = require("fs");
 const os = require("os");
 const cors = require("cors");
 const settings = require("./config/settings");
-const permissionsHelper = require("./utils/permissionsHelper");
 require("dotenv").config();
 
 // Importar rutas
