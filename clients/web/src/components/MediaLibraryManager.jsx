@@ -1,3 +1,4 @@
+// Versión corregida de MediaLibraryManager.jsx con manejo de errores mejorado
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -5,8 +6,8 @@ import apiConfig from "../config/api";
 const API_URL = apiConfig.API_URL;
 
 /**
- * MediaLibraryManager - Componente unificado para gestión de bibliotecas multimedia
- * Permite crear, editar, eliminar y gestionar bibliotecas con mejor manejo de errores y permisos
+ * MediaLibraryManager - Componente para gestión de bibliotecas multimedia
+ * Versión corregida con mejor manejo de errores
  */
 function MediaLibraryManager() {
   // Estados principales
@@ -46,46 +47,6 @@ function MediaLibraryManager() {
   const [fixingPermissions, setFixingPermissions] = useState(false);
   const [fixPermissionsResult, setFixPermissionsResult] = useState(null);
 
-  // Iconos para los tipos de biblioteca
-  const libraryTypeIcons = {
-    movies: (
-      <svg
-        className="h-8 w-8 text-blue-500"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm1 2v14h14V5H5zm4 2h6v6H9V7zm8 0h2v2h-2V7zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2zM9 15h6v2H9v-2zM5 7h2v2H5V7zm0 4h2v2H5v-2zm0 4h2v2H5v-2z" />
-      </svg>
-    ),
-    series: (
-      <svg
-        className="h-8 w-8 text-purple-500"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M2 4h2v16H2V4zm4 0h2v16H6V4zm3 0h2v16H9V4zm10.276 5.293l-2.538 2.54L19.277 7.3a1 1 0 0 0-1.418-1.418l-3.54 3.536a1 1 0 0 0 0 1.414l3.536 3.539a1 1 0 0 0 1.42-1.414l-2.54-2.541 2.54-2.541a1 1 0 0 0-1.414-1.414zM21 4h1v16h-1V4z" />
-      </svg>
-    ),
-    music: (
-      <svg
-        className="h-8 w-8 text-green-500"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-      </svg>
-    ),
-    photos: (
-      <svg
-        className="h-8 w-8 text-yellow-500"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2zm0 2v14h14V5H5zm8.5 10.5l-3-3-3 3.5V7h10v7h-4v1.5zM11 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
-      </svg>
-    ),
-  };
-
   // Cargar bibliotecas al iniciar
   useEffect(() => {
     fetchLibraries();
@@ -112,13 +73,18 @@ function MediaLibraryManager() {
         },
       });
 
-      setLibraries(response.data);
+      console.log("Respuesta API de bibliotecas:", response.data);
+
+      // Asegurar que tenemos un array, incluso si la API devuelve otra cosa
+      const librariesData = Array.isArray(response.data) ? response.data : [];
+      setLibraries(librariesData);
       setLoading(false);
     } catch (err) {
       console.error("Error al cargar bibliotecas:", err);
       setError(
         err.response?.data?.message || "Error al cargar las bibliotecas"
       );
+      setLibraries([]); // Asegurar que siempre es un array
       setLoading(false);
     }
   };
@@ -197,18 +163,25 @@ function MediaLibraryManager() {
 
       if (editingId) {
         // Actualizar biblioteca existente
-        await axios.put(`${API_URL}/api/libraries/${editingId}`, formData, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        // Actualizar lista local
-        setLibraries(
-          libraries.map((lib) =>
-            lib.id === editingId ? { ...lib, ...formData } : lib
-          )
+        const response = await axios.put(
+          `${API_URL}/api/libraries/${editingId}`,
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
         );
+
+        console.log("Respuesta de actualización:", response.data);
+
+        // Actualizar lista local con manejo seguro
+        setLibraries((prevLibraries) => {
+          if (!Array.isArray(prevLibraries)) return [];
+          return prevLibraries.map((lib) =>
+            lib.id === editingId ? { ...lib, ...formData } : lib
+          );
+        });
 
         setSuccessMessage("¡Biblioteca actualizada correctamente!");
       } else {
@@ -223,8 +196,14 @@ function MediaLibraryManager() {
           }
         );
 
-        // Añadir a la lista local
-        setLibraries([...libraries, response.data.library]);
+        console.log("Respuesta de creación:", response.data);
+
+        // Añadir a la lista local con manejo seguro
+        const newLibrary = response.data.library || response.data;
+        setLibraries((prevLibraries) => {
+          if (!Array.isArray(prevLibraries)) return [newLibrary];
+          return [...prevLibraries, newLibrary];
+        });
 
         setSuccessMessage("¡Nueva biblioteca creada correctamente!");
       }
@@ -248,10 +227,15 @@ function MediaLibraryManager() {
    * Iniciar edición de una biblioteca
    */
   const handleEdit = (library) => {
+    if (!library || !library.id) {
+      console.error("Biblioteca inválida para editar:", library);
+      return;
+    }
+
     setFormData({
-      name: library.name,
-      path: library.path,
-      type: library.type,
+      name: library.name || "",
+      path: library.path || "",
+      type: library.type || "movies",
       scan_automatically: !!library.scan_automatically,
     });
     setEditingId(library.id);
@@ -265,6 +249,11 @@ function MediaLibraryManager() {
    * Eliminar biblioteca
    */
   const handleDelete = async (id) => {
+    if (!id) {
+      console.error("ID inválido para eliminar");
+      return;
+    }
+
     if (
       !window.confirm(
         "¿Estás seguro de que deseas eliminar esta biblioteca? Esta acción es irreversible."
@@ -289,7 +278,10 @@ function MediaLibraryManager() {
       });
 
       // Eliminar de la lista local
-      setLibraries(libraries.filter((lib) => lib.id !== id));
+      setLibraries((prevLibraries) => {
+        if (!Array.isArray(prevLibraries)) return [];
+        return prevLibraries.filter((lib) => lib.id !== id);
+      });
 
       setSuccessMessage("Biblioteca eliminada correctamente");
       setTimeout(() => {
@@ -309,6 +301,11 @@ function MediaLibraryManager() {
    * Iniciar escaneo de biblioteca
    */
   const handleScan = async (id) => {
+    if (!id) {
+      console.error("ID inválido para escanear");
+      return;
+    }
+
     if (scanningLibraries.includes(id)) {
       return; // Ya se está escaneando
     }
@@ -322,7 +319,7 @@ function MediaLibraryManager() {
       }
 
       // Marcar como escaneando
-      setScanningLibraries([...scanningLibraries, id]);
+      setScanningLibraries((prev) => [...prev, id]);
 
       await axios.post(
         `${API_URL}/api/libraries/${id}/scan`,
@@ -337,7 +334,7 @@ function MediaLibraryManager() {
       // Programar una actualización después de un tiempo
       setTimeout(() => {
         fetchLibraries();
-        setScanningLibraries(scanningLibraries.filter((libId) => libId !== id));
+        setScanningLibraries((prev) => prev.filter((libId) => libId !== id));
         setSuccessMessage("Escaneo completado");
         setTimeout(() => {
           setSuccessMessage(null);
@@ -346,7 +343,7 @@ function MediaLibraryManager() {
     } catch (err) {
       console.error("Error al iniciar escaneo:", err);
       setError(err.response?.data?.message || "Error al iniciar el escaneo");
-      setScanningLibraries(scanningLibraries.filter((libId) => libId !== id));
+      setScanningLibraries((prev) => prev.filter((libId) => libId !== id));
     }
   };
 
@@ -388,25 +385,37 @@ function MediaLibraryManager() {
           )}`
         : `${API_URL}/api/filesystem/roots`;
 
+      console.log("Solicitando explorador para:", apiPath);
+
       const response = await axios.get(apiPath, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
+      console.log("Respuesta del explorador:", response.data);
+
       if (initialPath) {
-        setDirectoryContents(response.data.contents || []);
-        setCurrentDirectory(response.data.path);
+        // Asegurar que contents es un array
+        const contents = Array.isArray(response.data.contents)
+          ? response.data.contents
+          : [];
+
+        setDirectoryContents(contents);
+        setCurrentDirectory(response.data.path || "");
 
         // Actualizar historial
         if (
           response.data.path &&
           !directoryHistory.includes(response.data.path)
         ) {
-          setDirectoryHistory([...directoryHistory, response.data.path]);
+          setDirectoryHistory((prev) => [...prev, response.data.path]);
         }
       } else {
-        setDirectoryContents(response.data || []);
+        // Asegurar que la respuesta es un array
+        const contents = Array.isArray(response.data) ? response.data : [];
+
+        setDirectoryContents(contents);
         setCurrentDirectory("");
         setDirectoryHistory([]);
       }
@@ -418,6 +427,7 @@ function MediaLibraryManager() {
       setBrowserError(
         err.response?.data?.message || "Error al explorar directorio"
       );
+      setDirectoryContents([]); // Asegurar que siempre es un array
       setBrowserLoading(false);
     }
   };
@@ -426,6 +436,10 @@ function MediaLibraryManager() {
    * Navegar a un directorio específico
    */
   const navigateToDirectory = (path) => {
+    if (!path) {
+      console.error("Ruta inválida para navegar");
+      return;
+    }
     openFileBrowser(path);
   };
 
@@ -452,6 +466,11 @@ function MediaLibraryManager() {
    * Seleccionar un directorio
    */
   const selectDirectory = (path) => {
+    if (!path) {
+      console.error("Ruta inválida para seleccionar");
+      return;
+    }
+
     setFormData({
       ...formData,
       path,
@@ -558,6 +577,7 @@ function MediaLibraryManager() {
         }
       );
 
+      console.log("Respuesta de verificación de permisos:", response.data);
       setPermissionStatus(response.data);
     } catch (err) {
       console.error("Error al verificar permisos:", err);
@@ -629,26 +649,22 @@ function MediaLibraryManager() {
         Tipo de Biblioteca
       </label>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {Object.entries(libraryTypeIcons).map(([type, icon]) => (
+        {[
+          { id: "movies", name: "Películas" },
+          { id: "series", name: "Series" },
+          { id: "music", name: "Música" },
+          { id: "photos", name: "Fotos" },
+        ].map((type) => (
           <div
-            key={type}
-            onClick={() => handleTypeSelect(type)}
+            key={type.id}
+            onClick={() => handleTypeSelect(type.id)}
             className={`flex flex-col items-center p-3 rounded-lg cursor-pointer border-2 transition-colors ${
-              formData.type === type
+              formData.type === type.id
                 ? "border-blue-500 bg-blue-900 bg-opacity-30"
                 : "border-gray-700 hover:border-gray-500 bg-gray-800"
             }`}
           >
-            {icon}
-            <span className="mt-2 capitalize">
-              {type === "movies"
-                ? "Películas"
-                : type === "series"
-                ? "Series"
-                : type === "music"
-                ? "Música"
-                : "Fotos"}
-            </span>
+            <span className="mt-2 capitalize">{type.name}</span>
           </div>
         ))}
       </div>
@@ -706,7 +722,9 @@ function MediaLibraryManager() {
               </svg>
               <span className="font-medium">Problema de permisos</span>
             </div>
-            <p className="text-gray-300 mb-2">{permissionStatus.message}</p>
+            <p className="text-gray-300 mb-2">
+              {permissionStatus.message || "Permisos insuficientes"}
+            </p>
 
             {permissionStatus.details && (
               <p className="text-gray-400 text-sm mb-3">
@@ -921,7 +939,7 @@ function MediaLibraryManager() {
                         selectDirectory(item.path);
                       }
                     }}
-                    title={`${item.path}${
+                    title={`${item.path || item.name}${
                       item.isDirectory ? " (Doble clic para seleccionar)" : ""
                     }`}
                   >
@@ -969,7 +987,10 @@ function MediaLibraryManager() {
    * Renderizar lista de bibliotecas
    */
   const renderLibrariesList = () => {
-    if (libraries.length === 0) {
+    // Asegurarse de que libraries es un array
+    const safeLibraries = Array.isArray(libraries) ? libraries : [];
+
+    if (safeLibraries.length === 0) {
       return (
         <div className="bg-gray-800 rounded-lg p-8 text-center">
           <svg
@@ -1001,19 +1022,20 @@ function MediaLibraryManager() {
 
     return (
       <div className="space-y-6">
-        {libraries.map((library) => (
+        {safeLibraries.map((library) => (
           <div
-            key={library.id}
+            key={library.id || `library-${Math.random()}`}
             className="bg-gray-800 rounded-lg overflow-hidden shadow-lg"
           >
             <div className="p-6">
               <div className="flex items-start justify-between">
                 <div className="flex">
-                  <div className="mr-4">{libraryTypeIcons[library.type]}</div>
                   <div>
-                    <h3 className="text-xl font-semibold">{library.name}</h3>
+                    <h3 className="text-xl font-semibold">
+                      {library.name || "Biblioteca sin nombre"}
+                    </h3>
                     <p className="text-gray-400 mt-1 break-all">
-                      {library.path}
+                      {library.path || "Sin ruta"}
                     </p>
                     <div className="mt-2 flex items-center flex-wrap">
                       <span className="bg-blue-900 text-blue-200 text-xs px-2 py-1 rounded mr-2 mb-1">
@@ -1021,6 +1043,7 @@ function MediaLibraryManager() {
                         {library.type === "series" && "Series"}
                         {library.type === "music" && "Música"}
                         {library.type === "photos" && "Fotos"}
+                        {!library.type && "Tipo desconocido"}
                       </span>
                       <span className="text-gray-400 text-sm mb-1">
                         {library.itemCount || 0} elementos

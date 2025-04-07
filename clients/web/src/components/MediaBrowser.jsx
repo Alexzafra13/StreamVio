@@ -46,6 +46,11 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
       if (activeFilters.type) params.append("type", activeFilters.type);
       if (activeFilters.search) params.append("search", activeFilters.search);
 
+      console.log(
+        "Solicitando medios:",
+        `${API_URL}/api/media?${params.toString()}`
+      );
+
       const response = await axios.get(
         `${API_URL}/api/media?${params.toString()}`,
         {
@@ -54,8 +59,11 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
         }
       );
 
+      console.log("Respuesta API de medios:", response.data);
+
       const responseData = response.data || {};
-      const items = responseData.items || [];
+      // Asegurar que items es un array
+      const items = Array.isArray(responseData.items) ? responseData.items : [];
 
       setMedia(items);
 
@@ -163,6 +171,9 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     return `${(bytes / 1024 ** i).toFixed(2)} ${sizes[i]}`;
   };
 
+  // Asegurarnos de que media siempre es un array
+  const safeMedia = Array.isArray(media) ? media : [];
+
   if (loading && pagination.page === 1) {
     return (
       <div className="flex justify-center items-center py-16">
@@ -250,7 +261,7 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
         </div>
       </div>
 
-      {media.length === 0 ? (
+      {safeMedia.length === 0 ? (
         <div className="bg-gray-800 rounded-lg p-8 text-center">
           <p className="text-gray-400 mb-4">
             No se encontraron elementos multimedia.
@@ -270,15 +281,15 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {media.map((item) => (
+            {safeMedia.map((item, index) => (
               <div
-                key={item.id}
+                key={item.id || `media-${index}`}
                 className="bg-gray-800 rounded-lg overflow-hidden shadow-lg"
               >
                 <div className="relative pb-[56.25%]">
                   <img
                     src={getThumbnail(item)}
-                    alt={item.title}
+                    alt={item.title || "Elemento multimedia"}
                     className="absolute inset-0 w-full h-full object-cover"
                     onError={(e) => {
                       if (e.target.src !== "/assets/default-media.jpg") {
@@ -301,7 +312,7 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
                     className="text-lg font-semibold text-white truncate"
                     title={item.title}
                   >
-                    {item.title}
+                    {item.title || "Sin título"}
                   </h3>
                   {item.description && (
                     <p className="text-gray-400 mt-1 text-sm line-clamp-2">
