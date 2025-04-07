@@ -78,8 +78,9 @@ async function setupRequiredDirectories() {
   }
 }
 
-// Configurar logger personalizado para problemas de permisos
-const logPermissionIssue = permissionsHelper.logPermissionIssue;
+const logPermissionIssue = (filePath, error) => {
+  console.error(`Error de permisos en ${filePath}:`, error);
+};
 
 // Middleware
 app.use(
