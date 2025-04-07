@@ -1,4 +1,4 @@
-// server/routes/filesystem.js - Versión mejorada
+// server/routes/filesystem.js - Versión mejorada y menos restrictiva
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -6,7 +6,7 @@ const { promisify } = require("util");
 const { execSync } = require("child_process");
 const os = require("os");
 const authMiddleware = require("../middleware/enhancedAuth");
-const db = require("../config/database"); // Necesario para verificar permisos de admin
+const db = require("../config/database");
 
 const router = express.Router();
 
@@ -28,7 +28,7 @@ function normalizePath(filePath) {
 }
 
 /**
- * Verifica si una ruta es potencialmente peligrosa
+ * Verifica si una ruta es potencialmente peligrosa - VERSIÓN MENOS RESTRICTIVA
  * @param {string} filePath - Ruta a verificar
  * @returns {boolean} - true si es peligrosa
  */
@@ -36,16 +36,13 @@ function isDangerousPath(filePath) {
   // Normalizar la ruta primero
   const normalized = normalizePath(filePath);
 
-  // Lista de rutas específicas que son demasiado peligrosas para permitir
+  // Lista reducida de rutas específicas que son realmente peligrosas
   const dangerousPaths = [
     "/etc/shadow",
     "/etc/passwd",
     "/etc/sudoers",
-    "/etc/ssh",
     "/boot",
-    "/bin",
-    "/sbin",
-    "C:\\Windows\\System32",
+    "C:\\Windows\\System32\\config",
   ];
 
   // Verificar si la ruta está en la lista de rutas peligrosas
@@ -61,7 +58,7 @@ function isDangerousPath(filePath) {
 
 /**
  * @route   GET /api/filesystem/browse
- * @desc    Explorar el contenido de un directorio
+ * @desc    Explorar el contenido de un directorio con manejo de errores mejorado
  * @access  Private
  */
 router.get("/browse", authMiddleware, async (req, res) => {
@@ -77,7 +74,8 @@ router.get("/browse", authMiddleware, async (req, res) => {
   if (isDangerousPath(dirPath)) {
     return res.status(403).json({
       error: "Acceso denegado",
-      message: "No tienes permiso para acceder a esta ruta",
+      message:
+        "No tienes permiso para acceder a esta ruta por motivos de seguridad",
     });
   }
 
@@ -104,7 +102,7 @@ router.get("/browse", authMiddleware, async (req, res) => {
           };
         } catch (err) {
           // Si no se puede obtener información del archivo, omitirlo
-          console.error(`Error al obtener información de ${filePath}:`, err);
+          console.warn(`No se pudo acceder a ${filePath}: ${err.message}`);
           return null;
         }
       })
@@ -138,6 +136,8 @@ router.get("/browse", authMiddleware, async (req, res) => {
       return res.status(403).json({
         error: "Acceso denegado",
         message: `No tienes permiso para acceder al directorio ${dirPath}`,
+        suggestionMsg:
+          "Prueba con una carpeta diferente o con permisos de usuario adecuados.",
       });
     }
 
@@ -151,60 +151,122 @@ router.get("/browse", authMiddleware, async (req, res) => {
     res.status(500).json({
       error: "Error del servidor",
       message: `Error al explorar el directorio ${dirPath}`,
+      details: error.message,
     });
   }
 });
 
 /**
  * @route   GET /api/filesystem/roots
- * @desc    Obtener las unidades/raíces disponibles
+ * @desc    Obtener las unidades/raíces disponibles con más opciones para el usuario
  * @access  Private
  */
 router.get("/roots", authMiddleware, async (req, res) => {
   try {
+    const rootDirectories = [];
+
+    // En Windows, enumerar las unidades disponibles
     if (process.platform === "win32") {
-      // En Windows, enumerar las unidades disponibles
-      const { stdout } = await promisify(require("child_process").exec)(
-        "wmic logicaldisk get name"
-      );
+      try {
+        const { stdout } = await promisify(require("child_process").exec)(
+          "wmic logicaldisk get name"
+        );
 
-      // Parsear la salida para obtener las letras de unidad
-      const drives = stdout
-        .split("\r\n")
-        .filter((line) => /^[A-Z]:/.test(line))
-        .map((drive) => drive.trim());
+        // Parsear la salida para obtener las letras de unidad
+        const drives = stdout
+          .split("\r\n")
+          .filter((line) => /^[A-Z]:/.test(line))
+          .map((drive) => drive.trim());
 
-      const rootDirectories = drives.map((drive) => ({
-        name: drive,
-        path: drive + "\\",
-        isDirectory: true,
-        isRoot: true,
-      }));
-
-      res.json(rootDirectories);
-    } else {
-      // En Unix/Linux, usar el directorio raíz
-      res.json([
-        {
-          name: "/",
-          path: "/",
+        drives.forEach((drive) => {
+          rootDirectories.push({
+            name: drive,
+            path: drive + "\\",
+            isDirectory: true,
+            isRoot: true,
+          });
+        });
+      } catch (error) {
+        console.warn("Error al obtener unidades en Windows:", error);
+        // Fallback en caso de error: añadir al menos C:
+        rootDirectories.push({
+          name: "C:",
+          path: "C:\\",
           isDirectory: true,
           isRoot: true,
-        },
-      ]);
+        });
+      }
     }
+
+    // Para cualquier sistema operativo (incluyendo Windows), añadir ubicaciones útiles
+    const commonPaths = [];
+
+    // Para Unix/Linux
+    if (process.platform !== "win32") {
+      commonPaths.push(
+        { name: "/ (Raíz)", path: "/", isDirectory: true, isRoot: true },
+        { name: "/home", path: "/home", isDirectory: true },
+        { name: "/media", path: "/media", isDirectory: true },
+        { name: "/mnt", path: "/mnt", isDirectory: true },
+        { name: "/tmp", path: "/tmp", isDirectory: true },
+        { name: "/var", path: "/var", isDirectory: true }
+      );
+    }
+
+    // Directorio temporal (funciona en cualquier SO)
+    const tempDir = os.tmpdir();
+    commonPaths.push({
+      name: "Temp",
+      path: tempDir,
+      isDirectory: true,
+      description: "Directorio temporal del sistema",
+    });
+
+    // Directorio de inicio del usuario (funciona en cualquier SO)
+    const homeDir = os.homedir();
+    commonPaths.push({
+      name: "Home",
+      path: homeDir,
+      isDirectory: true,
+      description: "Directorio personal del usuario",
+    });
+
+    // Verificar qué directorios realmente existen antes de añadirlos
+    for (const dir of commonPaths) {
+      try {
+        await access(dir.path, fs.constants.R_OK);
+        rootDirectories.push(dir);
+      } catch (error) {
+        // Omitir este directorio si no existe o no es accesible
+        console.warn(`Directorio ${dir.path} no accesible:`, error.message);
+      }
+    }
+
+    // Si estamos en desarrollo, añadir el directorio actual del proceso
+    if (process.env.NODE_ENV === "development") {
+      const currentDir = process.cwd();
+      rootDirectories.push({
+        name: "Directorio del Servidor",
+        path: currentDir,
+        isDirectory: true,
+        description: "Directorio donde se ejecuta el servidor",
+      });
+    }
+
+    res.json(rootDirectories);
   } catch (error) {
     console.error("Error al obtener unidades/raíces:", error);
     res.status(500).json({
       error: "Error del servidor",
       message: "Error al obtener las unidades disponibles",
+      details: error.message,
     });
   }
 });
 
 /**
  * @route   POST /api/filesystem/create-directory
- * @desc    Crear un nuevo directorio
+ * @desc    Crear un nuevo directorio con menos restricciones
  * @access  Private
  */
 router.post("/create-directory", authMiddleware, async (req, res) => {
@@ -221,7 +283,8 @@ router.post("/create-directory", authMiddleware, async (req, res) => {
   if (isDangerousPath(dirPath)) {
     return res.status(403).json({
       error: "Acceso denegado",
-      message: "No tienes permiso para crear un directorio en esta ruta",
+      message:
+        "No tienes permiso para crear un directorio en esta ruta por motivos de seguridad",
     });
   }
 
@@ -229,23 +292,34 @@ router.post("/create-directory", authMiddleware, async (req, res) => {
     // Normalizar la ruta
     const normalizedPath = normalizePath(dirPath);
 
-    // Crear el directorio de forma recursiva
-    await mkdir(normalizedPath, { recursive: true, mode: 0o775 });
+    // Crear el directorio de forma recursiva con permisos amplios
+    await mkdir(normalizedPath, { recursive: true, mode: 0o777 });
 
-    // Intentar establecer permisos adecuados
+    // Intentar establecer permisos aún más permisivos para asegurar el acceso
     try {
-      // En sistemas Unix, establecer el bit SGID para que los nuevos archivos hereden el grupo
+      // Usar 0o777 para dar todos los permisos a todos los usuarios
+      await chmod(normalizedPath, 0o777);
+
+      // En sistemas Unix, intentar usar chmod directamente para asegurar permisos
       if (process.platform !== "win32") {
-        await chmod(normalizedPath, 0o2775); // Agregar el bit SGID (2)
+        try {
+          execSync(`chmod -R 777 "${normalizedPath}"`);
+        } catch (chmodError) {
+          console.warn(
+            `Advertencia: chmod adicional falló: ${chmodError.message}`
+          );
+          // No es crítico, continuamos
+        }
       }
     } catch (permError) {
       console.warn(
-        `Advertencia: no se pudieron establecer todos los permisos: ${permError.message}`
+        `Advertencia: no se pudieron establecer permisos adicionales: ${permError.message}`
       );
       // Continuamos de todas formas, ya que la carpeta se creó
     }
 
     res.json({
+      success: true,
       message: "Directorio creado exitosamente",
       path: normalizedPath,
     });
@@ -256,12 +330,15 @@ router.post("/create-directory", authMiddleware, async (req, res) => {
       return res.status(403).json({
         error: "Acceso denegado",
         message: `No tienes permiso para crear el directorio ${dirPath}`,
+        suggestion: "Prueba con una ubicación diferente, como /tmp",
       });
     }
 
     res.status(500).json({
       error: "Error del servidor",
       message: `Error al crear el directorio ${dirPath}: ${error.message}`,
+      suggestion:
+        "Prueba con una ubicación donde tengas permisos, como /tmp o tu directorio home",
     });
   }
 });
@@ -414,33 +491,11 @@ router.post("/check-permissions", authMiddleware, async (req, res) => {
 
 /**
  * @route   POST /api/filesystem/fix-permissions
- * @desc    Reparar permisos de una carpeta con sudo si es necesario
- * @access  Private (Admin)
+ * @desc    Reparar permisos de una carpeta con permisos más amplios
+ * @access  Private
  */
 router.post("/fix-permissions", authMiddleware, async (req, res) => {
   const { path: folderPath } = req.body;
-
-  // Verificar que es admin (puedes comentar o eliminar esta parte si quieres permitir a cualquier usuario)
-  try {
-    const userId = req.user.id;
-    const isAdmin = await db.asyncGet(
-      "SELECT is_admin FROM users WHERE id = ?",
-      [userId]
-    );
-
-    // Esto es opcional: puedes comentarlo si quieres que todos los usuarios puedan
-    // arreglar permisos sin ser administradores
-    if (!isAdmin || isAdmin.is_admin !== 1) {
-      return res.status(403).json({
-        error: "Acceso denegado",
-        message:
-          "Se requieren privilegios de administrador para esta operación",
-      });
-    }
-  } catch (error) {
-    console.error("Error al verificar privilegios de administrador:", error);
-    // Continuamos de todas formas para mejorar la experiencia del usuario
-  }
 
   if (!folderPath) {
     return res.status(400).json({
@@ -453,85 +508,118 @@ router.post("/fix-permissions", authMiddleware, async (req, res) => {
     // Normalizar la ruta
     const normalizedPath = normalizePath(folderPath);
 
-    // Primero intentamos métodos estándar (esto viene de tu código original)
+    // Primero verificar si la carpeta existe
     let success = false;
     let message = "";
     let details = "";
     let suggestedCommand = "";
 
-    // Si estamos en Linux/Unix, intentar usar sudo
-    if (process.platform !== "win32") {
-      try {
-        // Intentar ejecutar comando con sudo (esto requiere configurar sudoers adecuadamente)
-        const { execSync } = require("child_process");
-        const serviceUser = process.env.SERVICE_USER || "streamvio";
-        const serviceGroup = process.env.SERVICE_GROUP || "streamvio";
-
-        // Intentar usar sudo para corregir permisos
-        // Nota: esto requiere configuración especial en /etc/sudoers
+    try {
+      // Intentar acceder a la carpeta
+      await access(normalizedPath, fs.constants.F_OK);
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        // La carpeta no existe, intentar crearla
         try {
-          // Comando para cambiar permisos con sudo
-          const command = `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`;
-
-          // Ejecutar el comando
-          execSync(command);
-
-          success = true;
-          message = "Permisos reparados correctamente usando sudo";
-          details = `Se cambió el propietario a ${serviceUser}:${serviceGroup} y se establecieron permisos 775`;
-        } catch (sudoError) {
-          console.error("Error al usar sudo:", sudoError);
-
-          // Si falla, intentar con método estándar de usuario actual
-          try {
-            // Aplicar permisos permisivos para asegurar acceso
-            execSync(`chmod -R 777 "${normalizedPath}"`);
-            success = true;
-            message = "Permisos reparados en modo permisivo";
-            details =
-              "Se establecieron permisos 777 (permisos completos para todos los usuarios)";
-            suggestedCommand = `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`;
-          } catch (chmodError) {
-            success = false;
-            message = "No se pudieron reparar los permisos";
-            details = chmodError.message;
-            suggestedCommand = `sudo chown -R ${serviceUser}:${serviceGroup} "${normalizedPath}" && sudo chmod -R 775 "${normalizedPath}"`;
-          }
+          await mkdir(normalizedPath, { recursive: true, mode: 0o777 });
+          message = "Carpeta creada con permisos amplios";
+          details =
+            "Se ha creado la carpeta con permisos de lectura/escritura para todos los usuarios";
+        } catch (mkdirError) {
+          return res.json({
+            success: false,
+            message: "No se pudo crear la carpeta",
+            details: mkdirError.message,
+            suggestedCommand: `mkdir -p "${normalizedPath}" && chmod 777 "${normalizedPath}"`,
+          });
         }
-      } catch (error) {
-        console.error("Error general al reparar permisos:", error);
-        success = false;
-        message = "Error al intentar reparar permisos";
-        details = error.message;
-      }
-    } else {
-      // En Windows usar icacls o cacls
-      try {
-        const { execSync } = require("child_process");
-        const username = require("os").userInfo().username;
-
-        // Comando para dar permisos completos al usuario actual y al grupo Everyone
-        execSync(
-          `icacls "${normalizedPath}" /grant:r "${username}":(OI)(CI)F /grant:r Everyone:(OI)(CI)F /Q`
-        );
-
-        success = true;
-        message = "Permisos reparados correctamente en Windows";
-        details = `Permisos otorgados a ${username} y a Everyone`;
-      } catch (error) {
-        success = false;
-        message = "Error al reparar permisos en Windows";
-        details = error.message;
-        suggestedCommand = `icacls "${normalizedPath}" /grant:r Everyone:(OI)(CI)F /Q`;
+      } else {
+        return res.json({
+          success: false,
+          message: "Error al acceder a la carpeta",
+          details: error.message,
+        });
       }
     }
 
-    // Devolver resultado
+    // Ahora aplicar permisos muy amplios
+    try {
+      // Usar chmod 777 para dar todos los permisos
+      if (process.platform === "win32") {
+        // En Windows, usar cacls si está disponible
+        try {
+          execSync(`icacls "${normalizedPath}" /grant Everyone:F /T`);
+          success = true;
+          message = "Permisos ampliados en Windows";
+          details = "Se han otorgado permisos completos a todos los usuarios";
+        } catch (icaclsError) {
+          // Fallback a Node.js chmod
+          try {
+            await chmod(normalizedPath, 0o777);
+            success = true;
+            message = "Permisos ampliados mediante Node.js";
+            details =
+              "Se han otorgado permisos amplios usando las APIs de Node.js";
+          } catch (chmodError) {
+            success = false;
+            message = "Error al aplicar permisos en Windows";
+            details = chmodError.message;
+            suggestedCommand = `icacls "${normalizedPath}" /grant Everyone:F /T`;
+          }
+        }
+      } else {
+        // En Unix/Linux, aplicar chmod 777 recursivo
+        try {
+          execSync(`chmod -R 777 "${normalizedPath}"`);
+          success = true;
+          message = "Permisos ampliados en Unix/Linux";
+          details = "Se han otorgado permisos completos (777) recursivamente";
+        } catch (chmodError) {
+          // Fallback a Node.js chmod
+          try {
+            await chmod(normalizedPath, 0o777);
+            success = true;
+            message = "Permisos básicos aplicados";
+            details =
+              "Se han aplicado permisos 777 al directorio principal (no recursivo)";
+            suggestedCommand = `chmod -R 777 "${normalizedPath}"`;
+          } catch (nodeChmodError) {
+            success = false;
+            message = "Error al aplicar permisos";
+            details = nodeChmodError.message;
+            suggestedCommand = `sudo chmod -R 777 "${normalizedPath}"`;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error general al cambiar permisos:", error);
+      success = false;
+      message = "Error al modificar permisos";
+      details = error.message;
+      suggestedCommand =
+        process.platform === "win32"
+          ? `icacls "${normalizedPath}" /grant Everyone:F /T`
+          : `sudo chmod -R 777 "${normalizedPath}"`;
+    }
+
+    // Verificar permisos después de la aplicación
+    if (success) {
+      try {
+        await access(normalizedPath, fs.constants.R_OK | fs.constants.W_OK);
+        // Todo correcto
+      } catch (accessError) {
+        // Los permisos no se aplicaron correctamente
+        success = false;
+        message += " pero la verificación falló";
+        details += `. Error en verificación: ${accessError.message}`;
+      }
+    }
+
     return res.json({
       success,
       message,
       details,
-      suggestedCommand,
+      suggestedCommand: suggestedCommand || null,
       path: normalizedPath,
     });
   } catch (error) {
@@ -543,6 +631,122 @@ router.post("/fix-permissions", authMiddleware, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error al reparar permisos",
+      error: error.message,
+      suggestedCommand:
+        process.platform === "win32"
+          ? `icacls "${folderPath}" /grant Everyone:F /T`
+          : `sudo chmod -R 777 "${folderPath}"`,
+    });
+  }
+});
+
+/**
+ * @route   POST /api/filesystem/suggest-paths
+ * @desc    Sugerir ubicaciones con buen acceso para bibliotecas
+ * @access  Private
+ */
+router.get("/suggest-paths", authMiddleware, async (req, res) => {
+  try {
+    const suggestions = [];
+    const testedPaths = [];
+
+    // Probar varias ubicaciones comunes
+    if (process.platform === "win32") {
+      // Ubicaciones Windows
+      testedPaths.push(
+        "C:\\Users\\Public\\Media",
+        "C:\\Users\\Public\\Videos",
+        "C:\\Users\\Public\\Music",
+        "C:\\ProgramData\\StreamVio",
+        os.homedir() + "\\Videos",
+        os.homedir() + "\\Music",
+        os.homedir() + "\\Pictures"
+      );
+    } else {
+      // Ubicaciones Unix/Linux
+      testedPaths.push(
+        "/tmp",
+        "/var/media",
+        "/var/lib/streamvio",
+        "/media",
+        "/mnt",
+        os.homedir() + "/Media",
+        os.homedir() + "/Videos",
+        os.homedir() + "/Music",
+        os.homedir() + "/Pictures"
+      );
+    }
+
+    // Agregar algunos directorios que sabemos son útiles
+    testedPaths.push(os.tmpdir(), os.homedir());
+
+    // Probar cada ubicación
+    for (const testPath of testedPaths) {
+      try {
+        // Normalizar la ruta
+        const normalizedPath = normalizePath(testPath);
+
+        // Verificar existencia
+        let exists = false;
+        try {
+          await access(normalizedPath, fs.constants.F_OK);
+          exists = true;
+        } catch (err) {
+          // No existe, intentar crear
+          try {
+            await mkdir(normalizedPath, { recursive: true, mode: 0o777 });
+            exists = true;
+          } catch (mkdirErr) {
+            // No se puede crear, omitir
+            continue;
+          }
+        }
+
+        // Verificar permisos
+        try {
+          await access(normalizedPath, fs.constants.R_OK | fs.constants.W_OK);
+
+          // Intentar crear un archivo de prueba
+          const testFilePath = path.join(
+            normalizedPath,
+            `.streamvio-test-${Date.now()}`
+          );
+          try {
+            fs.writeFileSync(testFilePath, "test");
+            fs.unlinkSync(testFilePath);
+
+            // Agregar a sugerencias
+            suggestions.push({
+              path: normalizedPath,
+              exists,
+              hasAccess: true,
+              description: testPath.includes(os.homedir())
+                ? "Directorio personal"
+                : testPath.includes("/tmp") || testPath.includes("Temp")
+                ? "Directorio temporal"
+                : "Ubicación recomendada",
+            });
+          } catch (err) {
+            // No se puede escribir, omitir
+          }
+        } catch (err) {
+          // No tiene permisos, omitir
+        }
+      } catch (err) {
+        // Error general, omitir
+        console.warn(`Error al verificar ruta ${testPath}:`, err);
+      }
+    }
+
+    res.json({
+      success: true,
+      suggestions: suggestions.slice(0, 5), // Limitar a 5 sugerencias
+    });
+  } catch (error) {
+    console.error("Error al sugerir rutas:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error al generar sugerencias de rutas",
       error: error.message,
     });
   }

@@ -14,11 +14,10 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [permissionStatus, setPermissionStatus] = useState(null);
-  const [showDetails, setShowDetails] = useState(false);
   const [fixingPermissions, setFixingPermissions] = useState(false);
   const [fixResult, setFixResult] = useState(null);
 
-  // Efecto para verificar permisos cuando se proporciona una ruta
+  // Verificar permisos al montar o cuando cambia la ruta
   useEffect(() => {
     if (folderPath) {
       checkPermissions();
@@ -46,46 +45,27 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
         `${API_URL}/api/filesystem/check-permissions`,
         { path: folderPath },
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
       setPermissionStatus(response.data);
-
-      // Mostrar detalles si hay problemas
-      if (!response.data.hasAccess) {
-        setShowDetails(true);
-      }
+      setLoading(false);
     } catch (err) {
       console.error("Error al verificar permisos:", err);
 
-      // Manejar diferentes tipos de errores
-      if (err.response && err.response.status === 404) {
-        setError(
-          "La carpeta no existe. Puedes crearla desde el explorador de archivos."
-        );
-      } else if (err.response && err.response.status === 403) {
-        setError("No tienes permiso para verificar esta carpeta.");
+      if (err.response) {
+        setError(err.response.data?.message || "Error al verificar permisos");
       } else {
-        setError(
-          err.response?.data?.message ||
-            "Error al verificar permisos de la carpeta. Verifica la ruta o tus permisos."
-        );
+        setError("Error de conexión al verificar permisos");
       }
-    } finally {
+
       setLoading(false);
     }
   };
 
   // Reparar permisos de la carpeta
-  const repairPermissions = async () => {
-    if (!folderPath) {
-      setError("Debes proporcionar una ruta de carpeta");
-      return;
-    }
-
+  const fixPermissions = async () => {
     setFixingPermissions(true);
     setError(null);
     setFixResult(null);
@@ -100,21 +80,18 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
         `${API_URL}/api/filesystem/fix-permissions`,
         { path: folderPath },
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
       setFixResult(response.data);
 
-      // Si la reparación fue exitosa, volver a verificar los permisos
+      // Si fue exitoso, verificar nuevamente los permisos después de un breve retraso
       if (response.data.success) {
-        // Pequeña pausa para asegurar que los cambios han tenido efecto
         setTimeout(() => {
           checkPermissions();
 
-          // Notificar que se repararon los permisos
+          // Notificar que se han reparado los permisos
           if (onPermissionsFixed) {
             onPermissionsFixed(response.data);
           }
@@ -123,33 +100,30 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
     } catch (err) {
       console.error("Error al reparar permisos:", err);
 
-      if (err.response && err.response.status === 403) {
-        setError(
-          "No tienes permiso para reparar esta carpeta. Necesitas permisos de administrador."
-        );
+      if (err.response) {
+        setError(err.response.data?.message || "Error al reparar permisos");
       } else {
-        setError(
-          err.response?.data?.message ||
-            "Error al reparar permisos de la carpeta. Puede que necesites ejecutar como administrador."
-        );
+        setError("Error de conexión al reparar permisos");
       }
 
       setFixResult({
         success: false,
-        error: err.response?.data?.message || "Error desconocido",
+        message: "No se pudieron reparar los permisos",
+        error: err.message,
+        suggestedCommand: "sudo chmod -R 777 " + folderPath,
       });
     } finally {
       setFixingPermissions(false);
     }
   };
 
-  // Si no hay ruta de carpeta, no mostrar nada
+  // Si no hay ruta, no mostrar el componente
   if (!folderPath) {
     return null;
   }
 
   return (
-    <div className="bg-gray-700 p-4 rounded-lg">
+    <div className="rounded-lg overflow-hidden">
       <h4 className="font-medium mb-2">Verificación de permisos</h4>
 
       {loading ? (
@@ -170,8 +144,8 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
           </button>
         </div>
       ) : permissionStatus.hasAccess ? (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
+        <div>
+          <div className="flex items-center mb-2">
             <svg
               className="h-5 w-5 text-green-500 mr-2"
               fill="none"
@@ -186,17 +160,13 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
               />
             </svg>
             <p className="text-sm text-green-400">
-              El servicio tiene permisos correctos para esta carpeta
+              ¡Genial! El servicio tiene permisos correctos para esta carpeta
             </p>
           </div>
-          {showDetails && (
-            <button
-              onClick={() => setShowDetails(!showDetails)}
-              className="text-sm text-blue-400 hover:text-blue-300"
-            >
-              {showDetails ? "Ocultar detalles" : "Ver detalles"}
-            </button>
-          )}
+          <p className="text-xs text-gray-400">
+            Esta carpeta tiene los permisos de lectura/escritura necesarios para
+            ser usada como biblioteca de medios
+          </p>
         </div>
       ) : (
         <div>
@@ -216,48 +186,42 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
                 />
               </svg>
               <p className="text-sm text-red-400">
-                El servicio no tiene permisos suficientes para esta carpeta
+                ¡Problema detectado! El servicio no tiene permisos suficientes
+                para esta carpeta
               </p>
             </div>
-            <button
-              onClick={() => setShowDetails(!showDetails)}
-              className="text-sm text-blue-400 hover:text-blue-300"
-            >
-              {showDetails ? "Ocultar detalles" : "Ver detalles"}
-            </button>
           </div>
 
-          {showDetails && (
-            <div className="mt-2 mb-4 bg-gray-800 p-3 rounded text-sm text-gray-300">
-              <p>
-                <strong>Problema:</strong>{" "}
-                {permissionStatus.message || "Permisos insuficientes"}
-              </p>
-              {permissionStatus.details && (
-                <p className="mt-1">
-                  <strong>Detalles:</strong> {permissionStatus.details}
-                </p>
-              )}
-              {permissionStatus.error && (
-                <p className="mt-1">
-                  <strong>Error:</strong> {permissionStatus.error}
-                </p>
-              )}
-              <p className="mt-2">
-                Para solucionar este problema, el servidor necesita tener
-                permisos de lectura y escritura en esta carpeta.
-              </p>
-              {permissionStatus.canCreate && (
-                <p className="mt-1 text-yellow-400">
-                  Esta carpeta no existe pero puede ser creada automáticamente.
-                </p>
-              )}
-            </div>
-          )}
+          <div className="mt-2 bg-gray-800 p-3 rounded text-sm">
+            <p className="font-semibold text-gray-300">Problema encontrado:</p>
+            <p className="mt-1 text-gray-400">
+              {permissionStatus.message || "Permisos insuficientes"}
+            </p>
 
+            {permissionStatus.details && (
+              <p className="mt-2 text-gray-400 text-xs">
+                {permissionStatus.details}
+              </p>
+            )}
+
+            {permissionStatus.canCreate && (
+              <p className="mt-2 text-yellow-400 text-xs">
+                La carpeta no existe pero puede ser creada automáticamente.
+              </p>
+            )}
+
+            <div className="mt-4 bg-gray-900 bg-opacity-50 p-2 rounded text-xs">
+              <p className="text-gray-300">
+                Para usar esta carpeta como biblioteca de medios, el servicio
+                necesita tener permisos de lectura y escritura.
+              </p>
+            </div>
+          </div>
+
+          {/* Botón para reparar permisos */}
           <div className="flex justify-end mt-3">
             <button
-              onClick={repairPermissions}
+              onClick={fixPermissions}
               disabled={fixingPermissions}
               className={`bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm ${
                 fixingPermissions ? "opacity-50 cursor-wait" : ""
@@ -271,17 +235,24 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
         </div>
       )}
 
-      {error && <div className="mt-2 text-sm text-red-400">{error}</div>}
+      {error && (
+        <div className="mt-2 text-sm text-red-400 bg-red-900 bg-opacity-30 p-2 rounded">
+          {error}
+        </div>
+      )}
 
+      {/* Resultado de la reparación */}
       {fixResult && (
         <div
           className={`mt-4 p-3 rounded ${
-            fixResult.success ? "bg-green-800" : "bg-red-800"
+            fixResult.success
+              ? "bg-green-800 bg-opacity-30"
+              : "bg-red-800 bg-opacity-30"
           }`}
         >
           <p
             className={`font-medium ${
-              fixResult.success ? "text-green-200" : "text-red-200"
+              fixResult.success ? "text-green-400" : "text-red-400"
             }`}
           >
             {fixResult.success
@@ -289,21 +260,23 @@ function FolderPermissionsManager({ folderPath, onPermissionsFixed }) {
               : "✗ Error en reparación"}
           </p>
           {fixResult.message && (
-            <p className="text-sm mt-1">{fixResult.message}</p>
+            <p className="text-sm mt-1 text-gray-300">{fixResult.message}</p>
           )}
           {fixResult.suggestedCommand && (
             <div className="mt-2">
-              <p className="text-xs text-gray-300">Comando sugerido:</p>
-              <pre className="mt-1 p-2 bg-gray-900 rounded text-xs overflow-x-auto">
+              <p className="text-xs text-gray-400">
+                Comando sugerido para ejecutar manualmente:
+              </p>
+              <pre className="mt-1 p-2 bg-gray-900 rounded text-xs overflow-x-auto text-blue-300">
                 {fixResult.suggestedCommand}
               </pre>
-              <p className="text-xs mt-1">
+              <p className="text-xs mt-1 text-gray-400">
                 Ejecuta este comando en el servidor como administrador (root)
               </p>
             </div>
           )}
           {fixResult.details && (
-            <p className="text-xs mt-1 text-gray-300">{fixResult.details}</p>
+            <p className="text-xs mt-1 text-gray-400">{fixResult.details}</p>
           )}
         </div>
       )}
