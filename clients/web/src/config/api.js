@@ -35,5 +35,8 @@ export default {
     transcoding: "/api/transcoding",
     metadata: "/api/metadata",
     filesystem: "/api/filesystem",
+    librarySetup: "/api/library-setup",
+    permissionsCheck: "/api/filesystem/check-permissions",
+    pathSuggestions: "/api/filesystem/suggest-paths",
   },
 };
