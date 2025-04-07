@@ -3,8 +3,8 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("../config/database");
-const authMiddleware = require("../middleware/auth");
-const settings = require("../config/settings");
+const authMiddleware = require("../middleware/enhancedAuth");
+const settings = require("../config/settings.js");
 const crypto = require("crypto");
 
 // Crear router
