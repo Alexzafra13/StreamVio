@@ -3,7 +3,6 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("../config/database");
-const permissionsHelper = require("../utils/permissionsHelper");
 const path = require("path");
 const fs = require("fs");
 const { promisify } = require("util");
