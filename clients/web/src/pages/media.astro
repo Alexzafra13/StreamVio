@@ -1,56 +1,40 @@
----
-import Layout from '../layouts/Layout.astro';
 import SidebarLayout from '../layouts/SidebarLayout.jsx';
 import MediaBrowser from '../components/MediaBrowser';
-
 // Obtener parámetros de consulta
 const { library, type, search } = Astro.url.searchParams;
-
 // Título dinámico
 let title = "Explorar Medios";
-
 if (type) {
-  const typeLabels = {
-    'movie': 'Películas',
-    'movies': 'Películas',
-    'series': 'Series',
-    'music': 'Música',
-    'photo': 'Fotos',
-    'photos': 'Fotos'
-  };
-  title = typeLabels[type] || "Explorar Medios";
+const typeLabels = {
+'movie': 'Películas',
+'movies': 'Películas',
+'series': 'Series',
+'music': 'Música',
+'photo': 'Fotos',
+'photos': 'Fotos'
+};
+title = typeLabels[type] || "Explorar Medios";
 }
-
 if (search) {
-  title = `Búsqueda: ${search}`;
+title = Búsqueda: ${search};
 }
----
-
-<Layout title={`${title} | StreamVio`}>
-  <main class="container mx-auto px-4 py-8">
-    <div class="max-w-6xl mx-auto mt-8">
-      <h1 class="text-3xl font-bold mb-8 text-center text-blue-500">{title}</h1>
-      
-      <div id="media-browser-container">
-        <MediaBrowser 
-          client:load 
-          libraryId={library ? parseInt(library) : null}
-          type={type || null}
-          searchTerm={search || null}
-        />
-      </div>
-      
-      <div id="unauthorized-message" class="hidden text-center py-8">
-        <h2 class="text-2xl text-red-500 mb-4">Acceso Restringido</h2>
-        <p class="mb-4">Debes iniciar sesión para acceder a esta página.</p>
-        <a href="/auth" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded inline-block transition">
-          Iniciar Sesión
-        </a>
-      </div>
-    </div>
-  </main>
-</Layout>
-
+<SidebarLayout title={title}>
+  <div id="media-browser-container">
+    <MediaBrowser 
+      client:load 
+      libraryId={library ? parseInt(library) : null}
+      type={type || null}
+      searchTerm={search || null}
+    />
+  </div>
+  <div id="unauthorized-message" class="hidden text-center py-8">
+    <h2 class="text-2xl text-red-500 mb-4">Acceso Restringido</h2>
+    <p class="mb-4">Debes iniciar sesión para acceder a esta página.</p>
+    <a href="/auth" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded inline-block transition">
+      Iniciar Sesión
+    </a>
+  </div>
+</SidebarLayout>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('streamvio_token');
