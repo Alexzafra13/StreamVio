@@ -1,12 +1,12 @@
 ---
-// clients/web/src/pages/index.astro - Versión mejorada con HomeDashboard
-import SidebarLayout from '../layouts/SidebarLayout.jsx';
+// clients/web/src/pages/index.astro - Versión actualizada con HomeDashboard
+import Layout from '../layouts/Layout.astro';
 import HomeDashboard from '../components/HomeDashboard';
 
 const title = 'StreamVio';
 ---
 
-<SidebarLayout title={title}>
+<Layout title={title}>
   <div id="dashboard-container">
     <HomeDashboard client:load />
   </div>
@@ -51,7 +51,7 @@ const title = 'StreamVio';
       </div>
     </section>
   </div>
-</SidebarLayout>
+</Layout>
 
 <script>
   document.addEventListener('DOMContentLoaded', () => {

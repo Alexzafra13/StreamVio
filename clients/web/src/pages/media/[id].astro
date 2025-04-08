@@ -1,28 +1,20 @@
 ---
+// clients/web/src/pages/media/[id].astro - Página detallada de medio
 import Layout from '../../layouts/Layout.astro';
 import MediaViewer from '../../components/MediaViewer';
 import TranscodingManager from '../../components/TranscodingManager';
-import MetadataFinder from '../../components/MetadataFinder';
 
-// Implementar getStaticPaths para rutas dinámicas
-export async function getStaticPaths() {
-  // Esta función proporcionará rutas estáticas para la compilación
-  // Creamos al menos una ruta para que Astro no muestre error
-  return [
-    { params: { id: 'placeholder' } }
-  ];
-  
-  // En un escenario real, podrías consultar tu API para obtener todos los IDs:
-  // const response = await fetch('http://localhost:3000/api/media');
-  // const data = await response.json();
-  // return data.items.map(item => ({ params: { id: item.id.toString() } }));
-}
-
+// Obtener ID del medio de los parámetros de ruta
 const { id } = Astro.params;
+
+// Imprescindible para rutas dinámicas en Astro
+export async function getStaticPaths() {
+  return [{ params: { id: 'placeholder' } }];
+}
 ---
 
-<Layout title="Detalles del Medio | StreamVio">
-  <main class="container mx-auto px-4 py-8">
+<Layout title="Detalles del medio">
+  <main>
     <div class="max-w-6xl mx-auto">
       <a href="/media" class="inline-block mb-6 text-blue-500 hover:underline">&larr; Volver a la biblioteca</a>
       
@@ -53,15 +45,6 @@ const { id } = Astro.params;
           
           <!-- Opciones de Transcodificación -->
           <TranscodingManager mediaId={id} client:load />
-          
-          <!-- Buscador de Metadatos (solo para películas) -->
-          <div id="metadata-container" class="mt-6 hidden">
-            <MetadataFinder 
-              mediaId={id} 
-              mediaType="movie"
-              client:load 
-            />
-          </div>
         </div>
       </div>
     </div>
@@ -69,11 +52,11 @@ const { id } = Astro.params;
 </Layout>
 
 <script>
-  // Script del cliente para cargar datos
-  const mediaId = document.location.pathname.split('/').pop();
-  const API_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
-  let mediaType = '';
+  import apiConfig from "../../config/api";
   
+  // Usar la configuración correcta
+  const API_URL = apiConfig.API_URL;
+
   document.addEventListener('DOMContentLoaded', async () => {
     // Verificar autenticación
     const token = localStorage.getItem('streamvio_token');
@@ -81,6 +64,8 @@ const { id } = Astro.params;
       window.location.href = '/auth?redirect=' + encodeURIComponent(window.location.pathname);
       return;
     }
+    
+    const mediaId = document.location.pathname.split('/').pop();
     
     try {
       // Cargar datos del medio
@@ -95,7 +80,6 @@ const { id } = Astro.params;
       }
       
       const mediaData = await response.json();
-      mediaType = mediaData.type;
       
       // Actualizar UI con datos básicos
       document.getElementById('media-title').textContent = mediaData.title || 'Sin título';
@@ -148,29 +132,12 @@ const { id } = Astro.params;
       }
       
       // Actualizar título de la página
-      document.title = `${mediaData.title} | StreamVio`;
-      
-      // Mostrar componente de búsqueda de metadatos solo si es película
-      if (mediaData.type === 'movie') {
-        const metadataContainer = document.getElementById('metadata-container');
-        metadataContainer.classList.remove('hidden');
-        
-        // Pasar el título al componente de metadatos
-        const metadataFinder = document.querySelector('astro-island[component-url*="MetadataFinder"]');
-        if (metadataFinder) {
-          // Establecer atributo de título para el componente
-          metadataFinder.setAttribute('mediaTitle', mediaData.title);
-        }
-      }
+      document.title = `${mediaData.title || 'Contenido'} | StreamVio`;
     } catch (error) {
-      console.error('Error al cargar datos:', error);
+      console.error('Error al cargar datos del medio:', error);
+      document.getElementById('media-title').textContent = 'Error al cargar información';
+      document.getElementById('media-type').textContent = 'No se pudo obtener la información del medio';
     }
-  });
-  
-  // Escuchar eventos de actualización de metadatos
-  window.addEventListener('metadata-applied', () => {
-    // Recargar la página para mostrar los metadatos actualizados
-    window.location.reload();
   });
   
   // Función para formatear tipo de medio
