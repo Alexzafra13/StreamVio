@@ -110,7 +110,14 @@ function ImprovedVideoPlayer({ videoId }) {
               "Error en obtención alternativa de token:",
               alternativeError
             );
-            throw new Error("No se pudo obtener un token de streaming válido");
+
+            // Último recurso: usar token JWT para streaming directo
+            console.log("Usando token JWT principal como último recurso");
+            streamData = {
+              stream_token: token,
+              expires_in: 3600,
+              hasHLS: false,
+            };
           }
         }
 
@@ -139,7 +146,7 @@ function ImprovedVideoPlayer({ videoId }) {
 
         // 7. Configurar URL de streaming
         let url;
-        const tokenToUse = streamData.stream_token || streamData.token;
+        const tokenToUse = streamData.stream_token || streamData.token || token;
 
         if (bestStreamType === "hls" && hasHls) {
           url =
@@ -255,25 +262,49 @@ function ImprovedVideoPlayer({ videoId }) {
     setStreamUrl(url);
   };
 
-  // Cargar historial de visualización
+  // Cargar historial de visualización con manejo de errores 404
   const loadWatchHistory = async () => {
     try {
       const token = localStorage.getItem("streamvio_token");
       if (!token || !videoId) return;
 
       console.log("Cargando historial de visualización...");
-      const response = await axios.get(
-        `${API_URL}/api/media/${videoId}/progress`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
 
-      if (response.data.position && videoRef.current) {
-        // Si hay una posición guardada, adelantar el video a ese punto
-        const savedPosition = response.data.position;
-        console.log(`Posición guardada encontrada: ${savedPosition} segundos`);
-        videoRef.current.currentTime = savedPosition;
+      try {
+        // Intentar primero con el endpoint específico para progress
+        const response = await axios.get(
+          `${API_URL}/api/media/${videoId}/progress`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (response.data.position && videoRef.current) {
+          // Si hay una posición guardada, adelantar el video a ese punto
+          const savedPosition = response.data.position;
+          console.log(
+            `Posición guardada encontrada: ${savedPosition} segundos`
+          );
+          videoRef.current.currentTime = savedPosition;
+        }
+      } catch (progressError) {
+        console.warn(
+          "Error al cargar historial desde /progress:",
+          progressError
+        );
+
+        // Si falla con 404, crear rutas alternativas de historial
+        if (progressError.response && progressError.response.status === 404) {
+          console.log(
+            "Ruta /media/:id/progress no encontrada (404), no se usará historial"
+          );
+          // No intentamos otras rutas porque según el análisis no existen
+
+          // Usar la posición 0 como fallback
+          if (videoRef.current) {
+            videoRef.current.currentTime = 0;
+          }
+        }
       }
     } catch (err) {
       console.warn("Error al cargar historial de visualización:", err);
@@ -281,7 +312,7 @@ function ImprovedVideoPlayer({ videoId }) {
     }
   };
 
-  // Guardar progreso de visualización
+  // Guardar progreso de visualización con manejo de errores 404
   const saveWatchProgress = async (timeInSeconds, isCompleted = false) => {
     try {
       const token = localStorage.getItem("streamvio_token");
@@ -290,18 +321,34 @@ function ImprovedVideoPlayer({ videoId }) {
       console.log(
         `Guardando progreso: ${timeInSeconds}s, completado: ${isCompleted}`
       );
-      await axios.post(
-        `${API_URL}/api/media/${videoId}/progress`,
-        {
-          position: timeInSeconds,
-          completed: isCompleted,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
+
+      try {
+        // Intentar guardar en el endpoint principal
+        await axios.post(
+          `${API_URL}/api/media/${videoId}/progress`,
+          {
+            position: timeInSeconds,
+            completed: isCompleted,
+          },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        console.log("Progreso guardado correctamente");
+      } catch (progressError) {
+        // Si falla con 404, ignorar el error
+        if (progressError.response && progressError.response.status === 404) {
+          console.warn(
+            "Ruta /media/:id/progress no implementada, no se guardará progreso"
+          );
+          // No intentamos otras rutas porque según el análisis no existen
+        } else {
+          console.warn("Error al guardar progreso:", progressError);
         }
-      );
+      }
     } catch (err) {
-      console.warn("Error al guardar progreso de visualización:", err);
+      console.warn("Error general al guardar progreso de visualización:", err);
     }
   };
 
@@ -661,7 +708,7 @@ function ImprovedVideoPlayer({ videoId }) {
                   >
                     <path
                       fillRule="evenodd"
-                      d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z"
+                      d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071a1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243a1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828a1 1 0 010-1.415z"
                       clipRule="evenodd"
                     />
                   </svg>
