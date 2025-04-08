@@ -19,6 +19,7 @@ const metadataRoutes = require("./routes/metadata");
 const filesystemRoutes = require("./routes/filesystem");
 const streamingRoutes = require("./routes/streaming");
 const setupRoutes = require("./routes/setup");
+const userHistoryRoutes = require("./routes/user-history");
 
 // Importar servicios
 const streamingTokenService = require("./services/streamingTokenService");
@@ -189,6 +190,7 @@ async function setupApp() {
   app.use("/api/metadata", enhancedAuthMiddleware, metadataRoutes);
   app.use("/api/filesystem", enhancedAuthMiddleware, filesystemRoutes);
   app.use("/api/streaming", enhancedAuthMiddleware, streamingRoutes);
+  app.use("/api/user", enhancedAuthMiddleware, userHistoryRoutes);
 
   // Ruta para verificar si un usuario es administrador
   app.get(

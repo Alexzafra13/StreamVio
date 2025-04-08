@@ -2,47 +2,55 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
-import appConfig from "../config/config";
+import { useAuth } from "../context/AuthContext";
 
 const API_URL = apiConfig.API_URL;
 
-/**
- * Panel de inicio personalizado con secciones de contenido
- */
 function HomeDashboard() {
+  const { currentUser } = useAuth();
   const [recentMedia, setRecentMedia] = useState([]);
-  const [continueWatching, setContinueWatching] = useState([]);
-  const [movies, setMovies] = useState([]);
-  const [series, setSeries] = useState([]);
+  const [movieCount, setMovieCount] = useState(0);
+  const [seriesCount, setSeriesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [user, setUser] = useState(null);
+  const [watchHistory, setWatchHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
-  // Cargar datos del usuario y contenido al iniciar
+  // Cargar conteo de medios y elementos recientes
   useEffect(() => {
-    const fetchUserAndContent = async () => {
+    const fetchMediaCounts = async () => {
       try {
         setLoading(true);
+        setError(null);
 
-        // Verificar autenticación
         const token = localStorage.getItem("streamvio_token");
-        if (!token) {
-          setLoading(false);
-          return;
-        }
+        if (!token) return;
 
-        // Obtener datos del usuario desde localStorage
-        const userStr = localStorage.getItem("streamvio_user");
-        if (userStr) {
-          try {
-            const userData = JSON.parse(userStr);
-            setUser(userData);
-          } catch (error) {
-            console.error("Error al parsear datos de usuario:", error);
+        // Obtener conteo de películas
+        const moviesResponse = await axios.get(
+          `${API_URL}/api/media?type=movie&limit=1`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
           }
+        );
+
+        if (moviesResponse.data && moviesResponse.data.pagination) {
+          setMovieCount(moviesResponse.data.pagination.total || 0);
         }
 
-        // Cargar medios recientes
+        // Obtener conteo de series
+        const seriesResponse = await axios.get(
+          `${API_URL}/api/media?type=series&limit=1`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (seriesResponse.data && seriesResponse.data.pagination) {
+          setSeriesCount(seriesResponse.data.pagination.total || 0);
+        }
+
+        // Obtener elementos recientes
         const recentResponse = await axios.get(
           `${API_URL}/api/media?page=1&limit=10&sort=created_at&order=desc`,
           {
@@ -50,45 +58,35 @@ function HomeDashboard() {
           }
         );
 
-        const recentData = recentResponse.data;
-        if (recentData.items && Array.isArray(recentData.items)) {
-          setRecentMedia(recentData.items);
-        } else if (Array.isArray(recentData)) {
-          setRecentMedia(recentData);
+        if (recentResponse.data && recentResponse.data.items) {
+          setRecentMedia(recentResponse.data.items || []);
         }
 
-        // Cargar películas
-        const moviesResponse = await axios.get(
-          `${API_URL}/api/media?page=1&limit=10&type=movie`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+        setLoading(false);
+      } catch (err) {
+        console.error("Error al cargar datos:", err);
+        setError(
+          "Error al cargar datos. Por favor, intenta de nuevo más tarde."
         );
+        setLoading(false);
+      }
+    };
 
-        const moviesData = moviesResponse.data;
-        if (moviesData.items && Array.isArray(moviesData.items)) {
-          setMovies(moviesData.items);
-        } else if (Array.isArray(moviesData)) {
-          setMovies(moviesData);
-        }
+    if (currentUser) {
+      fetchMediaCounts();
+    }
+  }, [currentUser]);
 
-        // Cargar series
-        const seriesResponse = await axios.get(
-          `${API_URL}/api/media?page=1&limit=10&type=series`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+  // Cargar historial de visualización
+  useEffect(() => {
+    const fetchWatchHistory = async () => {
+      try {
+        setHistoryLoading(true);
+        const token = localStorage.getItem("streamvio_token");
+        if (!token || !currentUser) return;
 
-        const seriesData = seriesResponse.data;
-        if (seriesData.items && Array.isArray(seriesData.items)) {
-          setSeries(seriesData.items);
-        } else if (Array.isArray(seriesData)) {
-          setSeries(seriesData);
-        }
-
-        // Cargar contenido "continuar viendo" (media en progreso)
         try {
+          // Intentar primero con la ruta específica para historial
           const historyResponse = await axios.get(
             `${API_URL}/api/user/history?completed=false&limit=10`,
             {
@@ -96,221 +94,285 @@ function HomeDashboard() {
             }
           );
 
-          if (historyResponse.data.items) {
-            setContinueWatching(historyResponse.data.items);
+          if (historyResponse.data) {
+            setWatchHistory(historyResponse.data || []);
           }
         } catch (historyError) {
           console.warn("Error al cargar historial:", historyError);
-          // No es un error crítico, podemos continuar sin el historial
+
+          // Si la ruta /api/user/history falla, intentar construir un historial a partir de watch_history
+          try {
+            // Esta es una solución alternativa que intenta obtener los elementos vistos recientemente
+            // sin usar una ruta específica para histórico
+            const mediaItems = recentMedia.slice(0, 10);
+            setWatchHistory(
+              mediaItems.map((item) => ({
+                id: item.id,
+                mediaId: item.id,
+                title: item.title,
+                type: item.type,
+                thumbnail_path: item.thumbnail_path,
+                position: 0,
+                completed: false,
+                watched_at: item.updated_at || new Date().toISOString(),
+              }))
+            );
+          } catch (alternativeError) {
+            console.error(
+              "Error al crear historial alternativo:",
+              alternativeError
+            );
+            // Usar un historial vacío como último recurso
+            setWatchHistory([]);
+          }
         }
 
-        setLoading(false);
+        setHistoryLoading(false);
       } catch (err) {
-        console.error("Error al cargar contenido del dashboard:", err);
-        setError(
-          "Error al cargar el contenido. Por favor, inténtalo de nuevo más tarde."
-        );
-        setLoading(false);
+        console.error("Error al cargar historial:", err);
+        setHistoryLoading(false);
+        // No mostrar error para no afectar la experiencia del usuario
       }
     };
 
-    fetchUserAndContent();
-  }, []);
+    if (currentUser && recentMedia.length > 0) {
+      fetchWatchHistory();
+    }
+  }, [currentUser, recentMedia]);
+
+  // Formatear la fecha para mostrar
+  const formatDate = (dateString) => {
+    if (!dateString) return "Fecha desconocida";
+
+    const options = { year: "numeric", month: "short", day: "numeric" };
+    return new Date(dateString).toLocaleDateString(undefined, options);
+  };
 
   // Obtener URL de la miniatura
-  const getThumbnail = (item) => {
-    if (!item || !item.id) return appConfig.defaultImages.generic;
+  const getThumbnailUrl = (item) => {
+    if (!item) return "/assets/default-media.jpg";
 
     const token = localStorage.getItem("streamvio_token");
-    if (!token) return appConfig.defaultImages.generic;
+    if (!token) return "/assets/default-media.jpg";
 
-    // Si la API devuelve una URL de miniatura completa, usarla
-    if (item.thumbnail_url) return item.thumbnail_url;
-
-    const thumbnailUrl = `${API_URL}/api/media/${item.id}/thumbnail?auth=${token}`;
-
-    return item.thumbnail_path
-      ? thumbnailUrl
-      : appConfig.getDefaultImage(item.type);
-  };
-
-  // Formatear duración para mostrar
-  const formatDuration = (seconds) => {
-    return appConfig.formatDuration(seconds);
-  };
-
-  // Renderizar un carrusel de medios
-  const renderMediaRow = (title, items, emptyMessage) => {
-    const safeItems = Array.isArray(items) ? items : [];
-
-    if (safeItems.length === 0) {
-      return null; // No mostrar secciones vacías
-    }
-
-    return (
-      <div className="mb-10">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">{title}</h2>
-          <a
-            href={`/media?type=${safeItems[0]?.type || ""}`}
-            className="text-blue-400 hover:text-blue-300 text-sm"
-          >
-            Ver todo &rarr;
-          </a>
-        </div>
-
-        <div className="overflow-x-auto pb-4">
-          <div className="flex space-x-4" style={{ minWidth: "max-content" }}>
-            {safeItems.map((item) => (
-              <div
-                key={item.id}
-                className="w-48 flex-shrink-0 bg-gray-800 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
-              >
-                <a href={`/media/${item.id}`} className="block">
-                  <div className="relative pb-[56.25%]">
-                    <img
-                      src={getThumbnail(item)}
-                      alt={item.title || "Contenido"}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.src = appConfig.defaultImages.generic;
-                      }}
-                    />
-                    {/* Información sobre tipo */}
-                    {item.type && (
-                      <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-xs text-white px-2 py-1 rounded">
-                        {item.type === "movie" && "Película"}
-                        {item.type === "series" && "Serie"}
-                        {item.type === "episode" && "Episodio"}
-                        {item.type === "music" && "Música"}
-                      </div>
-                    )}
-
-                    {/* Para "Continuar viendo", mostrar barra de progreso */}
-                    {item.progress > 0 && item.progress < 100 && (
-                      <div className="absolute bottom-0 left-0 right-0">
-                        <div className="h-1 bg-gray-800">
-                          <div
-                            className="h-full bg-blue-500"
-                            style={{ width: `${item.progress}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-3">
-                    <h3
-                      className="text-white font-medium truncate hover:text-blue-400 transition-colors"
-                      title={item.title}
-                    >
-                      {item.title || "Sin título"}
-                    </h3>
-
-                    <div className="flex justify-between text-gray-500 text-xs mt-1">
-                      <span>
-                        {item.duration ? formatDuration(item.duration) : ""}
-                      </span>
-                      {item.year && <span>{item.year}</span>}
-                    </div>
-                  </div>
-                </a>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Estado de carga
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
-  // Mensaje de error
-  if (error) {
-    return (
-      <div className="bg-red-600 bg-opacity-25 text-white p-6 rounded-lg">
-        <h3 className="text-xl font-bold mb-2">Error</h3>
-        <p>{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"
-        >
-          Reintentar
-        </button>
-      </div>
-    );
-  }
-
-  // Saludo personalizado según la hora del día
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Buenos días";
-    if (hour < 19) return "Buenas tardes";
-    return "Buenas noches";
+    return `${API_URL}/api/media/${
+      item.id || item.mediaId
+    }/thumbnail?auth=${token}`;
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* Banner de bienvenida */}
-      {user && (
-        <div className="bg-gradient-to-r from-blue-900 to-indigo-800 rounded-lg p-6 mb-8 shadow-lg">
-          <h1 className="text-2xl font-bold mb-2">
-            {getGreeting()}, {user.username}
-          </h1>
-          <p className="text-gray-300">¿Qué te gustaría ver hoy?</p>
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Panel Principal</h2>
+
+      {error && (
+        <div className="bg-red-600 bg-opacity-75 text-white p-4 rounded mb-6">
+          {error}
         </div>
       )}
 
-      {/* Sección "Continuar viendo" si hay contenido */}
-      {continueWatching.length > 0 &&
-        renderMediaRow(
-          "Continuar viendo",
-          continueWatching,
-          "No hay contenido en progreso"
-        )}
+      {/* Estadísticas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <div className="bg-gradient-to-br from-blue-900 to-blue-800 rounded-lg p-6 shadow-lg">
+          <div className="flex items-center mb-4">
+            <div className="bg-blue-500 p-3 rounded-full mr-4">
+              <svg
+                className="h-6 w-6 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm text-blue-300">Películas</h3>
+              <p className="text-2xl font-bold text-white">
+                {loading ? "-" : movieCount}
+              </p>
+            </div>
+          </div>
+          <a
+            href="/media?type=movie"
+            className="text-blue-200 hover:text-white text-sm block mt-2"
+          >
+            Ver todas las películas →
+          </a>
+        </div>
 
-      {/* Películas recientes */}
-      {renderMediaRow("Películas", movies, "No hay películas disponibles")}
+        <div className="bg-gradient-to-br from-purple-900 to-purple-800 rounded-lg p-6 shadow-lg">
+          <div className="flex items-center mb-4">
+            <div className="bg-purple-500 p-3 rounded-full mr-4">
+              <svg
+                className="h-6 w-6 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm text-purple-300">Series</h3>
+              <p className="text-2xl font-bold text-white">
+                {loading ? "-" : seriesCount}
+              </p>
+            </div>
+          </div>
+          <a
+            href="/media?type=series"
+            className="text-purple-200 hover:text-white text-sm block mt-2"
+          >
+            Ver todas las series →
+          </a>
+        </div>
 
-      {/* Series recientes */}
-      {renderMediaRow("Series", series, "No hay series disponibles")}
+        <div className="bg-gradient-to-br from-green-900 to-green-800 rounded-lg p-6 shadow-lg">
+          <div className="flex items-center mb-4">
+            <div className="bg-green-500 p-3 rounded-full mr-4">
+              <svg
+                className="h-6 w-6 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm text-green-300">Bibliotecas</h3>
+              <p className="text-2xl font-bold text-white">
+                {loading ? "-" : "Ver"}
+              </p>
+            </div>
+          </div>
+          <a
+            href="/bibliotecas"
+            className="text-green-200 hover:text-white text-sm block mt-2"
+          >
+            Administrar bibliotecas →
+          </a>
+        </div>
+      </div>
 
-      {/* Contenido reciente (todo mezclado) */}
-      {renderMediaRow(
-        "Añadido recientemente",
-        recentMedia,
-        "No hay contenido reciente"
-      )}
-
-      {/* Si no hay contenido, mostrar mensaje para agregar bibliotecas */}
-      {recentMedia.length === 0 &&
-        movies.length === 0 &&
-        series.length === 0 && (
-          <div className="bg-gray-800 rounded-lg p-8 text-center">
-            <div className="mb-4 text-6xl">📺</div>
-            <h2 className="text-xl font-semibold mb-3">
-              Aquí no hay nada que ver aún
-            </h2>
-            <p className="text-gray-400 mb-6 max-w-lg mx-auto">
-              Parece que todavía no tienes ningún contenido en tu biblioteca.
-              Configura tu primera biblioteca para empezar a disfrutar de tu
-              contenido multimedia.
+      {/* Contenido reciente */}
+      <div className="mb-10">
+        <h3 className="text-xl font-semibold mb-4">Contenido Reciente</h3>
+        {loading ? (
+          <div className="bg-gray-800 p-6 rounded-lg text-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-4 text-gray-400">Cargando contenido reciente...</p>
+          </div>
+        ) : recentMedia.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {recentMedia.slice(0, 10).map((item) => (
+              <a
+                key={item.id}
+                href={`/media/${item.id}`}
+                className="bg-gray-800 rounded-lg overflow-hidden hover:bg-gray-700 transition duration-200 shadow-lg"
+              >
+                <div className="relative pb-[56.25%]">
+                  <img
+                    src={getThumbnailUrl(item)}
+                    alt={item.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src = "/assets/default-media.jpg";
+                    }}
+                  />
+                  <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-xs text-white px-2 py-1 rounded">
+                    {item.type === "movie" && "Película"}
+                    {item.type === "series" && "Serie"}
+                    {item.type === "episode" && "Episodio"}
+                  </div>
+                </div>
+                <div className="p-3">
+                  <h4 className="font-medium text-sm truncate">{item.title}</h4>
+                  <p className="text-gray-400 text-xs mt-1">
+                    {formatDate(item.created_at)}
+                  </p>
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-gray-800 p-6 rounded-lg text-center">
+            <p className="text-gray-400">
+              No hay contenido reciente para mostrar
             </p>
-            <a
-              href="/bibliotecas"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block transition"
-            >
-              Configurar biblioteca
-            </a>
           </div>
         )}
+      </div>
+
+      {/* Continuar viendo */}
+      <div>
+        <h3 className="text-xl font-semibold mb-4">Continuar Viendo</h3>
+        {historyLoading ? (
+          <div className="bg-gray-800 p-6 rounded-lg text-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-4 text-gray-400">Cargando historial...</p>
+          </div>
+        ) : watchHistory.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {watchHistory.slice(0, 10).map((item) => (
+              <a
+                key={item.id || item.mediaId}
+                href={`/media/${item.mediaId || item.id}`}
+                className="bg-gray-800 rounded-lg overflow-hidden hover:bg-gray-700 transition duration-200 shadow-lg"
+              >
+                <div className="relative pb-[56.25%]">
+                  <img
+                    src={getThumbnailUrl(item)}
+                    alt={item.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src = "/assets/default-media.jpg";
+                    }}
+                  />
+                  {item.position > 0 && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700">
+                      <div
+                        className="h-full bg-blue-500"
+                        style={{
+                          width: `${
+                            item.duration
+                              ? (item.position / item.duration) * 100
+                              : 50
+                          }%`,
+                        }}
+                      ></div>
+                    </div>
+                  )}
+                </div>
+                <div className="p-3">
+                  <h4 className="font-medium text-sm truncate">{item.title}</h4>
+                  <p className="text-gray-400 text-xs mt-1">
+                    {formatDate(item.watched_at)}
+                  </p>
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-gray-800 p-6 rounded-lg text-center">
+            <p className="text-gray-400">No hay elementos en el historial</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
