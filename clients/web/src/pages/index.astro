@@ -1,78 +1,46 @@
 ---
-// clients/web/src/pages/index.astro - Versión actualizada con HomeDashboard
 import Layout from '../layouts/Layout.astro';
 import HomeDashboard from '../components/HomeDashboard';
-
-const title = 'StreamVio';
 ---
 
-<Layout title={title}>
-  <div id="dashboard-container">
-    <HomeDashboard client:load />
-  </div>
-  
-  <div id="unauthorized-content" class="hidden">
-    <section class="max-w-6xl mx-auto mb-12">
-      <div class="bg-gray-800 rounded-lg p-8">
-        <h2 class="text-2xl font-semibold mb-4">Tu biblioteca multimedia personal</h2>
-        <p class="text-gray-300 mb-6">
-          StreamVio te permite organizar y disfrutar de todo tu contenido multimedia desde un solo lugar.
-          Películas, series y música, todo accesible desde cualquier dispositivo.
-        </p>
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="bg-gray-700 p-6 rounded-lg transform transition-transform hover:scale-105">
-            <h3 class="text-xl font-semibold mb-2">Organiza</h3>
-            <p class="text-gray-400">
-              Crea bibliotecas personalizadas para cada tipo de contenido y mantén todo organizado.
-            </p>
-          </div>
+<Layout title="StreamVio - Tu centro de medios personal">
+  <main class="container mx-auto px-4 py-8">
+    <div class="max-w-6xl mx-auto mt-8">
+      <div id="home-dashboard">
+        <!-- El HomeDashboard se renderizará con client:load y tiene manejo interno
+             para casos donde el usuario no está autenticado -->
+        <HomeDashboard client:load />
+      </div>
+      
+      <!-- Contenido alternativo para usuarios no autenticados -->
+      <div id="not-authenticated" class="hidden">
+        <div class="text-center py-10">
+          <h1 class="text-4xl font-bold text-blue-500 mb-4">Bienvenido a StreamVio</h1>
+          <p class="text-xl text-gray-300 mb-8">Tu plataforma personal de streaming de medios</p>
           
-          <div class="bg-gray-700 p-6 rounded-lg transform transition-transform hover:scale-105">
-            <h3 class="text-xl font-semibold mb-2">Explora</h3>
-            <p class="text-gray-400">
-              Navega fácilmente por tu colección con metadatos detallados y miniaturas.
-            </p>
+          <div class="bg-gray-800 rounded-lg p-8 max-w-2xl mx-auto">
+            <h2 class="text-2xl font-semibold mb-4">Accede a tu contenido</h2>
+            <p class="text-gray-400 mb-6">Inicia sesión para ver tu biblioteca personal de películas, series y música.</p>
+            
+            <a href="/auth" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block transition">
+              Iniciar Sesión
+            </a>
           </div>
-          
-          <div class="bg-gray-700 p-6 rounded-lg transform transition-transform hover:scale-105">
-            <h3 class="text-xl font-semibold mb-2">Disfruta</h3>
-            <p class="text-gray-400">
-              Reproduce tu contenido desde cualquier dispositivo, en cualquier momento.
-            </p>
-          </div>
-        </div>
-        
-        <div class="text-center">
-          <a href="/auth" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition inline-block">
-            Iniciar sesión o crear cuenta
-          </a>
         </div>
       </div>
-    </section>
-  </div>
+    </div>
+  </main>
 </Layout>
 
 <script>
+  // Este script solo se ejecuta en el cliente y maneja el caso en que el usuario no esté autenticado
   document.addEventListener('DOMContentLoaded', () => {
-    const checkAuth = () => {
-      const token = localStorage.getItem('streamvio_token');
-      
-      if (token) {
-        // Usuario autenticado: mostrar dashboard
-        document.getElementById('dashboard-container').classList.remove('hidden');
-        document.getElementById('unauthorized-content').classList.add('hidden');
-      } else {
-        // Usuario no autenticado: mostrar contenido de presentación
-        document.getElementById('dashboard-container').classList.add('hidden');
-        document.getElementById('unauthorized-content').classList.remove('hidden');
-      }
-    };
+    const token = localStorage.getItem('streamvio_token');
     
-    // Verificar al cargar la página
-    checkAuth();
-    
-    // Escuchar por cambios en la autenticación
-    window.addEventListener('streamvio-auth-change', checkAuth);
+    // No es necesario mostrar/ocultar elementos, ya que HomeDashboard ahora maneja 
+    // internamente el caso de usuario no autenticado
+    if (!token) {
+      console.log('Usuario no autenticado, HomeDashboard mostrará la interfaz de bienvenida');
+    }
   });
 </script>

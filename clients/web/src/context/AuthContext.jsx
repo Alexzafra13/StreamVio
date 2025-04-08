@@ -1,8 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
-import PasswordChangeModal from "../components/PasswordChangeModal";
-import FirstTimeSetup from "../components/FirstTimeSetup";
 
 const API_URL = apiConfig.API_URL;
 
@@ -10,7 +8,14 @@ const API_URL = apiConfig.API_URL;
 const AuthContext = createContext(null);
 
 export const useAuth = () => {
-  return useContext(AuthContext);
+  // Agregar verificación para asegurar que el hook se use dentro de un proveedor
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    // En lugar de lanzar un error, devolver un objeto con valores por defecto
+    console.warn("useAuth debe usarse dentro de un AuthProvider");
+    return { currentUser: null, loading: false, initialized: true };
+  }
+  return context;
 };
 
 export const AuthProvider = ({ children }) => {
@@ -46,6 +51,8 @@ export const AuthProvider = ({ children }) => {
 
   // Verificar si se requiere cambio de contraseña
   const checkPasswordChangeRequired = async (token) => {
+    if (!token) return false;
+
     try {
       const response = await axios.get(
         `${API_URL}/api/auth/check-password-change`,
@@ -56,11 +63,14 @@ export const AuthProvider = ({ children }) => {
 
       if (response.data.requirePasswordChange) {
         setRequirePasswordChange(true);
+        return true;
       } else {
         setRequirePasswordChange(false);
+        return false;
       }
     } catch (error) {
       console.error("Error checking password change requirement:", error);
+      return false;
     }
   };
 
@@ -70,21 +80,23 @@ export const AuthProvider = ({ children }) => {
     const checkLoggedIn = async () => {
       try {
         // Intentar verificar si es primera ejecución (sin usuarios)
-        const firstTimeResponse = await axios
-          .get(`${API_URL}/api/auth/check-first-time`)
-          .catch((error) => {
-            console.warn("Error al verificar primera ejecución:", error);
-            return { data: { isFirstTime: false } };
-          });
-
-        if (firstTimeResponse.data.isFirstTime) {
-          console.log(
-            "Primera ejecución detectada - requiere configuración de administrador"
+        try {
+          const firstTimeResponse = await axios.get(
+            `${API_URL}/api/auth/check-first-time`
           );
-          setIsFirstTimeSetup(true);
-          setLoading(false);
-          setInitialized(true);
-          return;
+
+          if (firstTimeResponse.data.isFirstTime) {
+            console.log(
+              "Primera ejecución detectada - requiere configuración de administrador"
+            );
+            setIsFirstTimeSetup(true);
+            setLoading(false);
+            setInitialized(true);
+            return;
+          }
+        } catch (firstTimeError) {
+          console.warn("Error al verificar primera ejecución:", firstTimeError);
+          // Continuar con la verificación normal
         }
 
         const token = localStorage.getItem("streamvio_token");
@@ -286,3 +298,47 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+// Importaciones dinámicas y condicionales para los componentes modales
+let PasswordChangeModal;
+let FirstTimeSetup;
+
+try {
+  PasswordChangeModal = require("../components/PasswordChangeModal").default;
+} catch (error) {
+  console.warn("No se pudo importar PasswordChangeModal:", error);
+  // Componente de fallback
+  PasswordChangeModal = ({ onComplete }) => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-gray-800 p-6 rounded-lg">
+        <h2>Cambio de contraseña requerido</h2>
+        <button
+          onClick={onComplete}
+          className="bg-blue-600 text-white p-2 rounded"
+        >
+          Continuar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+try {
+  FirstTimeSetup = require("../components/FirstTimeSetup").default;
+} catch (error) {
+  console.warn("No se pudo importar FirstTimeSetup:", error);
+  // Componente de fallback
+  FirstTimeSetup = ({ onComplete }) => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-gray-800 p-6 rounded-lg">
+        <h2>Configuración inicial requerida</h2>
+        <button
+          onClick={onComplete}
+          className="bg-blue-600 text-white p-2 rounded"
+        >
+          Continuar
+        </button>
+      </div>
+    </div>
+  );
+}

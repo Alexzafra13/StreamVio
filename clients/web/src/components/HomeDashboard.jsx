@@ -2,12 +2,24 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
-import { useAuth } from "../context/AuthContext";
+
+// Modificado: importación condicional y manejo de casos donde useAuth no está disponible
+let useAuth;
+try {
+  useAuth = require("../context/AuthContext").useAuth;
+} catch (error) {
+  console.warn("AuthContext not available:", error);
+  // Implementamos un hook de reemplazo que devuelve un objeto vacío
+  useAuth = () => ({ currentUser: null });
+}
 
 const API_URL = apiConfig.API_URL;
 
 function HomeDashboard() {
-  const { currentUser } = useAuth();
+  // Modificado: manejo seguro del hook useAuth
+  const auth = useAuth ? useAuth() : { currentUser: null };
+  const currentUser = auth?.currentUser || null;
+
   const [recentMedia, setRecentMedia] = useState([]);
   const [movieCount, setMovieCount] = useState(0);
   const [seriesCount, setSeriesCount] = useState(0);
@@ -72,8 +84,11 @@ function HomeDashboard() {
       }
     };
 
-    if (currentUser) {
+    // Modificado: añadir protección para carga de datos iniciales
+    if (localStorage.getItem("streamvio_token")) {
       fetchMediaCounts();
+    } else {
+      setLoading(false);
     }
   }, [currentUser]);
 
@@ -83,7 +98,10 @@ function HomeDashboard() {
       try {
         setHistoryLoading(true);
         const token = localStorage.getItem("streamvio_token");
-        if (!token || !currentUser) return;
+        if (!token) {
+          setHistoryLoading(false);
+          return;
+        }
 
         try {
           // Intentar primero con la ruta específica para historial
@@ -135,8 +153,10 @@ function HomeDashboard() {
       }
     };
 
-    if (currentUser && recentMedia.length > 0) {
+    if (recentMedia.length > 0 && localStorage.getItem("streamvio_token")) {
       fetchWatchHistory();
+    } else {
+      setHistoryLoading(false);
     }
   }, [currentUser, recentMedia]);
 
@@ -159,6 +179,24 @@ function HomeDashboard() {
       item.id || item.mediaId
     }/thumbnail?auth=${token}`;
   };
+
+  // Modificado: Si no hay un usuario autenticado, mostrar mensaje de inicio de sesión
+  if (!localStorage.getItem("streamvio_token")) {
+    return (
+      <div className="bg-gray-800 rounded-lg p-8 text-center">
+        <h2 className="text-2xl font-bold mb-4">Bienvenido a StreamVio</h2>
+        <p className="text-gray-300 mb-6">
+          Inicia sesión para ver tu panel principal personalizado.
+        </p>
+        <a
+          href="/auth"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block transition"
+        >
+          Iniciar Sesión
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div>
