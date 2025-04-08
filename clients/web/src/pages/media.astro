@@ -1,6 +1,6 @@
 ---
-// clients/web/src/pages/media.astro - Versión actualizada
-import SidebarLayout from '../layouts/SidebarLayout.jsx';
+// clients/web/src/pages/media.astro - Versión actualizada con MediaBrowser mejorado
+import Layout from '../layouts/Layout.astro';
 import MediaBrowser from '../components/MediaBrowser';
 
 // Obtener parámetros de consulta
@@ -26,7 +26,7 @@ if (search) {
 }
 ---
 
-<SidebarLayout title={title}>
+<Layout title={title}>
   <div id="media-browser-container">
     <MediaBrowser 
       client:load 
@@ -43,7 +43,7 @@ if (search) {
       Iniciar Sesión
     </a>
   </div>
-</SidebarLayout>
+</Layout>
 
 <script>
   document.addEventListener('DOMContentLoaded', () => {

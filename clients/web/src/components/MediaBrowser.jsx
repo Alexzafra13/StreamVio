@@ -1,4 +1,4 @@
-// clients/web/src/components/MediaBrowser.jsx (versión corregida)
+// clients/web/src/components/MediaBrowser.jsx (versión optimizada)
 import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -6,12 +6,13 @@ import apiConfig from "../config/api";
 const API_URL = apiConfig.API_URL;
 
 function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
+  // Estados
   const [media, setMedia] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 20, // Aumentamos el límite para mostrar más elementos
+    limit: 20,
     total: 0,
     totalPages: 0,
   });
@@ -23,12 +24,10 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
     type: type,
     search: searchTerm || "",
   });
-  const [debugInfo, setDebugInfo] = useState(null);
 
-  // Función mejorada para obtener medios con mejor manejo de errores
+  // Función para obtener medios con mejor manejo de errores
   const fetchMedia = useCallback(
     async (page = 1) => {
-      // Crear un controlador para cancelar la solicitud si es necesario
       const controller = new AbortController();
 
       try {
@@ -65,7 +64,7 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
           `${API_URL}/api/media?${params.toString()}`
         );
 
-        // Realizar solicitud al servidor con timeout aumentado
+        // Realizar solicitud al servidor
         const response = await axios.get(
           `${API_URL}/api/media?${params.toString()}`,
           {
@@ -75,16 +74,11 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
           }
         );
 
-        // Debug: guardar respuesta para análisis
-        setDebugInfo(response.data);
-        console.log("Respuesta API de medios:", response.data);
-
         // Procesar respuesta con validaciones
         const responseData = response.data || {};
 
-        // Verificar la estructura de los datos
+        // Verificar si la respuesta es un array directo o tiene estructura con paginación
         if (!responseData.items && Array.isArray(responseData)) {
-          // Si la API devuelve directamente un array en lugar de un objeto con paginación
           setMedia(responseData);
           setPagination({
             ...pagination,
@@ -93,7 +87,6 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
             totalPages: 1,
           });
         } else {
-          // Si la API devuelve el formato esperado
           const items = Array.isArray(responseData.items)
             ? responseData.items
             : [];
@@ -124,7 +117,6 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
 
         // Intentar extraer detalles del error
         if (err.response) {
-          console.log("Respuesta de error:", err.response);
           setError(
             err.response.data?.message ||
               `Error al cargar los elementos multimedia (${err.response.status})`
@@ -222,10 +214,9 @@ function MediaBrowser({ libraryId = null, type = null, searchTerm = null }) {
 
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
 
     if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m ${remainingSeconds}s`;
+    return `${minutes}m`;
   };
 
   // Formatear tamaño para mostrar

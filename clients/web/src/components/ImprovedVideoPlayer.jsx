@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
-import appConfig from "../config/config";
 
 const API_URL = apiConfig.API_URL;
 
@@ -97,10 +96,6 @@ function ImprovedVideoPlayer({ videoId }) {
         setSupportsHls(hlsSupport);
 
         // 5. Comprobar si hay versión HLS disponible para este video
-        const fileName = videoData.file_path
-          ?.split(/[\/\\]/)
-          .pop()
-          .split(".")[0];
         const hasHls = videoData.has_hls || false;
         setHlsAvailable(hasHls);
 
@@ -623,3 +618,5 @@ function ImprovedVideoPlayer({ videoId }) {
     </div>
   );
 }
+
+export default ImprovedVideoPlayer;
