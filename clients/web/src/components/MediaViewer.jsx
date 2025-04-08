@@ -13,6 +13,7 @@ function MediaViewer({ mediaId }) {
   const [media, setMedia] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Cargar información del medio
   useEffect(() => {
@@ -29,22 +30,38 @@ function MediaViewer({ mediaId }) {
           throw new Error("No hay sesión activa");
         }
 
+        console.log(`MediaViewer: Obteniendo información del medio ${mediaId}`);
+
         // Obtener información del medio
         const response = await axios.get(`${API_URL}/api/media/${mediaId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
+        console.log("MediaViewer: Información obtenida:", response.data);
         setMedia(response.data);
         setLoading(false);
       } catch (err) {
         console.error("Error al cargar medio:", err);
-        setError(err.response?.data?.message || "Error al cargar el medio");
+
+        // Manejar diferentes tipos de errores
+        if (err.response && err.response.status === 401) {
+          setError(
+            "Error de autenticación. Por favor, inicia sesión nuevamente."
+          );
+        } else if (err.response && err.response.status === 404) {
+          setError("No se encontró el contenido solicitado.");
+        } else if (!navigator.onLine) {
+          setError("No hay conexión a internet. Verifica tu red.");
+        } else {
+          setError(err.response?.data?.message || "Error al cargar el medio");
+        }
+
         setLoading(false);
       }
     };
 
     fetchMedia();
-  }, [mediaId]);
+  }, [mediaId, retryCount]);
 
   // Renderizado condicional para estado de carga
   if (loading) {
@@ -61,10 +78,10 @@ function MediaViewer({ mediaId }) {
       <div className="bg-red-900 bg-opacity-50 rounded-lg p-8 text-center">
         <p className="text-red-300 mb-4">{error}</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => setRetryCount((current) => current + 1)}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
         >
-          Recargar
+          Reintentar
         </button>
       </div>
     );
