@@ -1,30 +1,25 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import HomeDashboard from '../components/HomeDashboard';
 ---
 
 <Layout title="StreamVio - Tu centro de medios personal">
   <main class="container mx-auto px-4 py-8">
     <div class="max-w-6xl mx-auto mt-8">
       <div id="home-dashboard">
-        <!-- El HomeDashboard se renderizará con client:load y tiene manejo interno
-             para casos donde el usuario no está autenticado -->
-        <HomeDashboard client:load />
-      </div>
-      
-      <!-- Contenido alternativo para usuarios no autenticados -->
-      <div id="not-authenticated" class="hidden">
-        <div class="text-center py-10">
-          <h1 class="text-4xl font-bold text-blue-500 mb-4">Bienvenido a StreamVio</h1>
-          <p class="text-xl text-gray-300 mb-8">Tu plataforma personal de streaming de medios</p>
-          
-          <div class="bg-gray-800 rounded-lg p-8 max-w-2xl mx-auto">
-            <h2 class="text-2xl font-semibold mb-4">Accede a tu contenido</h2>
-            <p class="text-gray-400 mb-6">Inicia sesión para ver tu biblioteca personal de películas, series y música.</p>
-            
-            <a href="/auth" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block transition">
-              Iniciar Sesión
-            </a>
+        <!-- Placeholder de carga -->
+        <div class="animate-pulse">
+          <div class="h-8 bg-gray-700 rounded w-1/3 mb-6"></div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div class="h-40 bg-gray-800 rounded-lg"></div>
+            <div class="h-40 bg-gray-800 rounded-lg"></div>
+            <div class="h-40 bg-gray-800 rounded-lg"></div>
+          </div>
+          <div class="h-8 bg-gray-700 rounded w-1/4 mb-4"></div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="h-48 bg-gray-800 rounded-lg"></div>
+            <div class="h-48 bg-gray-800 rounded-lg"></div>
+            <div class="h-48 bg-gray-800 rounded-lg"></div>
+            <div class="h-48 bg-gray-800 rounded-lg"></div>
           </div>
         </div>
       </div>
@@ -33,14 +28,48 @@ import HomeDashboard from '../components/HomeDashboard';
 </Layout>
 
 <script>
-  // Este script solo se ejecuta en el cliente y maneja el caso en que el usuario no esté autenticado
-  document.addEventListener('DOMContentLoaded', () => {
-    const token = localStorage.getItem('streamvio_token');
-    
-    // No es necesario mostrar/ocultar elementos, ya que HomeDashboard ahora maneja 
-    // internamente el caso de usuario no autenticado
-    if (!token) {
-      console.log('Usuario no autenticado, HomeDashboard mostrará la interfaz de bienvenida');
+  // Este script se ejecuta en el navegador después de que la página se ha cargado
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      // Usar import dinámico ES para cargar el componente React
+      const module = await import('../components/HomeDashboard.jsx');
+      const HomeDashboard = module.default;
+      
+      // Importar React para poder renderizar el componente
+      const reactModule = await import('react');
+      const reactDomModule = await import('react-dom');
+      
+      // Comprobamos que tenemos todo lo que necesitamos
+      if (HomeDashboard && reactModule && reactDomModule) {
+        const React = reactModule.default;
+        const ReactDOM = reactDomModule.default;
+        
+        // Contenedor donde renderizaremos el componente
+        const container = document.getElementById('home-dashboard');
+        if (container) {
+          // Limpiar el contenedor (eliminar el placeholder)
+          container.innerHTML = '';
+          
+          // Renderizar el componente HomeDashboard
+          const element = React.createElement(HomeDashboard);
+          ReactDOM.render(element, container);
+        }
+      }
+    } catch (error) {
+      console.error('Error al cargar el dashboard:', error);
+      
+      // Mostrar mensaje de error si no se pudo cargar el componente
+      const container = document.getElementById('home-dashboard');
+      if (container) {
+        container.innerHTML = `
+          <div class="bg-gray-800 p-6 rounded-lg text-center">
+            <p class="text-red-400 mb-4">No se pudo cargar el panel principal.</p>
+            <a href="/" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+              Intentar de nuevo
+            </a>
+          </div>
+        `;
+      }
     }
   });
 </script>

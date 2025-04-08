@@ -3,22 +3,14 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
 
-// Modificado: importación condicional y manejo de casos donde useAuth no está disponible
-let useAuth;
-try {
-  useAuth = require("../context/AuthContext").useAuth;
-} catch (error) {
-  console.warn("AuthContext not available:", error);
-  // Implementamos un hook de reemplazo que devuelve un objeto vacío
-  useAuth = () => ({ currentUser: null });
-}
-
 const API_URL = apiConfig.API_URL;
 
+// Verificar si estamos en el navegador
+const isBrowser = typeof window !== "undefined";
+
 function HomeDashboard() {
-  // Modificado: manejo seguro del hook useAuth
-  const auth = useAuth ? useAuth() : { currentUser: null };
-  const currentUser = auth?.currentUser || null;
+  // Usamos el contexto de manera segura sin importación directa de useAuth
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [recentMedia, setRecentMedia] = useState([]);
   const [movieCount, setMovieCount] = useState(0);
@@ -27,16 +19,46 @@ function HomeDashboard() {
   const [error, setError] = useState(null);
   const [watchHistory, setWatchHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [isClient, setIsClient] = useState(false);
+
+  // Verificar si estamos en el cliente y cargar usuario del localStorage
+  useEffect(() => {
+    setIsClient(true);
+    if (isBrowser) {
+      try {
+        const userStr = localStorage.getItem("streamvio_user");
+        if (userStr) {
+          setCurrentUser(JSON.parse(userStr));
+        }
+      } catch (e) {
+        console.error("Error al leer usuario del localStorage:", e);
+      }
+    }
+  }, []);
 
   // Cargar conteo de medios y elementos recientes
   useEffect(() => {
+    // Solo ejecutar en el cliente
+    if (!isClient) return;
+
     const fetchMediaCounts = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const token = localStorage.getItem("streamvio_token");
-        if (!token) return;
+        let token;
+        try {
+          token = localStorage.getItem("streamvio_token");
+        } catch (e) {
+          console.error("Error al acceder a localStorage:", e);
+          setLoading(false);
+          return;
+        }
+
+        if (!token) {
+          setLoading(false);
+          return;
+        }
 
         // Obtener conteo de películas
         const moviesResponse = await axios.get(
@@ -84,20 +106,30 @@ function HomeDashboard() {
       }
     };
 
-    // Modificado: añadir protección para carga de datos iniciales
-    if (localStorage.getItem("streamvio_token")) {
-      fetchMediaCounts();
-    } else {
-      setLoading(false);
-    }
-  }, [currentUser]);
+    fetchMediaCounts();
+  }, [currentUser, isClient]);
 
   // Cargar historial de visualización
   useEffect(() => {
+    // Solo ejecutar en el cliente y cuando hay datos recientes
+    if (!isClient || recentMedia.length === 0) {
+      setHistoryLoading(false);
+      return;
+    }
+
     const fetchWatchHistory = async () => {
       try {
         setHistoryLoading(true);
-        const token = localStorage.getItem("streamvio_token");
+
+        let token;
+        try {
+          token = localStorage.getItem("streamvio_token");
+        } catch (e) {
+          console.error("Error al acceder a localStorage:", e);
+          setHistoryLoading(false);
+          return;
+        }
+
         if (!token) {
           setHistoryLoading(false);
           return;
@@ -153,12 +185,8 @@ function HomeDashboard() {
       }
     };
 
-    if (recentMedia.length > 0 && localStorage.getItem("streamvio_token")) {
-      fetchWatchHistory();
-    } else {
-      setHistoryLoading(false);
-    }
-  }, [currentUser, recentMedia]);
+    fetchWatchHistory();
+  }, [recentMedia, isClient]);
 
   // Formatear la fecha para mostrar
   const formatDate = (dateString) => {
@@ -171,8 +199,16 @@ function HomeDashboard() {
   // Obtener URL de la miniatura
   const getThumbnailUrl = (item) => {
     if (!item) return "/assets/default-media.jpg";
+    if (!isClient) return "/assets/default-media.jpg";
 
-    const token = localStorage.getItem("streamvio_token");
+    let token;
+    try {
+      token = localStorage.getItem("streamvio_token");
+    } catch (e) {
+      console.error("Error al acceder a localStorage:", e);
+      return "/assets/default-media.jpg";
+    }
+
     if (!token) return "/assets/default-media.jpg";
 
     return `${API_URL}/api/media/${
@@ -180,8 +216,37 @@ function HomeDashboard() {
     }/thumbnail?auth=${token}`;
   };
 
-  // Modificado: Si no hay un usuario autenticado, mostrar mensaje de inicio de sesión
-  if (!localStorage.getItem("streamvio_token")) {
+  // Si estamos en el servidor o inicializando en el cliente, mostrar un esqueleto
+  if (!isClient) {
+    return (
+      <div className="animate-pulse">
+        <div className="h-8 bg-gray-700 rounded w-1/3 mb-6"></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+          <div className="h-40 bg-gray-800 rounded-lg"></div>
+          <div className="h-40 bg-gray-800 rounded-lg"></div>
+          <div className="h-40 bg-gray-800 rounded-lg"></div>
+        </div>
+        <div className="h-8 bg-gray-700 rounded w-1/4 mb-4"></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="h-48 bg-gray-800 rounded-lg"></div>
+          <div className="h-48 bg-gray-800 rounded-lg"></div>
+          <div className="h-48 bg-gray-800 rounded-lg"></div>
+          <div className="h-48 bg-gray-800 rounded-lg"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Verificar autenticación de manera segura
+  let isAuthenticated = false;
+  try {
+    isAuthenticated = !!localStorage.getItem("streamvio_token");
+  } catch (e) {
+    console.error("Error al acceder a localStorage:", e);
+  }
+
+  // Si no hay autenticación, mostrar mensaje de bienvenida
+  if (!isAuthenticated) {
     return (
       <div className="bg-gray-800 rounded-lg p-8 text-center">
         <h2 className="text-2xl font-bold mb-4">Bienvenido a StreamVio</h2>

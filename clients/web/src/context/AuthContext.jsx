@@ -1,20 +1,39 @@
+// clients/web/src/context/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
+
+// Importación dinámica de componentes
+import PasswordChangeModal from "../components/PasswordChangeModal";
+import FirstTimeSetup from "../components/FirstTimeSetup";
 
 const API_URL = apiConfig.API_URL;
 
 // Crear el contexto
 const AuthContext = createContext(null);
 
+// Verificar si estamos en el navegador
+const isBrowser = typeof window !== "undefined";
+
 export const useAuth = () => {
-  // Agregar verificación para asegurar que el hook se use dentro de un proveedor
+  // Usar el contexto
   const context = useContext(AuthContext);
+
+  // Si no hay contexto, devolver un objeto por defecto para SSR
   if (context === undefined) {
-    // En lugar de lanzar un error, devolver un objeto con valores por defecto
-    console.warn("useAuth debe usarse dentro de un AuthProvider");
-    return { currentUser: null, loading: false, initialized: true };
+    return {
+      currentUser: null,
+      loading: false,
+      initialized: true,
+      requirePasswordChange: false,
+      isFirstTimeSetup: false,
+      login: () => Promise.reject(new Error("AuthContext no disponible")),
+      register: () => Promise.reject(new Error("AuthContext no disponible")),
+      logout: () => {},
+      updateUserData: () => {},
+    };
   }
+
   return context;
 };
 
@@ -29,16 +48,22 @@ export const AuthProvider = ({ children }) => {
   const updateUserData = (userData) => {
     if (!userData) return;
 
-    // Guardar en localStorage
-    localStorage.setItem(
-      "streamvio_user",
-      JSON.stringify({
-        id: userData.id,
-        username: userData.username,
-        email: userData.email,
-        isAdmin: userData.is_admin === 1 || userData.isAdmin === true,
-      })
-    );
+    // Solo acceder a localStorage en el navegador
+    if (isBrowser) {
+      try {
+        localStorage.setItem(
+          "streamvio_user",
+          JSON.stringify({
+            id: userData.id,
+            username: userData.username,
+            email: userData.email,
+            isAdmin: userData.is_admin === 1 || userData.isAdmin === true,
+          })
+        );
+      } catch (e) {
+        console.error("Error al guardar usuario en localStorage:", e);
+      }
+    }
 
     // Actualizar el estado
     setCurrentUser({
@@ -76,6 +101,13 @@ export const AuthProvider = ({ children }) => {
 
   // Efecto para verificar autenticación al cargar
   useEffect(() => {
+    // Si no estamos en el navegador, no ejecutar verificación
+    if (!isBrowser) {
+      setLoading(false);
+      setInitialized(true);
+      return;
+    }
+
     // Verificar si hay un token guardado
     const checkLoggedIn = async () => {
       try {
@@ -99,7 +131,14 @@ export const AuthProvider = ({ children }) => {
           // Continuar con la verificación normal
         }
 
-        const token = localStorage.getItem("streamvio_token");
+        let token;
+        try {
+          token = localStorage.getItem("streamvio_token");
+        } catch (e) {
+          console.error("Error al acceder a localStorage:", e);
+          token = null;
+        }
+
         if (token) {
           try {
             // Configurar el token en los headers
@@ -133,22 +172,31 @@ export const AuthProvider = ({ children }) => {
           } catch (error) {
             console.log("Token inválido o expirado:", error);
             // Si hay un error, limpiar el token
-            localStorage.removeItem("streamvio_token");
-            localStorage.removeItem("streamvio_user");
+            try {
+              localStorage.removeItem("streamvio_token");
+              localStorage.removeItem("streamvio_user");
+            } catch (e) {
+              console.error("Error al eliminar datos de localStorage:", e);
+            }
+
             delete axios.defaults.headers.common["Authorization"];
             setCurrentUser(null);
           }
         } else {
           // Intentar obtener información del usuario del localStorage (fallback)
-          const userStr = localStorage.getItem("streamvio_user");
-          if (userStr) {
-            try {
-              const user = JSON.parse(userStr);
-              setCurrentUser(user);
-            } catch (e) {
-              console.error("Error al parsear datos de usuario:", e);
-              localStorage.removeItem("streamvio_user");
+          try {
+            const userStr = localStorage.getItem("streamvio_user");
+            if (userStr) {
+              try {
+                const user = JSON.parse(userStr);
+                setCurrentUser(user);
+              } catch (e) {
+                console.error("Error al parsear datos de usuario:", e);
+                localStorage.removeItem("streamvio_user");
+              }
             }
+          } catch (e) {
+            console.error("Error al acceder a localStorage:", e);
           }
         }
 
@@ -173,7 +221,13 @@ export const AuthProvider = ({ children }) => {
       });
 
       // Guardar token
-      localStorage.setItem("streamvio_token", response.data.token);
+      if (isBrowser) {
+        try {
+          localStorage.setItem("streamvio_token", response.data.token);
+        } catch (e) {
+          console.error("Error al guardar token en localStorage:", e);
+        }
+      }
 
       // Actualizar datos de usuario
       updateUserData({
@@ -207,7 +261,13 @@ export const AuthProvider = ({ children }) => {
       });
 
       // Guardar token
-      localStorage.setItem("streamvio_token", response.data.token);
+      if (isBrowser) {
+        try {
+          localStorage.setItem("streamvio_token", response.data.token);
+        } catch (e) {
+          console.error("Error al guardar token en localStorage:", e);
+        }
+      }
 
       // Actualizar datos de usuario
       updateUserData({
@@ -230,18 +290,28 @@ export const AuthProvider = ({ children }) => {
   // Función para cerrar sesión
   const logout = () => {
     // Eliminar token y datos de usuario
-    localStorage.removeItem("streamvio_token");
-    localStorage.removeItem("streamvio_user");
+    if (isBrowser) {
+      try {
+        localStorage.removeItem("streamvio_token");
+        localStorage.removeItem("streamvio_user");
+      } catch (e) {
+        console.error("Error al eliminar datos de localStorage:", e);
+      }
+    }
 
     // Eliminar el token de los headers
-    delete axios.defaults.headers.common["Authorization"];
+    if (axios.defaults && axios.defaults.headers) {
+      delete axios.defaults.headers.common["Authorization"];
+    }
 
     // Actualizar estado
     setCurrentUser(null);
     setRequirePasswordChange(false);
 
     // Disparar evento personalizado de cambio de autenticación
-    window.dispatchEvent(new Event("streamvio-auth-change"));
+    if (isBrowser) {
+      window.dispatchEvent(new Event("streamvio-auth-change"));
+    }
   };
 
   // Función para manejar el cambio de contraseña completo
@@ -249,18 +319,27 @@ export const AuthProvider = ({ children }) => {
     setRequirePasswordChange(false);
 
     // Actualizar la sesión del usuario
-    const token = localStorage.getItem("streamvio_token");
-    if (token) {
-      axios
-        .get(`${API_URL}/api/auth/user`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then((response) => {
-          updateUserData(response.data);
-        })
-        .catch((error) => {
-          console.error("Error al actualizar datos de usuario:", error);
-        });
+    if (isBrowser) {
+      let token;
+      try {
+        token = localStorage.getItem("streamvio_token");
+      } catch (e) {
+        console.error("Error al acceder a localStorage:", e);
+        token = null;
+      }
+
+      if (token) {
+        axios
+          .get(`${API_URL}/api/auth/user`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          .then((response) => {
+            updateUserData(response.data);
+          })
+          .catch((error) => {
+            console.error("Error al actualizar datos de usuario:", error);
+          });
+      }
     }
   };
 
@@ -268,7 +347,9 @@ export const AuthProvider = ({ children }) => {
   const handleFirstTimeSetupComplete = () => {
     setIsFirstTimeSetup(false);
     // Recargar la aplicación para aplicar cambios
-    window.location.reload();
+    if (isBrowser) {
+      window.location.reload();
+    }
   };
 
   // Valor del contexto
@@ -286,11 +367,11 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {initialized && requirePasswordChange && (
+      {initialized && requirePasswordChange && PasswordChangeModal && (
         <PasswordChangeModal onComplete={handlePasswordChangeComplete} />
       )}
 
-      {initialized && isFirstTimeSetup && (
+      {initialized && isFirstTimeSetup && FirstTimeSetup && (
         <FirstTimeSetup onComplete={handleFirstTimeSetupComplete} />
       )}
 
@@ -299,46 +380,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// Importaciones dinámicas y condicionales para los componentes modales
-let PasswordChangeModal;
-let FirstTimeSetup;
-
-try {
-  PasswordChangeModal = require("../components/PasswordChangeModal").default;
-} catch (error) {
-  console.warn("No se pudo importar PasswordChangeModal:", error);
-  // Componente de fallback
-  PasswordChangeModal = ({ onComplete }) => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-gray-800 p-6 rounded-lg">
-        <h2>Cambio de contraseña requerido</h2>
-        <button
-          onClick={onComplete}
-          className="bg-blue-600 text-white p-2 rounded"
-        >
-          Continuar
-        </button>
-      </div>
-    </div>
-  );
-}
-
-try {
-  FirstTimeSetup = require("../components/FirstTimeSetup").default;
-} catch (error) {
-  console.warn("No se pudo importar FirstTimeSetup:", error);
-  // Componente de fallback
-  FirstTimeSetup = ({ onComplete }) => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-gray-800 p-6 rounded-lg">
-        <h2>Configuración inicial requerida</h2>
-        <button
-          onClick={onComplete}
-          className="bg-blue-600 text-white p-2 rounded"
-        >
-          Continuar
-        </button>
-      </div>
-    </div>
-  );
-}
+export default { AuthContext, useAuth, AuthProvider };
