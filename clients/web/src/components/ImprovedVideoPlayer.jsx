@@ -96,8 +96,8 @@ function ImprovedVideoPlayer({ videoId }) {
         // 6. Configurar URL de streaming directamente con el token JWT
         const streamUrl =
           bestStreamType === "hls" && hasHls
-            ? `${API_URL}/api/streaming/${videoId}/hls?auth=${token}`
-            : `${API_URL}/api/streaming/${videoId}/stream?auth=${token}`;
+            ? `${API_URL}/api/media/${videoId}/hls?auth=${token}`
+            : `${API_URL}/api/media/${videoId}/stream?auth=${token}`;
 
         console.log(
           `URL de streaming configurada (${bestStreamType}):`,
@@ -187,7 +187,7 @@ function ImprovedVideoPlayer({ videoId }) {
       );
 
       await axios.post(
-        `${API_URL}/api/streaming/${videoId}/progress`,
+        `${API_URL}/api/media/${videoId}/progress`,
         {
           position: timeInSeconds,
           completed: isCompleted,
