@@ -1,4 +1,4 @@
-// clients/web/src/components/MediaViewer.jsx
+// clients/web/src/components/MediaViewer.jsx (Versión simplificada)
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -8,6 +8,7 @@ const API_URL = apiConfig.API_URL;
 
 /**
  * Componente para visualizar diferentes tipos de medios (video, imágenes, etc.)
+ * Versión simplificada que usa directamente el token JWT principal
  */
 function MediaViewer({ mediaId }) {
   const [media, setMedia] = useState(null);
@@ -104,13 +105,12 @@ function MediaViewer({ mediaId }) {
         return <ImprovedVideoPlayer videoId={mediaId} />;
 
       case "photo":
-        // Renderizar imagen
+        // Renderizar imagen - usando directamente el token JWT
+        const token = localStorage.getItem("streamvio_token");
         return (
           <div className="bg-black rounded-lg flex items-center justify-center">
             <img
-              src={`${API_URL}/api/media/${mediaId}/stream?auth=${localStorage.getItem(
-                "streamvio_token"
-              )}`}
+              src={`${API_URL}/api/streaming/${mediaId}/stream?auth=${token}`}
               alt={media.title || "Imagen"}
               className="max-w-full max-h-[80vh] object-contain"
               onError={(e) => {
@@ -121,15 +121,14 @@ function MediaViewer({ mediaId }) {
         );
 
       case "music":
-        // Renderizar reproductor de audio
+        // Renderizar reproductor de audio - usando directamente el token JWT
+        const authToken = localStorage.getItem("streamvio_token");
         return (
           <div className="bg-gray-800 rounded-lg p-6">
             <div className="flex flex-col items-center">
               <div className="w-48 h-48 bg-gray-700 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
                 <img
-                  src={`${API_URL}/api/media/${mediaId}/thumbnail?auth=${localStorage.getItem(
-                    "streamvio_token"
-                  )}`}
+                  src={`${API_URL}/api/media/${mediaId}/thumbnail?auth=${authToken}`}
                   alt={media.title || "Portada"}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -146,9 +145,7 @@ function MediaViewer({ mediaId }) {
               <audio
                 controls
                 className="w-full mt-4"
-                src={`${API_URL}/api/media/${mediaId}/stream?auth=${localStorage.getItem(
-                  "streamvio_token"
-                )}`}
+                src={`${API_URL}/api/streaming/${mediaId}/stream?auth=${authToken}`}
               >
                 Tu navegador no soporta el elemento de audio.
               </audio>

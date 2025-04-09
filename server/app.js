@@ -1,4 +1,4 @@
-// server/app.js - Versión unificada para servir frontend y backend desde el mismo puerto
+// server/app.js - Versión unificada y simplificada para servir frontend y backend
 const express = require("express");
 const helmet = require("helmet");
 const morgan = require("morgan");
@@ -20,9 +20,6 @@ const filesystemRoutes = require("./routes/filesystem");
 const streamingRoutes = require("./routes/streaming");
 const setupRoutes = require("./routes/setup");
 const userHistoryRoutes = require("./routes/user-history");
-
-// Importar servicios
-const streamingTokenService = require("./services/streamingTokenService");
 
 // Importar middleware de autenticación (solo una vez)
 const enhancedAuthMiddleware = require("./middleware/enhancedAuth");
@@ -66,7 +63,7 @@ async function setupRequiredDirectories() {
               `⚠️ No se pudieron corregir los permisos: ${chmodError.message}`
             );
             console.error(
-              "Puede que necesites ejecutar la aplicación con permisos de administrador"
+              "⚠️ Puede que necesites ejecutar la aplicación con permisos de administrador"
             );
           }
         }
@@ -109,7 +106,6 @@ app.use(
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: false,
     crossOriginOpenerPolicy: false,
-    originAgentCluster: false,
   })
 );
 
@@ -331,19 +327,6 @@ async function setupApp() {
     }
   });
 
-  setInterval(async () => {
-    try {
-      const tokensRemoved = await streamingTokenService.periodicTokenCleanup();
-      if (tokensRemoved > 0) {
-        console.log(
-          `Limpieza de tokens: ${tokensRemoved} tokens expirados eliminados`
-        );
-      }
-    } catch (error) {
-      console.error("Error en limpieza periódica de tokens:", error);
-    }
-  }, 60 * 60 * 1000);
-
   app.use(serveStaticWithErrorHandling(frontendDistPath));
 
   app.get("*", (req, res, next) => {
@@ -469,7 +452,7 @@ setupApp()
         console.log(`Servidor StreamVio ejecutándose en el puerto ${PORT}`);
         console.log(`==============================================`);
         console.log(`Acceso local: http://localhost:${PORT}`);
-        console.log(`Acceso en red: http://${LOCAL_IP}:${PORT}`);
+        console.log(`Acceso en red: ${LOCAL_IP}:${PORT}`);
         console.log(`API disponible en http://${LOCAL_IP}:${PORT}/api`);
         console.log(
           `Usuario actual: ${process.getuid ? process.getuid() : "desconocido"}`
