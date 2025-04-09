@@ -109,6 +109,7 @@ app.use(
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: false,
     crossOriginOpenerPolicy: false,
+    originAgentCluster: false,
   })
 );
 

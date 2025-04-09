@@ -15,6 +15,8 @@ export const addAuthToken = (url, options = {}) => {
   const token = localStorage.getItem("streamvio_token");
   if (!token) return url;
 
+  console.log("Añadiendo token a URL:", url); // Logging para depuración
+
   // Determinar si la URL ya tiene parámetros
   const hasParams = url.includes("?");
   const separator = hasParams ? "&" : "?";
@@ -109,6 +111,7 @@ export const getApiUrl = (endpoint, params = {}) => {
 export const setupAxiosAuth = (axiosInstance) => {
   const token = localStorage.getItem("streamvio_token");
   if (token) {
+    console.log("Configurando token de autenticación para axios");
     axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
   }
 

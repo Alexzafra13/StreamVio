@@ -1,4 +1,4 @@
-// clients/web/src/components/ImprovedVideoPlayer.jsx
+// clients/web/src/components/ImprovedVideoPlayer.jsx (actualizado)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -80,7 +80,16 @@ function ImprovedVideoPlayer({ videoId }) {
           const streamResponse = await axios.get(
             `${API_URL}/api/streaming/${videoId}/prepare`,
             {
-              headers: { Authorization: `Bearer ${token}` },
+              headers: {
+                Authorization: `Bearer ${token}`,
+                // Asegurarse de que estamos enviando el token en todos los formatos posibles
+                "X-Stream-Token": token,
+                "Stream-Token": token,
+              },
+              // También incluirlo como parámetro de consulta
+              params: {
+                auth: token,
+              },
             }
           );
           streamData = streamResponse.data;
@@ -96,10 +105,18 @@ function ImprovedVideoPlayer({ videoId }) {
             const streamTokenResponse = await axios.get(
               `${API_URL}/api/streaming/token/${videoId}`,
               {
-                headers: { Authorization: `Bearer ${token}` },
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "X-Stream-Token": token,
+                  "Stream-Token": token,
+                },
+                params: {
+                  auth: token,
+                },
               }
             );
             streamData = {
+              token: streamTokenResponse.data.stream_token,
               stream_token: streamTokenResponse.data.stream_token,
               expires_in: streamTokenResponse.data.expires_in || 3600,
               hasHLS: false,
@@ -114,6 +131,7 @@ function ImprovedVideoPlayer({ videoId }) {
             // Último recurso: usar token JWT para streaming directo
             console.log("Usando token JWT principal como último recurso");
             streamData = {
+              token: token,
               stream_token: token,
               expires_in: 3600,
               hasHLS: false,
@@ -121,7 +139,13 @@ function ImprovedVideoPlayer({ videoId }) {
           }
         }
 
-        setStreamToken(streamData.stream_token || streamData.token);
+        // Usar una sola asignación del token (corregido)
+        const tokenToUse = streamData.stream_token || streamData.token || token;
+        console.log(
+          "Token de streaming a utilizar:",
+          tokenToUse ? tokenToUse.substring(0, 10) + "..." : "null"
+        );
+        setStreamToken(tokenToUse);
 
         // 4. Comprobar si el navegador soporta HLS
         const checkHlsSupport = () => {
@@ -146,16 +170,16 @@ function ImprovedVideoPlayer({ videoId }) {
 
         // 7. Configurar URL de streaming
         let url;
-        const tokenToUse = streamData.stream_token || streamData.token || token;
+        // Ya tenemos tokenToUse definido anteriormente, no necesitamos redefinirlo
 
         if (bestStreamType === "hls" && hasHls) {
           url =
             streamData.hlsStreamUrl ||
-            `${API_URL}/api/streaming/${videoId}/hls?token=${tokenToUse}`;
+            `${API_URL}/api/streaming/${videoId}/hls?token=${tokenToUse}&auth=${token}`;
         } else {
           url =
             streamData.directStreamUrl ||
-            `${API_URL}/api/streaming/${videoId}/stream?token=${tokenToUse}`;
+            `${API_URL}/api/streaming/${videoId}/stream?token=${tokenToUse}&auth=${token}`;
         }
 
         console.log(`URL de streaming configurada (${bestStreamType}):`, url);
@@ -165,7 +189,10 @@ function ImprovedVideoPlayer({ videoId }) {
         setupTokenRenewal(streamData.expires_in || 3600);
 
         // 9. Cargar historial de reproducción si existe
-        loadWatchHistory();
+        // Pequeño retraso para asegurar que videoRef.current esté disponible
+        setTimeout(() => {
+          loadWatchHistory();
+        }, 500);
 
         setLoading(false);
       } catch (err) {
@@ -195,7 +222,6 @@ function ImprovedVideoPlayer({ videoId }) {
       clearTimeout(controlsTimeoutRef.current);
     }
   };
-
   // Configurar renovación automática del token de streaming
   const setupTokenRenewal = (expiresInSeconds) => {
     if (tokenRenewalTimeoutRef.current) {
@@ -249,13 +275,23 @@ function ImprovedVideoPlayer({ videoId }) {
 
     const tokenToUse =
       token || fallbackToken || localStorage.getItem("streamvio_token");
-    if (!tokenToUse) return;
+    if (!tokenToUse) {
+      console.error("No se pudo obtener un token válido para streaming");
+      setError("Error de autenticación. No se pudo obtener un token válido");
+      return;
+    }
+
+    const authToken = localStorage.getItem("streamvio_token");
+    if (!authToken) {
+      console.error("No hay token de autenticación principal");
+      return;
+    }
 
     let url;
     if (streamType === "hls" && hlsAvailable) {
-      url = `${API_URL}/api/streaming/${videoId}/hls?token=${tokenToUse}`;
+      url = `${API_URL}/api/streaming/${videoId}/hls?token=${tokenToUse}&auth=${authToken}`;
     } else {
-      url = `${API_URL}/api/streaming/${videoId}/stream?token=${tokenToUse}`;
+      url = `${API_URL}/api/streaming/${videoId}/stream?token=${tokenToUse}&auth=${authToken}`;
     }
 
     console.log("URL de streaming actualizada:", url);
@@ -285,7 +321,19 @@ function ImprovedVideoPlayer({ videoId }) {
           console.log(
             `Posición guardada encontrada: ${savedPosition} segundos`
           );
-          videoRef.current.currentTime = savedPosition;
+
+          // Verificar que la posición sea válida
+          if (
+            isFinite(savedPosition) &&
+            savedPosition > 0 &&
+            (videoRef.current.duration
+              ? savedPosition < videoRef.current.duration
+              : true)
+          ) {
+            videoRef.current.currentTime = savedPosition;
+          } else {
+            console.warn("Posición guardada no válida:", savedPosition);
+          }
         }
       } catch (progressError) {
         console.warn(
@@ -318,6 +366,12 @@ function ImprovedVideoPlayer({ videoId }) {
       const token = localStorage.getItem("streamvio_token");
       if (!token || !videoId) return;
 
+      // Verificar que el tiempo sea válido
+      if (!isFinite(timeInSeconds) || timeInSeconds < 0) {
+        console.warn("Tiempo no válido para guardar progreso:", timeInSeconds);
+        return;
+      }
+
       console.log(
         `Guardando progreso: ${timeInSeconds}s, completado: ${isCompleted}`
       );
@@ -349,6 +403,7 @@ function ImprovedVideoPlayer({ videoId }) {
       }
     } catch (err) {
       console.warn("Error general al guardar progreso de visualización:", err);
+      // No propagamos este error al usuario para no interrumpir la experiencia
     }
   };
 
@@ -371,9 +426,11 @@ function ImprovedVideoPlayer({ videoId }) {
       const calculatedProgress = (video.currentTime / video.duration) * 100;
       setProgress(calculatedProgress);
 
-      // Actualizar progreso en el servidor cada 10 segundos o cuando el progreso cambia significativamente
+      // Optimización: Actualizar progreso en el servidor periódicamente o cuando hay cambios significativos
       const shouldUpdateProgress = Math.abs(calculatedProgress - progress) > 5;
-      if (shouldUpdateProgress) {
+      const hasPassedTimeThreshold = Math.floor(video.currentTime) % 30 === 0; // Cada ~30 segundos
+
+      if (shouldUpdateProgress || hasPassedTimeThreshold) {
         saveWatchProgress(video.currentTime);
       }
     }
@@ -490,7 +547,7 @@ function ImprovedVideoPlayer({ videoId }) {
 
   // Formatear tiempo (segundos a MM:SS)
   const formatTime = (timeInSeconds) => {
-    if (!timeInSeconds) return "00:00";
+    if (!timeInSeconds || !isFinite(timeInSeconds)) return "00:00";
 
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
