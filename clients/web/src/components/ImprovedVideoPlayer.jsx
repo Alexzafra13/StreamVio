@@ -1,20 +1,21 @@
-// clients/web/src/components/ImprovedVideoPlayer.jsx (actualizado)
+// clients/web/src/components/ImprovedVideoPlayer.jsx - VERSIÓN CORREGIDA
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
+import streamingHelper from "../utils/streamingHelper"; // Importar el helper mejorado
 
 const API_URL = apiConfig.API_URL;
 
 /**
- * Reproductor de video mejorado con controles personalizados y gestión de streaming
+ * Reproductor de video mejorado con gestión robusta de tokens y streaming
  */
 function ImprovedVideoPlayer({ videoId }) {
   // Estados del reproductor
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [streamToken, setStreamToken] = useState(null);
   const [streamUrl, setStreamUrl] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Estados de reproducción
   const [isPlaying, setIsPlaying] = useState(false);
@@ -27,20 +28,17 @@ function ImprovedVideoPlayer({ videoId }) {
   const [showControls, setShowControls] = useState(true);
 
   // Estado para streaming adaptativo
-  const [supportsHls, setSupportsHls] = useState(false);
-  const [hlsAvailable, setHlsAvailable] = useState(false);
   const [streamType, setStreamType] = useState("direct"); // "direct" o "hls"
+  const [hlsAvailable, setHlsAvailable] = useState(false);
 
   // Referencias
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const controlsTimeoutRef = useRef(null);
   const progressUpdateIntervalRef = useRef(null);
-  const tokenRenewalTimeoutRef = useRef(null);
-
-  // Cargar información del video y obtener token de streaming
+  // Cargar información del video y obtener URL de streaming
   useEffect(() => {
-    const fetchVideoAndToken = async () => {
+    const fetchVideoAndStream = async () => {
       if (!videoId) return;
 
       try {
@@ -66,133 +64,38 @@ function ImprovedVideoPlayer({ videoId }) {
         console.log("Información del video obtenida:", videoData);
         setVideo(videoData);
 
-        // 2. Verificar si es un video (no una imagen o música)
+        // 2. Verificar si es reproducible como video
         if (videoData.type !== "movie" && videoData.type !== "episode") {
           setError("Este tipo de contenido no es reproducible como video");
           setLoading(false);
           return;
         }
 
-        // 3. Obtener token de streaming
-        console.log("Solicitando token de streaming...");
-        let streamData = null;
+        // 3. Comprobar si hay versión HLS disponible
+        setHlsAvailable(videoData.has_hls || false);
+
+        // 4. Determinar la URL de streaming usando el helper
         try {
-          const streamResponse = await axios.get(
-            `${API_URL}/api/streaming/${videoId}/prepare`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                // Asegurarse de que estamos enviando el token en todos los formatos posibles
-                "X-Stream-Token": token,
-                "Stream-Token": token,
-              },
-              // También incluirlo como parámetro de consulta
-              params: {
-                auth: token,
-              },
-            }
-          );
-          streamData = streamResponse.data;
-          console.log("Token de streaming obtenido:", streamData);
-        } catch (streamTokenError) {
-          console.error(
-            "Error al obtener token de streaming:",
-            streamTokenError
-          );
+          const url = await streamingHelper.getStreamUrl(videoId, {
+            useHls: hlsAvailable,
+            hlsAvailable: videoData.has_hls || false,
+          });
 
-          // Intento alternativo con endpoint directo
-          try {
-            const streamTokenResponse = await axios.get(
-              `${API_URL}/api/streaming/token/${videoId}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "X-Stream-Token": token,
-                  "Stream-Token": token,
-                },
-                params: {
-                  auth: token,
-                },
-              }
-            );
-            streamData = {
-              token: streamTokenResponse.data.stream_token,
-              stream_token: streamTokenResponse.data.stream_token,
-              expires_in: streamTokenResponse.data.expires_in || 3600,
-              hasHLS: false,
-            };
-            console.log("Token alternativo obtenido:", streamData);
-          } catch (alternativeError) {
-            console.error(
-              "Error en obtención alternativa de token:",
-              alternativeError
-            );
+          console.log(`URL de streaming obtenida: ${url}`);
+          setStreamUrl(url);
+          setStreamType(url.includes("/hls") ? "hls" : "direct");
+        } catch (streamError) {
+          console.error("Error al obtener URL de streaming:", streamError);
 
-            // Último recurso: usar token JWT para streaming directo
-            console.log("Usando token JWT principal como último recurso");
-            streamData = {
-              token: token,
-              stream_token: token,
-              expires_in: 3600,
-              hasHLS: false,
-            };
-          }
+          // Fallback directo como último recurso
+          const fallbackUrl = `${API_URL}/api/media/${videoId}/stream?auth=${token}`;
+          console.log(`Usando URL de fallback: ${fallbackUrl}`);
+          setStreamUrl(fallbackUrl);
+          setStreamType("direct");
         }
 
-        // Usar una sola asignación del token (corregido)
-        const tokenToUse = streamData.stream_token || streamData.token || token;
-        console.log(
-          "Token de streaming a utilizar:",
-          tokenToUse ? tokenToUse.substring(0, 10) + "..." : "null"
-        );
-        setStreamToken(tokenToUse);
-
-        // 4. Comprobar si el navegador soporta HLS
-        const checkHlsSupport = () => {
-          // Safari soporta HLS nativamente
-          if (videoRef.current?.canPlayType("application/vnd.apple.mpegurl")) {
-            return true;
-          }
-          // Otros navegadores pueden usar hls.js si tienen MediaSource
-          return window.MediaSource !== undefined;
-        };
-
-        const hlsSupport = checkHlsSupport();
-        setSupportsHls(hlsSupport);
-
-        // 5. Comprobar si hay versión HLS disponible para este video
-        const hasHls = streamData.hasHLS || videoData.has_hls || false;
-        setHlsAvailable(hasHls);
-
-        // 6. Determinar el tipo de streaming a usar
-        const bestStreamType = hasHls && hlsSupport ? "hls" : "direct";
-        setStreamType(bestStreamType);
-
-        // 7. Configurar URL de streaming
-        let url;
-        // Ya tenemos tokenToUse definido anteriormente, no necesitamos redefinirlo
-
-        if (bestStreamType === "hls" && hasHls) {
-          url =
-            streamData.hlsStreamUrl ||
-            `${API_URL}/api/streaming/${videoId}/hls?token=${tokenToUse}&auth=${token}`;
-        } else {
-          url =
-            streamData.directStreamUrl ||
-            `${API_URL}/api/streaming/${videoId}/stream?token=${tokenToUse}&auth=${token}`;
-        }
-
-        console.log(`URL de streaming configurada (${bestStreamType}):`, url);
-        setStreamUrl(url);
-
-        // 8. Configurar renovación automática del token
-        setupTokenRenewal(streamData.expires_in || 3600);
-
-        // 9. Cargar historial de reproducción si existe
-        // Pequeño retraso para asegurar que videoRef.current esté disponible
-        setTimeout(() => {
-          loadWatchHistory();
-        }, 500);
+        // 5. Cargar historial de reproducción si existe
+        await loadWatchHistory(token, videoId);
 
         setLoading(false);
       } catch (err) {
@@ -202,211 +105,148 @@ function ImprovedVideoPlayer({ videoId }) {
       }
     };
 
-    fetchVideoAndToken();
+    fetchVideoAndStream();
 
     // Limpieza al desmontar
     return () => {
-      clearTimeouts();
-    };
-  }, [videoId]);
-
-  // Limpiar todos los timeouts e intervalos
-  const clearTimeouts = () => {
-    if (progressUpdateIntervalRef.current) {
-      clearInterval(progressUpdateIntervalRef.current);
-    }
-    if (tokenRenewalTimeoutRef.current) {
-      clearTimeout(tokenRenewalTimeoutRef.current);
-    }
-    if (controlsTimeoutRef.current) {
-      clearTimeout(controlsTimeoutRef.current);
-    }
-  };
-  // Configurar renovación automática del token de streaming
-  const setupTokenRenewal = (expiresInSeconds) => {
-    if (tokenRenewalTimeoutRef.current) {
-      clearTimeout(tokenRenewalTimeoutRef.current);
-    }
-
-    // Renovar el token 2 minutos antes de que expire
-    const renewalTime = Math.max((expiresInSeconds - 120) * 1000, 10000);
-    console.log(
-      `Programando renovación de token en ${renewalTime / 1000} segundos`
-    );
-
-    tokenRenewalTimeoutRef.current = setTimeout(async () => {
-      try {
-        const token = localStorage.getItem("streamvio_token");
-        if (!token) return;
-
-        console.log("Renovando token de streaming...");
-        const response = await axios.get(
-          `${API_URL}/api/streaming/token/${videoId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        setStreamToken(response.data.stream_token);
-        updateStreamUrl(response.data.stream_token);
-        setupTokenRenewal(response.data.expires_in || 3600);
-
-        console.log("Token de streaming renovado automáticamente");
-      } catch (err) {
-        console.error("Error al renovar token de streaming:", err);
-
-        // Intentar regenerar la URL de streaming con el token JWT principal
-        try {
-          const mainToken = localStorage.getItem("streamvio_token");
-          updateStreamUrl(null, mainToken);
-          console.log(
-            "URL de streaming actualizada con token principal como fallback"
-          );
-        } catch (fallbackError) {
-          console.error("Error en fallback de token:", fallbackError);
-        }
+      if (progressUpdateIntervalRef.current) {
+        clearInterval(progressUpdateIntervalRef.current);
       }
-    }, renewalTime);
-  };
-
-  // Actualizar URL de streaming cuando cambia el token
-  const updateStreamUrl = (token, fallbackToken = null) => {
-    if (!video) return;
-
-    const tokenToUse =
-      token || fallbackToken || localStorage.getItem("streamvio_token");
-    if (!tokenToUse) {
-      console.error("No se pudo obtener un token válido para streaming");
-      setError("Error de autenticación. No se pudo obtener un token válido");
-      return;
-    }
-
-    const authToken = localStorage.getItem("streamvio_token");
-    if (!authToken) {
-      console.error("No hay token de autenticación principal");
-      return;
-    }
-
-    let url;
-    if (streamType === "hls" && hlsAvailable) {
-      url = `${API_URL}/api/streaming/${videoId}/hls?token=${tokenToUse}&auth=${authToken}`;
-    } else {
-      url = `${API_URL}/api/streaming/${videoId}/stream?token=${tokenToUse}&auth=${authToken}`;
-    }
-
-    console.log("URL de streaming actualizada:", url);
-    setStreamUrl(url);
-  };
-
-  // Cargar historial de visualización con manejo de errores 404
-  const loadWatchHistory = async () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, [videoId, retryCount]);
+  // Cargar historial de visualización
+  const loadWatchHistory = async (token, mediaId) => {
     try {
-      const token = localStorage.getItem("streamvio_token");
-      if (!token || !videoId) return;
+      console.log("Intentando cargar historial de reproducción...");
 
-      console.log("Cargando historial de visualización...");
-
+      // Primera opción: endpoint específico de progreso
       try {
-        // Intentar primero con el endpoint específico para progress
         const response = await axios.get(
-          `${API_URL}/api/media/${videoId}/progress`,
+          `${API_URL}/api/media/${mediaId}/progress`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
 
-        if (response.data.position && videoRef.current) {
-          // Si hay una posición guardada, adelantar el video a ese punto
+        console.log("Progreso recuperado:", response.data);
+
+        if (response.data && response.data.position) {
           const savedPosition = response.data.position;
           console.log(
             `Posición guardada encontrada: ${savedPosition} segundos`
           );
 
-          // Verificar que la posición sea válida
-          if (
-            isFinite(savedPosition) &&
-            savedPosition > 0 &&
-            (videoRef.current.duration
-              ? savedPosition < videoRef.current.duration
-              : true)
-          ) {
-            videoRef.current.currentTime = savedPosition;
+          // Establecer el tiempo cuando el video esté cargado
+          const setVideoTime = () => {
+            if (videoRef.current) {
+              videoRef.current.currentTime = savedPosition;
+              setCurrentTime(savedPosition);
+            }
+          };
+
+          // Si el video ya está cargado, establecer ahora
+          if (videoRef.current) {
+            setVideoTime();
           } else {
-            console.warn("Posición guardada no válida:", savedPosition);
+            // Programar para ejecutar cuando el video esté disponible
+            const checkInterval = setInterval(() => {
+              if (videoRef.current) {
+                setVideoTime();
+                clearInterval(checkInterval);
+              }
+            }, 500);
+
+            // Limpiar después de 10 segundos
+            setTimeout(() => clearInterval(checkInterval), 10000);
           }
         }
       } catch (progressError) {
-        console.warn(
-          "Error al cargar historial desde /progress:",
-          progressError
-        );
+        console.warn("Error al cargar progreso:", progressError);
 
-        // Si falla con 404, crear rutas alternativas de historial
-        if (progressError.response && progressError.response.status === 404) {
-          console.log(
-            "Ruta /media/:id/progress no encontrada (404), no se usará historial"
+        // Alternativa: Intentar con watch history
+        try {
+          const historyResponse = await axios.get(
+            `${API_URL}/api/user/history?mediaId=${mediaId}&limit=1`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
           );
-          // No intentamos otras rutas porque según el análisis no existen
 
-          // Usar la posición 0 como fallback
-          if (videoRef.current) {
-            videoRef.current.currentTime = 0;
+          if (
+            historyResponse.data &&
+            historyResponse.data.length > 0 &&
+            historyResponse.data[0].position
+          ) {
+            const savedPosition = historyResponse.data[0].position;
+            console.log(`Posición desde historial: ${savedPosition} segundos`);
+
+            if (videoRef.current) {
+              videoRef.current.currentTime = savedPosition;
+              setCurrentTime(savedPosition);
+            }
           }
+        } catch (historyError) {
+          console.warn("Error al obtener historial:", historyError);
         }
       }
     } catch (err) {
-      console.warn("Error al cargar historial de visualización:", err);
-      // No es un error crítico, continuamos con la reproducción
+      console.warn("Error general al cargar historial:", err);
+      // No es crítico, continuamos con la reproducción
     }
   };
 
-  // Guardar progreso de visualización con manejo de errores 404
+  // Guardar progreso de visualización
   const saveWatchProgress = async (timeInSeconds, isCompleted = false) => {
     try {
       const token = localStorage.getItem("streamvio_token");
       if (!token || !videoId) return;
-
-      // Verificar que el tiempo sea válido
-      if (!isFinite(timeInSeconds) || timeInSeconds < 0) {
-        console.warn("Tiempo no válido para guardar progreso:", timeInSeconds);
-        return;
-      }
 
       console.log(
         `Guardando progreso: ${timeInSeconds}s, completado: ${isCompleted}`
       );
 
       try {
-        // Intentar guardar en el endpoint principal
-        await axios.post(
-          `${API_URL}/api/media/${videoId}/progress`,
-          {
-            position: timeInSeconds,
-            completed: isCompleted,
-          },
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        console.log("Progreso guardado correctamente");
-      } catch (progressError) {
-        // Si falla con 404, ignorar el error
-        if (progressError.response && progressError.response.status === 404) {
-          console.warn(
-            "Ruta /media/:id/progress no implementada, no se guardará progreso"
+        // Intento con endpoints alternativos por orden de preferencia
+        try {
+          // 1. Endpoint específico de progreso
+          await axios.post(
+            `${API_URL}/api/media/${videoId}/progress`,
+            {
+              position: timeInSeconds,
+              completed: isCompleted,
+            },
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
           );
-          // No intentamos otras rutas porque según el análisis no existen
-        } else {
-          console.warn("Error al guardar progreso:", progressError);
+          console.log("Progreso guardado correctamente");
+        } catch (progressError) {
+          console.warn("Error en endpoint principal:", progressError);
+
+          // 2. Alternativa: update history
+          await axios.post(
+            `${API_URL}/api/user/history`,
+            {
+              mediaId: videoId,
+              position: timeInSeconds,
+              completed: isCompleted,
+            },
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+          console.log("Progreso guardado vía historial");
         }
+      } catch (error) {
+        console.warn("No se pudo guardar el progreso:", error);
       }
     } catch (err) {
-      console.warn("Error general al guardar progreso de visualización:", err);
-      // No propagamos este error al usuario para no interrumpir la experiencia
+      console.warn("Error general al guardar progreso:", err);
     }
   };
-
   // Manejadores de eventos del reproductor
   const handlePlay = () => {
     setIsPlaying(true);
@@ -426,11 +266,9 @@ function ImprovedVideoPlayer({ videoId }) {
       const calculatedProgress = (video.currentTime / video.duration) * 100;
       setProgress(calculatedProgress);
 
-      // Optimización: Actualizar progreso en el servidor periódicamente o cuando hay cambios significativos
+      // Actualizar progreso en el servidor cada 10 segundos o cuando cambia significativamente
       const shouldUpdateProgress = Math.abs(calculatedProgress - progress) > 5;
-      const hasPassedTimeThreshold = Math.floor(video.currentTime) % 30 === 0; // Cada ~30 segundos
-
-      if (shouldUpdateProgress || hasPassedTimeThreshold) {
+      if (shouldUpdateProgress) {
         saveWatchProgress(video.currentTime);
       }
     }
@@ -497,7 +335,6 @@ function ImprovedVideoPlayer({ videoId }) {
       if (playPromise !== undefined) {
         playPromise.catch((error) => {
           console.error("Error al reproducir video:", error);
-          // Intentar reproducir después de interacción del usuario
           setError(
             "Error al reproducir. El navegador puede estar bloqueando la reproducción automática."
           );
@@ -529,7 +366,6 @@ function ImprovedVideoPlayer({ videoId }) {
       setIsFullscreen(false);
     }
   };
-
   // Mostrar/ocultar controles con temporizador
   const showControlsTemporary = () => {
     setShowControls(true);
@@ -547,13 +383,28 @@ function ImprovedVideoPlayer({ videoId }) {
 
   // Formatear tiempo (segundos a MM:SS)
   const formatTime = (timeInSeconds) => {
-    if (!timeInSeconds || !isFinite(timeInSeconds)) return "00:00";
+    if (!timeInSeconds) return "00:00";
 
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
     return `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}`;
+  };
+
+  // Reintentar reproducción con configuración alternativa
+  const retryPlayback = () => {
+    setError(null);
+    setLoading(true);
+
+    // Cambiar tipo de stream e incrementar contador de reintentos para forzar la recarga
+    setStreamType(streamType === "direct" ? "hls" : "direct");
+    setRetryCount((prev) => prev + 1);
+
+    // Mostrar mensaje temporal
+    setTimeout(() => {
+      setLoading(false);
+    }, 1500);
   };
 
   // Manejar error en la carga del video
@@ -580,20 +431,30 @@ function ImprovedVideoPlayer({ videoId }) {
       setError("Formato de video no soportado o token de streaming inválido.");
     } else {
       setError(
-        "Error al cargar el video. Posible problema con el token de streaming o el archivo no está disponible."
+        "Error al cargar el video. Intentando con método alternativo..."
       );
     }
 
-    // Intentar actualizar la URL con un nuevo token
-    const token = localStorage.getItem("streamvio_token");
-    if (token) {
-      console.log(
-        "Intentando actualizar URL con token principal debido a error..."
-      );
-      updateStreamUrl(null, token);
+    // Intentar actualizar la URL con un token principal para recuperación
+    const mainToken = localStorage.getItem("streamvio_token");
+    if (mainToken) {
+      console.log("Intentando con URL alternativa debido a error...");
+      // Construir URL alternativa directa usando el token principal
+      const altUrl = `${API_URL}/api/media/${videoId}/stream?auth=${mainToken}`;
+
+      // Sólo actualizar la URL si es diferente a la actual
+      if (altUrl !== streamUrl) {
+        console.log(`Cambiando a URL alternativa: ${altUrl}`);
+        setStreamUrl(altUrl);
+        setStreamType("direct");
+      } else {
+        // Si ya estamos usando la URL de fallback, incrementar el contador de reintentos
+        console.log(
+          "URL alternativa ya en uso, posible problema en el servidor"
+        );
+      }
     }
   };
-
   // Renderizado condicional para estado de carga
   if (loading) {
     return (
@@ -608,28 +469,20 @@ function ImprovedVideoPlayer({ videoId }) {
     return (
       <div className="bg-red-900 bg-opacity-50 rounded-lg p-8 text-center h-96 flex flex-col items-center justify-center">
         <p className="text-red-300 mb-4">{error}</p>
-        <button
-          onClick={() => {
-            setError(null);
-            setLoading(true);
-            // Intentar cargar de nuevo con un pequeño retraso
-            setTimeout(() => {
-              const token = localStorage.getItem("streamvio_token");
-              // Actualizar URL con token JWT principal como fallback
-              updateStreamUrl(null, token);
-              setLoading(false);
-            }, 1000);
-          }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded mr-2"
-        >
-          Reintentar
-        </button>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-        >
-          Recargar página
-        </button>
+        <div className="flex space-x-4">
+          <button
+            onClick={retryPlayback}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+          >
+            Reintentar con modo {streamType === "direct" ? "HLS" : "directo"}
+          </button>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
+          >
+            Recargar página
+          </button>
+        </div>
       </div>
     );
   }
@@ -650,7 +503,6 @@ function ImprovedVideoPlayer({ videoId }) {
       </div>
     );
   }
-
   // Renderizado del reproductor
   return (
     <div
@@ -672,6 +524,8 @@ function ImprovedVideoPlayer({ videoId }) {
         }
         controls={false}
         autoPlay={false}
+        preload="auto"
+        crossOrigin="anonymous"
         onClick={togglePlay}
         onPlay={handlePlay}
         onPause={handlePause}
@@ -680,7 +534,6 @@ function ImprovedVideoPlayer({ videoId }) {
         onEnded={handleEnded}
         onError={handleVideoError}
       />
-
       {/* Controles personalizados */}
       <div
         className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity duration-300 ${
@@ -793,11 +646,40 @@ function ImprovedVideoPlayer({ videoId }) {
             </div>
           </div>
 
-          {/* Información de tipo de streaming (solo para usuarios avanzados) */}
-          <div className="hidden md:flex items-center mr-4">
+          {/* Información de tipo de streaming y botón para cambiar modo */}
+          <div className="hidden md:flex items-center mr-4 space-x-2">
             <span className="text-xs text-gray-400 px-2 py-1 bg-gray-800 rounded">
               {streamType === "hls" ? "HLS Adaptativo" : "Directo"}
             </span>
+            {hlsAvailable && (
+              <button
+                onClick={() => {
+                  const newType = streamType === "direct" ? "hls" : "direct";
+                  setStreamType(newType);
+                  streamingHelper
+                    .getStreamUrl(videoId, {
+                      useHls: newType === "hls",
+                      hlsAvailable: true,
+                    })
+                    .then((url) => {
+                      setStreamUrl(url);
+                      if (isPlaying && videoRef.current) {
+                        const currentPosition = videoRef.current.currentTime;
+                        // Preservar posición actual al cambiar de modo
+                        setTimeout(() => {
+                          if (videoRef.current) {
+                            videoRef.current.currentTime = currentPosition;
+                            videoRef.current.play();
+                          }
+                        }, 500);
+                      }
+                    });
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded transition"
+              >
+                Cambiar a {streamType === "direct" ? "HLS" : "Directo"}
+              </button>
+            )}
           </div>
 
           {/* Botón de pantalla completa */}
@@ -828,7 +710,182 @@ function ImprovedVideoPlayer({ videoId }) {
           </button>
         </div>
       </div>
+      {/* Controles personalizados */}
+      <div
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity duration-300 ${
+          showControls ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {/* Barra de progreso */}
+        <div className="mb-2">
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={progress}
+            onChange={handleSeek}
+            className="w-full h-1 bg-gray-600 rounded-full appearance-none cursor-pointer focus:outline-none"
+            style={{
+              backgroundImage: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #4b5563 ${progress}%, #4b5563 100%)`,
+            }}
+          />
+        </div>
 
+        {/* Controles principales */}
+        <div className="flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            {/* Botón de reproducción/pausa */}
+            <button
+              onClick={togglePlay}
+              className="text-white focus:outline-none hover:text-blue-400 transition-colors"
+              aria-label={isPlaying ? "Pausar" : "Reproducir"}
+            >
+              {isPlaying ? (
+                <svg
+                  className="w-6 h-6"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-6 h-6"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              )}
+            </button>
+
+            {/* Control de volumen */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={toggleMute}
+                className="text-white focus:outline-none hover:text-blue-400 transition-colors"
+                aria-label={isMuted ? "Activar sonido" : "Silenciar"}
+              >
+                {isMuted ? (
+                  <svg
+                    className="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071a1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243a1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828a1 1 0 010-1.415z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                )}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={volume}
+                onChange={handleVolumeChange}
+                className="w-16 h-1 bg-gray-600 rounded-full appearance-none cursor-pointer focus:outline-none"
+                style={{
+                  backgroundImage: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
+                    volume * 100
+                  }%, #4b5563 ${volume * 100}%, #4b5563 100%)`,
+                }}
+              />
+            </div>
+
+            {/* Contador de tiempo */}
+            <div className="text-white text-sm">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </div>
+          </div>
+
+          {/* Información de tipo de streaming y botón para cambiar modo */}
+          <div className="hidden md:flex items-center mr-4 space-x-2">
+            <span className="text-xs text-gray-400 px-2 py-1 bg-gray-800 rounded">
+              {streamType === "hls" ? "HLS Adaptativo" : "Directo"}
+            </span>
+            {hlsAvailable && (
+              <button
+                onClick={() => {
+                  const newType = streamType === "direct" ? "hls" : "direct";
+                  setStreamType(newType);
+                  streamingHelper
+                    .getStreamUrl(videoId, {
+                      useHls: newType === "hls",
+                      hlsAvailable: true,
+                    })
+                    .then((url) => {
+                      setStreamUrl(url);
+                      if (isPlaying && videoRef.current) {
+                        const currentPosition = videoRef.current.currentTime;
+                        // Preservar posición actual al cambiar de modo
+                        setTimeout(() => {
+                          if (videoRef.current) {
+                            videoRef.current.currentTime = currentPosition;
+                            videoRef.current.play();
+                          }
+                        }, 500);
+                      }
+                    });
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded transition"
+              >
+                Cambiar a {streamType === "direct" ? "HLS" : "Directo"}
+              </button>
+            )}
+          </div>
+
+          {/* Botón de pantalla completa */}
+          <button
+            onClick={toggleFullscreen}
+            className="text-white focus:outline-none hover:text-blue-400 transition-colors"
+            aria-label={
+              isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"
+            }
+          >
+            {isFullscreen ? (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M5 4a1 1 0 00-1 1v4a1 1 0 01-2 0V5a3 3 0 013-3h4a1 1 0 010 2H5zm10 8a1 1 0 00-1 1v2a1 1 0 01-1 1H9a1 1 0 110-2h4V9a1 1 0 112 0v3zm-8-3a1 1 0 00-1-1H3a1 1 0 000 2h3v3a1 1 0 102 0v-4zm8-6a1 1 0 010 2h-3a1 1 0 100 2v3a1 1 0 11-2 0V7a1 1 0 011-1h4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
       {/* Botón de reproducción central cuando está pausado */}
       {!isPlaying && (
         <button
@@ -852,28 +909,45 @@ function ImprovedVideoPlayer({ videoId }) {
         </button>
       )}
 
-      {/* Indicador de error de reproducción */}
+      {/* Indicador de error flotante (no bloquea la UI) */}
       {error && !loading && (
         <div className="absolute bottom-16 left-0 right-0 bg-red-900 bg-opacity-80 text-white p-3 text-center">
           <p>{error}</p>
-          <button
-            className="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
-            onClick={() => {
-              setError(null);
-              if (videoRef.current) {
-                const playPromise = videoRef.current.play();
-                if (playPromise !== undefined) {
-                  playPromise.catch(() => {
-                    console.log(
-                      "Reproducción fallida después de intento de recuperación"
-                    );
-                  });
+          <div className="flex justify-center space-x-2 mt-2">
+            <button
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
+              onClick={() => {
+                setError(null);
+                if (videoRef.current) {
+                  const playPromise = videoRef.current.play();
+                  if (playPromise !== undefined) {
+                    playPromise.catch(() => {
+                      console.log(
+                        "Reproducción fallida después de intento de recuperación"
+                      );
+                    });
+                  }
                 }
-              }
-            }}
-          >
-            Intentar reproducir
-          </button>
+              }}
+            >
+              Intentar reproducir
+            </button>
+            <button
+              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm"
+              onClick={retryPlayback}
+            >
+              Cambiar modo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Información de diagnóstico (sólo en desarrollo) */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-xs text-gray-300 p-2 rounded">
+          URL: {streamUrl?.substring(0, 50)}...
+          <br />
+          Modo: {streamType} | ID: {videoId}
         </div>
       )}
     </div>

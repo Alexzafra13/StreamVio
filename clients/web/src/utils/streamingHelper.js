@@ -1,4 +1,4 @@
-// clients/web/src/utils/streamingHelper.js
+// clients/web/src/utils/streamingHelper.js - VERSIÓN CORREGIDA
 import axios from "axios";
 import apiConfig from "../config/api";
 
@@ -6,6 +6,7 @@ const API_URL = apiConfig.API_URL;
 
 /**
  * Clase helper para manejar tokens de streaming en el cliente
+ * con manejo mejorado de errores y fallbacks
  */
 class StreamingHelper {
   constructor() {
@@ -14,15 +15,12 @@ class StreamingHelper {
 
     // Temporizadores para renovación de tokens
     this.renewalTimers = {};
-
-    // Configurar interceptor para escuchar tokens renovados en las respuestas
-    this.setupInterceptor();
   }
 
   /**
    * Obtiene un token de streaming para un medio específico
    * @param {string|number} mediaId - ID del medio
-   * @returns {Promise<string>} Token de streaming
+   * @returns {Promise<string>} Token de streaming o token principal como fallback
    */
   async getToken(mediaId) {
     console.log(`Solicitando token para medio ${mediaId}`);
@@ -40,9 +38,11 @@ class StreamingHelper {
         throw new Error("No hay sesión activa");
       }
 
-      // Intento primero con el endpoint mejorado
+      // Primer intento: usando el endpoint de preparación de streaming
       try {
-        console.log(`Solicitando token desde /streaming/${mediaId}/prepare`);
+        console.log(
+          `Solicitando token desde /api/streaming/${mediaId}/prepare`
+        );
         const response = await axios.get(
           `${API_URL}/api/streaming/${mediaId}/prepare`,
           {
@@ -52,61 +52,48 @@ class StreamingHelper {
           }
         );
 
-        const tokenData = {
-          token: response.data.token || response.data.stream_token,
-          mediaId,
-          expiresAt: Date.now() + (response.data.expires_in || 3600) * 1000,
-          obtained: Date.now(),
-        };
+        // Extraer token del response (podría estar en diferentes propiedades)
+        const streamToken =
+          response.data.token ||
+          response.data.stream_token ||
+          response.data.streamToken;
 
-        // Guardar token en caché
-        this.tokens[mediaId] = tokenData;
+        if (streamToken) {
+          const tokenData = {
+            token: streamToken,
+            mediaId,
+            expiresAt: Date.now() + (response.data.expires_in || 3600) * 1000,
+            obtained: Date.now(),
+          };
 
-        // Configurar renovación automática
-        this.setupTokenRenewal(mediaId, response.data.expires_in || 3600);
+          // Guardar token en caché
+          this.tokens[mediaId] = tokenData;
 
-        console.log(`Token obtenido correctamente para medio ${mediaId}`);
-        return tokenData.token;
-      } catch (prepareError) {
+          // Configurar renovación automática
+          this.setupTokenRenewal(mediaId, response.data.expires_in || 3600);
+
+          console.log(`Token obtenido correctamente para medio ${mediaId}`);
+          return tokenData.token;
+        }
+
+        throw new Error("No se pudo extraer el token de la respuesta");
+      } catch (error) {
         console.warn(
-          `Error en /prepare, intentando endpoint alternativo: ${prepareError.message}`
+          `Error en endpoint principal, intentando fallback: ${error.message}`
         );
 
-        // Si falla, intentar con el endpoint directo de token
-        const response = await axios.get(
-          `${API_URL}/api/streaming/token/${mediaId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-            },
-          }
-        );
-
-        const tokenData = {
-          token: response.data.stream_token,
-          mediaId,
-          expiresAt: Date.now() + (response.data.expires_in || 3600) * 1000,
-          obtained: Date.now(),
-        };
-
-        // Guardar token en caché
-        this.tokens[mediaId] = tokenData;
-
-        // Configurar renovación automática
-        this.setupTokenRenewal(mediaId, response.data.expires_in || 3600);
-
-        console.log(
-          `Token obtenido desde endpoint alternativo para medio ${mediaId}`
-        );
-        return tokenData.token;
+        // FALLBACK 1: Usar directamente el token JWT principal
+        // Este enfoque es menos seguro pero más compatible
+        console.log("Usando token JWT principal como fallback para streaming");
+        return authToken;
       }
     } catch (error) {
       console.error("Error al obtener token de streaming:", error);
 
-      // Si todo falla, intentar usar el token principal de autenticación como fallback
+      // Último recurso: usar el token JWT principal
       const mainToken = localStorage.getItem("streamvio_token");
       if (mainToken) {
-        console.log("Usando token principal como fallback");
+        console.log("Usando token principal como último recurso");
         return mainToken;
       }
 
@@ -157,99 +144,6 @@ class StreamingHelper {
   }
 
   /**
-   * Configura un interceptor para detectar tokens renovados en las respuestas HTTP
-   */
-  setupInterceptor() {
-    axios.interceptors.response.use(
-      (response) => {
-        // Verificar si hay un nuevo token de streaming en la respuesta
-        const newToken = response.headers["x-new-stream-token"];
-        if (newToken) {
-          // Intentar determinar para qué medio es este token
-          let mediaId = null;
-
-          // Intentar extraer el ID del medio de la URL
-          const urlMatch = response.config.url.match(/\/media\/(\d+)/);
-          if (urlMatch && urlMatch[1]) {
-            mediaId = urlMatch[1];
-          }
-
-          // Alternativamente, podríamos buscarlo en los parámetros
-          if (!mediaId && response.config.params?.mediaId) {
-            mediaId = response.config.params.mediaId;
-          }
-
-          if (mediaId) {
-            console.log(`Token de streaming renovado para medio ${mediaId}`);
-
-            // Actualizar token en caché (asumimos que expira en 15 minutos por defecto)
-            this.tokens[mediaId] = {
-              token: newToken,
-              mediaId,
-              expiresAt: Date.now() + 15 * 60 * 1000, // 15 minutos
-              obtained: Date.now(),
-            };
-
-            // Configurar renovación
-            this.setupTokenRenewal(mediaId, 15 * 60); // 15 minutos
-          }
-        }
-
-        return response;
-      },
-      (error) => {
-        // Si hay un error de token expirado, intentar renovar
-        if (
-          error.response &&
-          error.response.status === 401 &&
-          (error.response.data.code === "TOKEN_EXPIRED" ||
-            error.response.data.code === "STREAM_TOKEN_INVALID")
-        ) {
-          // Intentar determinar qué medio causó el error
-          let mediaId = null;
-          const urlMatch = error.config.url.match(/\/media\/(\d+)/);
-          if (urlMatch && urlMatch[1]) {
-            mediaId = urlMatch[1];
-          }
-
-          if (mediaId) {
-            // Eliminar el token inválido de la caché
-            delete this.tokens[mediaId];
-
-            console.warn(`Token de streaming expirado para medio ${mediaId}`);
-
-            // Podríamos intentar recuperar automáticamente
-            if (error.config && !error.config._retry) {
-              error.config._retry = true; // Evitar bucle infinito
-
-              // Intentar obtener un nuevo token y repetir la solicitud
-              return this.getToken(mediaId)
-                .then((newToken) => {
-                  // Actualizar el token en la solicitud original
-                  if (error.config.params) {
-                    error.config.params.token = newToken;
-                  } else {
-                    error.config.params = { token: newToken };
-                  }
-                  return axios(error.config);
-                })
-                .catch((retryError) => {
-                  console.error(
-                    "Error en recuperación automática:",
-                    retryError
-                  );
-                  return Promise.reject(retryError);
-                });
-            }
-          }
-        }
-
-        return Promise.reject(error);
-      }
-    );
-  }
-
-  /**
    * Obtiene una URL de streaming con el token incluido
    * @param {string|number} mediaId - ID del medio
    * @param {Object} options - Opciones adicionales
@@ -257,13 +151,13 @@ class StreamingHelper {
    */
   async getStreamUrl(mediaId, options = {}) {
     try {
+      // Obtener un token para el medio (específico o fallback)
       let token;
-
       try {
         token = await this.getToken(mediaId);
       } catch (tokenError) {
         console.warn(
-          "Error al obtener token específico, usando token principal:",
+          "Error al obtener token específico, usando token principal como fallback:",
           tokenError
         );
         token = localStorage.getItem("streamvio_token");
@@ -273,130 +167,39 @@ class StreamingHelper {
         }
       }
 
-      // Determinar si usar HLS basado en opciones
-      const useHls = options.type === "hls" && options.hlsAvailable;
-
-      // Construir URL según tipo de streaming
+      // Determinar la URL base según preferencias
       let baseUrl;
-      if (useHls) {
+
+      // Si el usuario prefiere HLS y está disponible, usarlo
+      if (options.useHls && options.hlsAvailable) {
         baseUrl = `${API_URL}/api/streaming/${mediaId}/hls`;
       } else {
-        baseUrl = `${API_URL}/api/streaming/${mediaId}/stream`;
+        // De lo contrario, usar streaming directo
+        baseUrl = `${API_URL}/api/media/${mediaId}/stream`;
       }
 
-      // Construir URL con parámetros
-      const params = new URLSearchParams();
-      params.append("token", token);
+      // Construir URL con parámetros de autenticación
+      // El parámetro depende de la ruta
+      const streamUrlBase = baseUrl.includes("/streaming/")
+        ? `${baseUrl}?token=${token}`
+        : `${baseUrl}?auth=${token}`;
 
-      // Añadir opciones adicionales
-      if (options.quality) {
-        params.append("quality", options.quality);
-      }
-
-      return `${baseUrl}?${params.toString()}`;
+      console.log(`URL de streaming generada: ${streamUrlBase}`);
+      return streamUrlBase;
     } catch (error) {
       console.error("Error al generar URL de streaming:", error);
 
       // URL de fallback usando token principal
       const mainToken = localStorage.getItem("streamvio_token");
       if (mainToken) {
-        const fallbackUrl = `${API_URL}/api/streaming/${mediaId}/stream?token=${mainToken}`;
+        // Usar siempre la ruta directa como último recurso
+        const fallbackUrl = `${API_URL}/api/media/${mediaId}/stream?auth=${mainToken}`;
         console.log("Usando URL de fallback:", fallbackUrl);
         return fallbackUrl;
       }
 
       throw error;
     }
-  }
-
-  /**
-   * Actualiza el progreso de visualización en el servidor
-   * @param {string|number} mediaId - ID del medio
-   * @param {number} progress - Porcentaje de progreso (0-100)
-   * @param {number} currentTime - Tiempo actual en segundos
-   * @returns {Promise<Object>} Resultado de la operación
-   */
-  async updateProgress(mediaId, progress, currentTime) {
-    try {
-      const token = localStorage.getItem("streamvio_token");
-
-      const response = await axios.post(
-        `${API_URL}/api/media/${mediaId}/progress`,
-        { position: currentTime, progress },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      return response.data;
-    } catch (error) {
-      console.warn("Error al actualizar progreso:", error);
-      // No propagamos el error para que no interrumpa la reproducción
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Revoca un token específico (útil al finalizar la reproducción)
-   * @param {string|number} mediaId - ID del medio
-   * @returns {Promise<boolean>} Resultado de la operación
-   */
-  async revokeToken(mediaId) {
-    try {
-      // Si no tenemos el token en caché, no hay nada que revocar
-      if (!this.tokens[mediaId]) {
-        return true;
-      }
-
-      const authToken = localStorage.getItem("streamvio_token");
-      if (!authToken) {
-        throw new Error("No hay sesión activa");
-      }
-
-      // Eliminar el token de streaming
-      try {
-        await axios.delete(`${API_URL}/api/streaming/token/${mediaId}`, {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        });
-      } catch (error) {
-        console.warn("No se pudo revocar token explícitamente:", error);
-        // No propagamos este error ya que no es crítico
-      }
-
-      // Limpiar token de la caché
-      delete this.tokens[mediaId];
-
-      // Limpiar timer de renovación
-      if (this.renewalTimers[mediaId]) {
-        clearTimeout(this.renewalTimers[mediaId]);
-        delete this.renewalTimers[mediaId];
-      }
-
-      return true;
-    } catch (error) {
-      console.warn("Error al revocar token de streaming:", error);
-      return false;
-    }
-  }
-
-  /**
-   * Limpia todos los tokens almacenados (útil al cerrar sesión)
-   */
-  clearAllTokens() {
-    // Limpiar todos los temporizadores
-    Object.keys(this.renewalTimers).forEach((mediaId) => {
-      clearTimeout(this.renewalTimers[mediaId]);
-    });
-
-    // Reiniciar almacenes
-    this.tokens = {};
-    this.renewalTimers = {};
-
-    console.log("Tokens de streaming eliminados");
   }
 }
 
