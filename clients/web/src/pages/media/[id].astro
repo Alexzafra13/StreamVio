@@ -2,7 +2,6 @@
 // clients/web/src/pages/media/[id].astro - Página detallada de medio
 import Layout from '../../layouts/Layout.astro';
 import MediaViewer from '../../components/MediaViewer';
-import TranscodingManager from '../../components/TranscodingManager';
 
 // Obtener ID del medio de los parámetros de ruta
 const { id } = Astro.params;
@@ -24,7 +23,7 @@ export async function getStaticPaths() {
           <MediaViewer mediaId={id} client:load />
         </div>
         
-        <!-- Columna derecha: Info y Transcodificación -->
+        <!-- Columna derecha: Info -->
         <div>
           <div id="media-info" class="bg-gray-800 rounded-lg p-6 mb-6">
             <h2 class="text-2xl font-bold mb-4" id="media-title">Cargando...</h2>
@@ -42,9 +41,6 @@ export async function getStaticPaths() {
               </div>
             </div>
           </div>
-          
-          <!-- Opciones de Transcodificación -->
-          <TranscodingManager mediaId={id} client:load />
         </div>
       </div>
     </div>
