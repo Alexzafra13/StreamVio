@@ -13,58 +13,66 @@ const API_URL = apiConfig.API_URL;
 export const addAuthToken = (url, options = {}) => {
   // Obtener token del localStorage
   const token = localStorage.getItem("streamvio_token");
-  if (!token) return url;
+  if (!token) {
+    console.error("No se encontró token de autenticación");
+    return url;
+  }
 
-  console.log("Añadiendo token a URL:", url); // Logging para depuración
+  console.log("Añadiendo token a URL:", url.split("?")[0]); // Log seguro sin mostrar el token completo
 
   // Determinar si la URL ya tiene parámetros
   const hasParams = url.includes("?");
   const separator = hasParams ? "&" : "?";
 
   // Añadir el token como parámetro de consulta
-  return `${url}${separator}auth=${token}`;
+  return `${url}${separator}auth=${encodeURIComponent(token)}`;
 };
 
 /**
  * Obtiene la URL de streaming para un medio con el token de autenticación
- * @param {Object} media - Objeto con información del medio
- * @param {string} mediaId - ID del medio
+ * @param {number} mediaId - ID del medio
  * @param {string} streamType - Tipo de streaming ('direct' o 'hls')
- * @param {boolean} hlsAvailable - Si está disponible el streaming HLS
  * @returns {string} URL de streaming con autenticación
  */
-export const getStreamUrl = (
-  media,
-  mediaId,
-  streamType = "direct",
-  hlsAvailable = false
-) => {
-  if (!media) return "";
-
-  if (streamType === "hls" && hlsAvailable && media.file_path) {
-    // URL para streaming HLS
-    const fileName = media.file_path
-      .split(/[\/\\]/)
-      .pop()
-      .split(".")[0];
-
-    const hlsUrl = `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8`;
-    return addAuthToken(hlsUrl);
-  } else {
-    // URL para streaming directo
-    const directUrl = `${API_URL}/api/media/${mediaId}/stream`;
-    return addAuthToken(directUrl);
+export const getStreamUrl = (mediaId, streamType = "direct") => {
+  if (!mediaId) {
+    console.error("MediaID no proporcionado a getStreamUrl");
+    return null;
   }
+
+  const token = localStorage.getItem("streamvio_token");
+  if (!token) {
+    console.error("No se encontró token de autenticación en localStorage");
+    return null;
+  }
+
+  console.log(
+    `Generando URL de streaming para medio ${mediaId}, tipo: ${streamType}`
+  );
+
+  // URL para streaming directo
+  const streamUrl = `${API_URL}/api/media/${mediaId}/stream?auth=${encodeURIComponent(
+    token
+  )}`;
+  console.log("URL de stream generada:", streamUrl.split("?")[0]);
+
+  return streamUrl;
 };
 
 /**
  * Obtiene la URL de miniatura para un medio con el token de autenticación
- * @param {string|number} mediaId - ID del medio
+ * @param {number} mediaId - ID del medio
  * @returns {string} URL de miniatura con autenticación
  */
 export const getThumbnailUrl = (mediaId) => {
-  const thumbnailUrl = `${API_URL}/api/media/${mediaId}/thumbnail`;
-  return addAuthToken(thumbnailUrl);
+  if (!mediaId) return "/assets/default-media.jpg";
+
+  const token = localStorage.getItem("streamvio_token");
+  if (!token) return "/assets/default-media.jpg";
+
+  return `${API_URL}/api/media/${mediaId}/thumbnail?auth=${encodeURIComponent(
+    token
+  )}`;
 };
 
 /**
@@ -95,7 +103,7 @@ export const getApiUrl = (endpoint, params = {}) => {
   if (queryString) {
     const token = localStorage.getItem("streamvio_token");
     if (token) {
-      url = `${url}&auth=${token}`;
+      url = `${url}&auth=${encodeURIComponent(token)}`;
     }
     return url;
   }
@@ -113,6 +121,8 @@ export const setupAxiosAuth = (axiosInstance) => {
   if (token) {
     console.log("Configurando token de autenticación para axios");
     axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+  } else {
+    console.warn("No se encontró token para configurar axios");
   }
 
   // Interceptor para renovar el token si es necesario

@@ -52,14 +52,24 @@ const enhancedAuthMiddleware = async (req, res, next) => {
   }
 
   try {
-    console.log(
-      `Token encontrado en ${tokenType}: ${token.substring(0, 10)}...`
-    );
+    console.log(`Validando token para ruta ${req.path}`);
+
+    // Verificar si el token ha sido enviado con 'Bearer ' por accidente en query param
+    if (token.startsWith("Bearer ")) {
+      token = token.substring(7);
+    }
 
     // 3. Verificar el token con la clave secreta del sistema
     const jwtSecret =
       settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key";
     const decoded = jwt.verify(token, jwtSecret);
+
+    // Log exitoso
+    console.log(
+      `Token válido para usuario ${decoded.id} (${
+        decoded.username || "anónimo"
+      })`
+    );
 
     // 4. Añadir información del usuario al request para uso en controladores
     req.user = decoded;

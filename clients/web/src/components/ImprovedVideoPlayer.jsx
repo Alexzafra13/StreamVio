@@ -1,4 +1,4 @@
-// ImprovedVideoPlayer.jsx (Versión actualizada)
+// clients/web/src/components/ImprovedVideoPlayer.jsx
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -40,6 +40,10 @@ function ImprovedVideoPlayer(props) {
   useEffect(() => {
     // Si se proporciona una URL de streaming directamente, usarla
     if (streamUrl) {
+      console.log(
+        "Usando URL de streaming proporcionada:",
+        streamUrl.split("?")[0]
+      ); // No mostrar el token completo
       setLocalStreamUrl(streamUrl);
 
       if (mediaInfo) {
@@ -89,8 +93,10 @@ function ImprovedVideoPlayer(props) {
           console.log("Usando streaming HLS:", streamingUrl);
         } else {
           // Streaming directo como fallback
-          streamingUrl = `${API_URL}/api/media/${videoId}/stream?auth=${token}`;
-          console.log("Usando streaming directo:", streamingUrl);
+          streamingUrl = `${API_URL}/api/media/${videoId}/stream?auth=${encodeURIComponent(
+            token
+          )}`;
+          console.log("Usando streaming directo:", streamingUrl.split("?")[0]);
         }
 
         setLocalStreamUrl(streamingUrl);
@@ -239,7 +245,9 @@ function ImprovedVideoPlayer(props) {
         if (token) {
           // Reconstruir URL con un timestamp para evitar cachés
           const timestamp = new Date().getTime();
-          const newUrl = `${API_URL}/api/media/${videoId}/stream?auth=${token}&_t=${timestamp}`;
+          const newUrl = `${API_URL}/api/media/${videoId}/stream?auth=${encodeURIComponent(
+            token
+          )}&_t=${timestamp}`;
           setLocalStreamUrl(newUrl);
           setError(null);
         }
@@ -453,7 +461,9 @@ function ImprovedVideoPlayer(props) {
               const token = localStorage.getItem("streamvio_token");
               if (token) {
                 const timestamp = new Date().getTime();
-                const newUrl = `${API_URL}/api/media/${videoId}/stream?auth=${token}&_t=${timestamp}`;
+                const newUrl = `${API_URL}/api/media/${videoId}/stream?auth=${encodeURIComponent(
+                  token
+                )}&_t=${timestamp}`;
                 setTimeout(() => {
                   setLocalStreamUrl(newUrl);
                   setLoading(false);
@@ -485,8 +495,8 @@ function ImprovedVideoPlayer(props) {
         src={localStreamUrl}
         poster={
           video?.thumbnail_path
-            ? `${API_URL}/api/media/${videoId}/thumbnail?auth=${localStorage.getItem(
-                "streamvio_token"
+            ? `${API_URL}/api/media/${videoId}/thumbnail?auth=${encodeURIComponent(
+                localStorage.getItem("streamvio_token")
               )}`
             : undefined
         }

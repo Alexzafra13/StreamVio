@@ -54,85 +54,100 @@ export async function getStaticPaths() {
   const API_URL = apiConfig.API_URL;
 
   document.addEventListener('DOMContentLoaded', async () => {
-    // Verificar autenticación
-    const token = localStorage.getItem('streamvio_token');
-    if (!token) {
-      window.location.href = '/auth?redirect=' + encodeURIComponent(window.location.pathname);
-      return;
-    }
-    
-    const mediaId = document.location.pathname.split('/').pop();
-    
+    // Verificar autenticación de manera más explícita
     try {
-      // Cargar datos del medio
-      const response = await fetch(`${API_URL}/api/media/${mediaId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const token = localStorage.getItem('streamvio_token');
+      console.log("Token disponible:", token ? "Sí" : "No");
+      
+      if (!token) {
+        alert("No hay sesión activa. Serás redirigido a la página de login.");
+        window.location.href = '/auth?redirect=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
+      
+      const mediaId = document.location.pathname.split('/').pop();
+      console.log("ID de medio a cargar:", mediaId);
+      
+      try {
+        // Cargar datos del medio
+        const response = await fetch(`${API_URL}/api/media/${mediaId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            alert("Sesión expirada o inválida. Por favor inicia sesión de nuevo.");
+            localStorage.removeItem('streamvio_token');
+            window.location.href = '/auth';
+            return;
+          }
+          throw new Error(`Error al cargar datos del medio: ${response.status}`);
         }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Error al cargar datos del medio');
+        
+        const mediaData = await response.json();
+        console.log("Datos de medio cargados correctamente");
+        
+        // Actualizar UI con datos básicos
+        document.getElementById('media-title').textContent = mediaData.title || 'Sin título';
+        document.getElementById('media-type').textContent = formatMediaType(mediaData.type);
+        
+        if (mediaData.width && mediaData.height) {
+          document.getElementById('media-resolution').textContent = `Resolución: ${mediaData.width}x${mediaData.height}`;
+        }
+        
+        if (mediaData.duration) {
+          document.getElementById('media-duration').textContent = `Duración: ${formatDuration(mediaData.duration)}`;
+        }
+        
+        if (mediaData.size) {
+          document.getElementById('media-size').textContent = `Tamaño: ${formatSize(mediaData.size)}`;
+        }
+        
+        // Actualizar metadatos adicionales si existen
+        const additionalContainer = document.getElementById('media-additional');
+        let hasAdditionalInfo = false;
+        
+        if (mediaData.year) {
+          document.getElementById('media-year').textContent = `Año: ${mediaData.year}`;
+          hasAdditionalInfo = true;
+        }
+        
+        if (mediaData.genre) {
+          document.getElementById('media-genre').textContent = `Género: ${mediaData.genre}`;
+          hasAdditionalInfo = true;
+        }
+        
+        if (mediaData.director) {
+          document.getElementById('media-director').textContent = `Director: ${mediaData.director}`;
+          hasAdditionalInfo = true;
+        }
+        
+        if (mediaData.actors) {
+          document.getElementById('media-actors').textContent = `Reparto: ${mediaData.actors}`;
+          hasAdditionalInfo = true;
+        }
+        
+        if (mediaData.rating) {
+          document.getElementById('media-rating').textContent = `Puntuación: ${mediaData.rating}/10`;
+          hasAdditionalInfo = true;
+        }
+        
+        // Mostrar sección de metadatos adicionales si hay información
+        if (hasAdditionalInfo) {
+          additionalContainer.classList.remove('hidden');
+        }
+        
+        // Actualizar título de la página
+        document.title = `${mediaData.title || 'Contenido'} | StreamVio`;
+      } catch (error) {
+        console.error('Error al cargar datos del medio:', error);
+        document.getElementById('media-title').textContent = 'Error al cargar información';
+        document.getElementById('media-type').textContent = 'No se pudo obtener la información del medio';
       }
-      
-      const mediaData = await response.json();
-      
-      // Actualizar UI con datos básicos
-      document.getElementById('media-title').textContent = mediaData.title || 'Sin título';
-      document.getElementById('media-type').textContent = formatMediaType(mediaData.type);
-      
-      if (mediaData.width && mediaData.height) {
-        document.getElementById('media-resolution').textContent = `Resolución: ${mediaData.width}x${mediaData.height}`;
-      }
-      
-      if (mediaData.duration) {
-        document.getElementById('media-duration').textContent = `Duración: ${formatDuration(mediaData.duration)}`;
-      }
-      
-      if (mediaData.size) {
-        document.getElementById('media-size').textContent = `Tamaño: ${formatSize(mediaData.size)}`;
-      }
-      
-      // Actualizar metadatos adicionales si existen
-      const additionalContainer = document.getElementById('media-additional');
-      let hasAdditionalInfo = false;
-      
-      if (mediaData.year) {
-        document.getElementById('media-year').textContent = `Año: ${mediaData.year}`;
-        hasAdditionalInfo = true;
-      }
-      
-      if (mediaData.genre) {
-        document.getElementById('media-genre').textContent = `Género: ${mediaData.genre}`;
-        hasAdditionalInfo = true;
-      }
-      
-      if (mediaData.director) {
-        document.getElementById('media-director').textContent = `Director: ${mediaData.director}`;
-        hasAdditionalInfo = true;
-      }
-      
-      if (mediaData.actors) {
-        document.getElementById('media-actors').textContent = `Reparto: ${mediaData.actors}`;
-        hasAdditionalInfo = true;
-      }
-      
-      if (mediaData.rating) {
-        document.getElementById('media-rating').textContent = `Puntuación: ${mediaData.rating}/10`;
-        hasAdditionalInfo = true;
-      }
-      
-      // Mostrar sección de metadatos adicionales si hay información
-      if (hasAdditionalInfo) {
-        additionalContainer.classList.remove('hidden');
-      }
-      
-      // Actualizar título de la página
-      document.title = `${mediaData.title || 'Contenido'} | StreamVio`;
     } catch (error) {
-      console.error('Error al cargar datos del medio:', error);
-      document.getElementById('media-title').textContent = 'Error al cargar información';
-      document.getElementById('media-type').textContent = 'No se pudo obtener la información del medio';
+      console.error("Error en la inicialización:", error);
     }
   });
   

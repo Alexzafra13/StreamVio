@@ -28,22 +28,34 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  // Este script se ejecuta en el navegador después de que la página se ha cargado
+  // Verificamos si hay token de autenticación antes de intentar cargar componentes
+  const token = localStorage.getItem('streamvio_token');
+  console.log("Token de autenticación:", token ? "Existe" : "No existe");
+
   document.addEventListener('DOMContentLoaded', async () => {
     try {
+      // Verificar autenticación
+      const token = localStorage.getItem('streamvio_token');
+      console.log("Intentando cargar HomeDashboard. Token disponible:", !!token);
+      
       // Usar import dinámico ES para cargar el componente React
       const module = await import('../components/HomeDashboard.jsx');
+      
+      // Verificar que el módulo y su exportación por defecto existen
+      if (!module || !module.default) {
+        console.error('Error: HomeDashboard no encontrado o no exportado correctamente', module);
+        throw new Error('Componente no encontrado o no exportado correctamente');
+      }
+      
       const HomeDashboard = module.default;
+      console.log("HomeDashboard cargado correctamente:", !!HomeDashboard);
       
       // Importar React para poder renderizar el componente
-      const reactModule = await import('react');
-      const reactDomModule = await import('react-dom');
+      const React = (await import('react')).default;
+      const ReactDOM = (await import('react-dom')).default;
       
       // Comprobamos que tenemos todo lo que necesitamos
-      if (HomeDashboard && reactModule && reactDomModule) {
-        const React = reactModule.default;
-        const ReactDOM = reactDomModule.default;
-        
+      if (HomeDashboard && React && ReactDOM) {
         // Contenedor donde renderizaremos el componente
         const container = document.getElementById('home-dashboard');
         if (container) {
@@ -53,7 +65,16 @@ import Layout from '../layouts/Layout.astro';
           // Renderizar el componente HomeDashboard
           const element = React.createElement(HomeDashboard);
           ReactDOM.render(element, container);
+          console.log("Componente HomeDashboard renderizado con éxito");
+        } else {
+          console.error("Contenedor home-dashboard no encontrado en el DOM");
         }
+      } else {
+        console.error("No se pudo importar React o ReactDOM", {
+          HomeDashboard: !!HomeDashboard,
+          React: !!React,
+          ReactDOM: !!ReactDOM
+        });
       }
     } catch (error) {
       console.error('Error al cargar el dashboard:', error);
@@ -63,7 +84,7 @@ import Layout from '../layouts/Layout.astro';
       if (container) {
         container.innerHTML = `
           <div class="bg-gray-800 p-6 rounded-lg text-center">
-            <p class="text-red-400 mb-4">No se pudo cargar el panel principal.</p>
+            <p class="text-red-400 mb-4">No se pudo cargar el panel principal: ${error.message}</p>
             <a href="/" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
               Intentar de nuevo
             </a>
