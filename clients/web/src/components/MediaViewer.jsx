@@ -1,4 +1,4 @@
-// clients/web/src/components/MediaViewer.jsx (Versión simplificada)
+// clients/web/src/components/MediaViewer.jsx (Versión actualizada)
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -8,15 +8,16 @@ const API_URL = apiConfig.API_URL;
 
 /**
  * Componente para visualizar diferentes tipos de medios (video, imágenes, etc.)
- * Versión simplificada que usa directamente el token JWT principal
+ * Versión mejorada con mejor manejo de streaming
  */
 function MediaViewer({ mediaId }) {
   const [media, setMedia] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [streamingOptions, setStreamingOptions] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
 
-  // Cargar información del medio
+  // Cargar información del medio y opciones de streaming
   useEffect(() => {
     const fetchMedia = async () => {
       if (!mediaId) return;
@@ -40,6 +41,50 @@ function MediaViewer({ mediaId }) {
 
         console.log("MediaViewer: Información obtenida:", response.data);
         setMedia(response.data);
+
+        // Verificar disponibilidad de HLS
+        let hlsAvailable = false;
+
+        // Intentar detectar si hay HLS disponible
+        if (response.data.file_path) {
+          const fileName = response.data.file_path
+            .split(/[\/\\]/)
+            .pop()
+            .split(".")[0];
+          try {
+            // Verificar si existe la carpeta HLS
+            const hlsCheckResponse = await axios.head(
+              `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            hlsAvailable = hlsCheckResponse.status === 200;
+          } catch (hlsError) {
+            console.warn("HLS no disponible:", hlsError);
+            hlsAvailable = false;
+          }
+        }
+
+        // Configurar opciones de streaming
+        setStreamingOptions({
+          direct: {
+            available: true,
+            url: `${API_URL}/api/media/${mediaId}/stream?auth=${token}`,
+            type: getMediaMimeType(response.data),
+          },
+          hls: {
+            available: hlsAvailable,
+            url: hlsAvailable
+              ? `${API_URL}/data/transcoded/${
+                  response.data.file_path
+                    .split(/[\/\\]/)
+                    .pop()
+                    .split(".")[0]
+                }_hls/master.m3u8?auth=${token}`
+              : null,
+            type: "application/vnd.apple.mpegurl",
+          },
+        });
+
         setLoading(false);
       } catch (err) {
         console.error("Error al cargar medio:", err);
@@ -63,6 +108,47 @@ function MediaViewer({ mediaId }) {
 
     fetchMedia();
   }, [mediaId, retryCount]);
+
+  // Determinar la mejor URL de streaming basada en opciones disponibles
+  const getBestStreamingUrl = () => {
+    if (!streamingOptions) return null;
+
+    // Preferir HLS si está disponible
+    if (streamingOptions.hls?.available) {
+      return streamingOptions.hls.url;
+    }
+
+    // Fallback a streaming directo
+    if (streamingOptions.direct?.available) {
+      return streamingOptions.direct.url;
+    }
+
+    return null;
+  };
+
+  // Obtener tipo MIME basado en tipo de medio
+  const getMediaMimeType = (mediaData) => {
+    if (!mediaData) return "video/mp4";
+
+    const fileExt = mediaData.file_path?.split(".").pop()?.toLowerCase();
+
+    switch (fileExt) {
+      case "mp4":
+        return "video/mp4";
+      case "webm":
+        return "video/webm";
+      case "ogg":
+        return "video/ogg";
+      case "mkv":
+        return "video/x-matroska";
+      case "mov":
+        return "video/quicktime";
+      case "avi":
+        return "video/x-msvideo";
+      default:
+        return "video/mp4";
+    }
+  };
 
   // Renderizado condicional para estado de carga
   if (loading) {
@@ -102,7 +188,15 @@ function MediaViewer({ mediaId }) {
     switch (media.type) {
       case "movie":
       case "episode":
-        return <ImprovedVideoPlayer videoId={mediaId} />;
+        // Obtener la mejor URL de streaming
+        const streamUrl = getBestStreamingUrl();
+        return (
+          <ImprovedVideoPlayer
+            videoId={mediaId}
+            streamUrl={streamUrl}
+            mediaInfo={media}
+          />
+        );
 
       case "photo":
         // Renderizar imagen - usando directamente el token JWT
@@ -110,7 +204,7 @@ function MediaViewer({ mediaId }) {
         return (
           <div className="bg-black rounded-lg flex items-center justify-center">
             <img
-              src={`${API_URL}/api/streaming/${mediaId}/stream?auth=${token}`}
+              src={`${API_URL}/api/media/${mediaId}/thumbnail?auth=${token}`}
               alt={media.title || "Imagen"}
               className="max-w-full max-h-[80vh] object-contain"
               onError={(e) => {
@@ -145,7 +239,7 @@ function MediaViewer({ mediaId }) {
               <audio
                 controls
                 className="w-full mt-4"
-                src={`${API_URL}/api/streaming/${mediaId}/stream?auth=${authToken}`}
+                src={`${API_URL}/api/media/${mediaId}/stream?auth=${authToken}`}
               >
                 Tu navegador no soporta el elemento de audio.
               </audio>
@@ -169,6 +263,16 @@ function MediaViewer({ mediaId }) {
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden">
       {renderContent()}
+
+      {/* Opcional: Información sobre el método de streaming (solo para debug) */}
+      {streamingOptions &&
+        (media.type === "movie" || media.type === "episode") && (
+          <div className="p-2 bg-gray-800 text-xs text-gray-400">
+            {streamingOptions.hls?.available
+              ? "Usando streaming HLS adaptativo"
+              : "Usando streaming directo"}
+          </div>
+        )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// clients/web/src/components/ImprovedVideoPlayer.jsx
+// ImprovedVideoPlayer.jsx (Versión actualizada)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
@@ -7,14 +7,16 @@ const API_URL = apiConfig.API_URL;
 
 /**
  * Reproductor de video mejorado con controles personalizados
- * Versión simplificada que usa directamente el token JWT
+ * Versión actualizada con mejor manejo de rangos y streaming
  */
-function ImprovedVideoPlayer({ videoId }) {
+function ImprovedVideoPlayer(props) {
+  const { videoId, autoPlay = false, streamUrl, mediaInfo } = props;
+
   // Estados del reproductor
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [streamUrl, setStreamUrl] = useState(null);
+  const [localStreamUrl, setLocalStreamUrl] = useState(streamUrl || null);
 
   // Estados de reproducción
   const [isPlaying, setIsPlaying] = useState(false);
@@ -26,161 +28,148 @@ function ImprovedVideoPlayer({ videoId }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
-  // Estado para streaming adaptativo
-  const [supportsHls, setSupportsHls] = useState(false);
-  const [hlsAvailable, setHlsAvailable] = useState(false);
-  const [streamType, setStreamType] = useState("direct"); // "direct" o "hls"
-
   // Referencias
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const controlsTimeoutRef = useRef(null);
   const progressUpdateIntervalRef = useRef(null);
+  const retryCountRef = useRef(0);
+  const maxRetries = 3;
 
-  // Cargar información del video y configurar streaming
+  // Efecto para inicializar el reproductor
   useEffect(() => {
-    const fetchVideoAndSetupStreaming = async () => {
-      if (!videoId) return;
+    // Si se proporciona una URL de streaming directamente, usarla
+    if (streamUrl) {
+      setLocalStreamUrl(streamUrl);
 
+      if (mediaInfo) {
+        setVideo(mediaInfo);
+      } else if (videoId) {
+        // Si hay ID pero no mediaInfo, intentar cargar la info
+        fetchVideoInfo(videoId)
+          .then((data) => setVideo(data))
+          .catch((err) =>
+            console.warn("No se pudo cargar info del video:", err)
+          );
+      }
+
+      setLoading(false);
+      setupProgressTracking();
+      return;
+    }
+
+    // Si no hay URL proporcionada pero hay videoId, hacer la carga completa
+    if (!videoId) return;
+
+    const setupVideo = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Obtener token de autenticación
-        const token = localStorage.getItem("streamvio_token");
-        if (!token) {
-          throw new Error("No hay sesión activa");
-        }
-
         // 1. Obtener información del video
-        console.log(`Obteniendo información del video ID: ${videoId}`);
-        const videoResponse = await axios.get(
-          `${API_URL}/api/media/${videoId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        const videoData = videoResponse.data;
-        console.log("Información del video obtenida:", videoData);
+        const videoData = await fetchVideoInfo(videoId);
         setVideo(videoData);
 
-        // 2. Verificar si es un video (no una imagen o música)
-        if (videoData.type !== "movie" && videoData.type !== "episode") {
-          setError("Este tipo de contenido no es reproducible como video");
-          setLoading(false);
-          return;
+        // 2. Generar la URL de streaming correcta con autenticación
+        const token = localStorage.getItem("streamvio_token");
+        if (!token) {
+          throw new Error("No hay token de autenticación disponible");
         }
 
-        // 3. Comprobar si el navegador soporta HLS
-        const checkHlsSupport = () => {
-          // Safari soporta HLS nativamente
-          if (videoRef.current?.canPlayType("application/vnd.apple.mpegurl")) {
-            return true;
-          }
-          // Otros navegadores pueden usar hls.js si tienen MediaSource
-          return window.MediaSource !== undefined;
-        };
+        // 3. Decidir el método de streaming basado en la información disponible
+        let streamingUrl;
 
-        const hlsSupport = checkHlsSupport();
-        setSupportsHls(hlsSupport);
+        // Si HLS está disponible, usarlo preferentemente
+        if (videoData.has_hls) {
+          const fileName = videoData.file_path
+            ?.split(/[\/\\]/)
+            .pop()
+            .split(".")[0];
+          streamingUrl = `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8?auth=${token}`;
+          console.log("Usando streaming HLS:", streamingUrl);
+        } else {
+          // Streaming directo como fallback
+          streamingUrl = `${API_URL}/api/media/${videoId}/stream?auth=${token}`;
+          console.log("Usando streaming directo:", streamingUrl);
+        }
 
-        // 4. Comprobar si hay versión HLS disponible para este video
-        const hasHls = videoData.has_hls || false;
-        setHlsAvailable(hasHls);
-
-        // 5. Determinar el tipo de streaming a usar
-        const bestStreamType = hasHls && hlsSupport ? "hls" : "direct";
-        setStreamType(bestStreamType);
-
-        // 6. Configurar URL de streaming directamente con el token JWT
-        const streamUrl =
-          bestStreamType === "hls" && hasHls
-            ? `${API_URL}/api/media/${videoId}/hls?auth=${token}`
-            : `${API_URL}/api/media/${videoId}/stream?auth=${token}`;
-
-        console.log(
-          `URL de streaming configurada (${bestStreamType}):`,
-          streamUrl
-        );
-        setStreamUrl(streamUrl);
-
-        // 7. Cargar historial de reproducción si existe
-        await loadWatchHistory(token);
-
+        setLocalStreamUrl(streamingUrl);
         setLoading(false);
+
+        // 4. Configurar guardado periódico de progreso
+        setupProgressTracking();
       } catch (err) {
-        console.error("Error al cargar video:", err);
-        setError(err.response?.data?.message || "Error al cargar el video");
-        setLoading(false);
+        console.error("Error al configurar reproductor:", err);
+        handlePlayerError(err);
       }
     };
 
-    fetchVideoAndSetupStreaming();
+    setupVideo();
 
-    // Limpieza al desmontar
+    // Limpieza
     return () => {
-      clearTimeouts();
+      if (progressUpdateIntervalRef.current) {
+        clearInterval(progressUpdateIntervalRef.current);
+      }
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
     };
-  }, [videoId]);
+  }, [videoId, streamUrl, mediaInfo]);
 
-  // Limpiar todos los timeouts e intervalos
-  const clearTimeouts = () => {
+  // Función para obtener información del video
+  const fetchVideoInfo = async (id) => {
+    try {
+      const token = localStorage.getItem("streamvio_token");
+      if (!token) {
+        throw new Error("No hay token de autenticación disponible");
+      }
+
+      const response = await axios.get(`${API_URL}/api/media/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      });
+
+      console.log("Información del video obtenida:", response.data);
+      return response.data;
+    } catch (err) {
+      console.error("Error al obtener información del video:", err);
+
+      if (err.response?.status === 404) {
+        throw new Error("El video solicitado no existe");
+      } else if (err.response?.status === 401 || err.response?.status === 403) {
+        throw new Error("No tienes permiso para acceder a este contenido");
+      } else if (!navigator.onLine) {
+        throw new Error("No hay conexión a internet");
+      } else {
+        throw new Error(
+          err.response?.data?.message || "Error al cargar información del video"
+        );
+      }
+    }
+  };
+
+  // Configurar seguimiento de progreso
+  const setupProgressTracking = () => {
+    // Guardar progreso cada 30 segundos
     if (progressUpdateIntervalRef.current) {
       clearInterval(progressUpdateIntervalRef.current);
     }
-    if (controlsTimeoutRef.current) {
-      clearTimeout(controlsTimeoutRef.current);
-    }
-  };
 
-  // Cargar historial de visualización con manejo de errores
-  const loadWatchHistory = async (token) => {
-    try {
-      if (!token || !videoId) return;
-
-      console.log("Cargando historial de visualización...");
-
-      try {
-        // Intentar cargar el historial
-        const response = await axios.get(
-          `${API_URL}/api/media/${videoId}/progress`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        if (response.data.position && videoRef.current) {
-          // Si hay una posición guardada, adelantar el video a ese punto
-          const savedPosition = response.data.position;
-          console.log(
-            `Posición guardada encontrada: ${savedPosition} segundos`
-          );
-          videoRef.current.currentTime = savedPosition;
-        }
-      } catch (progressError) {
-        console.warn(
-          "Error al cargar historial de visualización:",
-          progressError
-        );
-        // No es un error crítico, continuamos con la reproducción
-
-        // Usar la posición 0 como fallback
-        if (videoRef.current) {
-          videoRef.current.currentTime = 0;
-        }
+    progressUpdateIntervalRef.current = setInterval(() => {
+      if (videoRef.current && isPlaying && currentTime > 0) {
+        saveProgress(currentTime);
       }
-    } catch (err) {
-      console.warn("Error general al cargar historial de visualización:", err);
-      // No es un error crítico, continuamos con la reproducción
-    }
+    }, 30000);
   };
 
   // Guardar progreso de visualización
-  const saveWatchProgress = async (timeInSeconds, isCompleted = false) => {
+  const saveProgress = async (timeInSeconds, isCompleted = false) => {
+    if (!videoId) return;
+
     try {
       const token = localStorage.getItem("streamvio_token");
-      if (!token || !videoId) return;
+      if (!token) return;
 
       console.log(
         `Guardando progreso: ${timeInSeconds}s, completado: ${isCompleted}`
@@ -188,74 +177,150 @@ function ImprovedVideoPlayer({ videoId }) {
 
       await axios.post(
         `${API_URL}/api/media/${videoId}/progress`,
-        {
-          position: timeInSeconds,
-          completed: isCompleted,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { position: timeInSeconds, completed: isCompleted },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       console.log("Progreso guardado correctamente");
     } catch (err) {
-      console.warn("Error al guardar progreso de visualización:", err);
-      // No interrumpir reproducción por errores al guardar progreso
+      console.warn("Error al guardar progreso:", err);
+      // No interrumpir la reproducción por errores al guardar
     }
   };
 
-  // Manejadores de eventos del reproductor
-  const handlePlay = () => {
+  // Manejo de errores del reproductor
+  const handlePlayerError = (err) => {
+    console.error("Error en reproductor:", err);
+
+    // Determinar mensaje específico según tipo de error
+    let errorMessage = "Error al reproducir el video";
+
+    if (err.message) {
+      errorMessage = err.message;
+    } else if (videoRef.current?.error) {
+      const videoError = videoRef.current.error;
+
+      // Analizar códigos de error de video estándar
+      switch (videoError.code) {
+        case 1: // MEDIA_ERR_ABORTED
+          errorMessage = "La reproducción fue abortada por el usuario";
+          break;
+        case 2: // MEDIA_ERR_NETWORK
+          errorMessage = "Error de red al cargar el video";
+          break;
+        case 3: // MEDIA_ERR_DECODE
+          errorMessage =
+            "Error al decodificar el video. Puede que el formato no sea compatible";
+          break;
+        case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+          errorMessage =
+            "El formato de video no es compatible o la URL es inválida";
+          break;
+        default:
+          errorMessage = videoError.message || "Error desconocido";
+      }
+    }
+
+    setError(errorMessage);
+    setLoading(false);
+
+    // Intento de recuperación automática
+    if (retryCountRef.current < maxRetries) {
+      console.log(
+        `Reintentando reproducción (${
+          retryCountRef.current + 1
+        }/${maxRetries})...`
+      );
+      retryCountRef.current++;
+
+      // Esperar un momento y reintentar con una nueva URL
+      setTimeout(() => {
+        const token = localStorage.getItem("streamvio_token");
+        if (token) {
+          // Reconstruir URL con un timestamp para evitar cachés
+          const timestamp = new Date().getTime();
+          const newUrl = `${API_URL}/api/media/${videoId}/stream?auth=${token}&_t=${timestamp}`;
+          setLocalStreamUrl(newUrl);
+          setError(null);
+        }
+      }, 3000);
+    }
+  };
+
+  // Manejadores de eventos del video
+  const handleVideoPlay = () => {
     setIsPlaying(true);
+    resetControlsTimer();
   };
 
-  const handlePause = () => {
+  const handleVideoPause = () => {
     setIsPlaying(false);
+    setShowControls(true);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
   };
 
-  const handleTimeUpdate = () => {
+  const handleVideoTimeUpdate = () => {
     if (!videoRef.current) return;
 
     const video = videoRef.current;
     setCurrentTime(video.currentTime);
 
+    // Si ha pasado más de 5% desde la última actualización, guardar progreso
     if (video.duration) {
-      const calculatedProgress = (video.currentTime / video.duration) * 100;
-      setProgress(calculatedProgress);
+      const progressPercent = (video.currentTime / video.duration) * 100;
+      setProgress(progressPercent);
 
-      // Actualizar progreso en el servidor cuando el progreso cambia significativamente
-      const shouldUpdateProgress = Math.abs(calculatedProgress - progress) > 5;
-      if (shouldUpdateProgress) {
-        saveWatchProgress(video.currentTime);
+      const lastSavedPercent = (currentTime / duration) * 100;
+
+      if (Math.abs(progressPercent - lastSavedPercent) > 5) {
+        saveProgress(video.currentTime);
       }
     }
   };
 
-  const handleLoadedMetadata = () => {
-    if (!videoRef.current) return;
-
-    setDuration(videoRef.current.duration);
-    console.log(`Video cargado, duración: ${videoRef.current.duration}s`);
-
-    // Configurar intervalo para actualizar progreso periódicamente
-    if (progressUpdateIntervalRef.current) {
-      clearInterval(progressUpdateIntervalRef.current);
-    }
-
-    progressUpdateIntervalRef.current = setInterval(() => {
-      if (videoRef.current && isPlaying) {
-        saveWatchProgress(videoRef.current.currentTime);
-      }
-    }, 30000); // Actualizar cada 30 segundos
-  };
-
-  const handleEnded = () => {
-    // Marcar como completado cuando termina el video
-    saveWatchProgress(duration, true);
+  const handleVideoEnd = () => {
     setIsPlaying(false);
-    console.log("Video finalizado");
+    saveProgress(duration, true); // Marcarlo como completado
   };
 
+  const handleVideoMetadataLoaded = () => {
+    if (!videoRef.current) return;
+    setDuration(videoRef.current.duration);
+
+    // Intentar reproducir automáticamente si está habilitado
+    if (autoPlay) {
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((error) => {
+          console.warn("Error de reproducción automática:", error);
+          // No mostrar error, solo dejar pausa
+        });
+      }
+    }
+  };
+
+  const handleVideoError = (e) => {
+    handlePlayerError(e);
+  };
+
+  // Mostrar/ocultar controles automáticamente
+  const resetControlsTimer = () => {
+    setShowControls(true);
+
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+
+    if (isPlaying) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 3000);
+    }
+  };
+
+  // Control de volumen
   const handleVolumeChange = (e) => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
@@ -273,14 +338,7 @@ function ImprovedVideoPlayer({ videoId }) {
     }
   };
 
-  const handleSeek = (e) => {
-    if (!videoRef.current) return;
-
-    const seekTime = (e.target.value / 100) * duration;
-    videoRef.current.currentTime = seekTime;
-    setCurrentTime(seekTime);
-  };
-
+  // Control de reproducción
   const togglePlay = () => {
     if (!videoRef.current) return;
 
@@ -288,19 +346,25 @@ function ImprovedVideoPlayer({ videoId }) {
       videoRef.current.pause();
     } else {
       const playPromise = videoRef.current.play();
-
       if (playPromise !== undefined) {
         playPromise.catch((error) => {
-          console.error("Error al reproducir video:", error);
-          // Intentar reproducir después de interacción del usuario
-          setError(
-            "Error al reproducir. El navegador puede estar bloqueando la reproducción automática."
-          );
+          console.error("Error al reproducir:", error);
         });
       }
     }
   };
 
+  // Control de la barra de progreso
+  const handleSeek = (e) => {
+    if (!videoRef.current || !duration) return;
+
+    const seekPercent = parseFloat(e.target.value);
+    const seekTime = (seekPercent / 100) * duration;
+    videoRef.current.currentTime = seekTime;
+    setCurrentTime(seekTime);
+  };
+
+  // Pantalla completa
   const toggleFullscreen = () => {
     if (!playerRef.current) return;
 
@@ -325,24 +389,9 @@ function ImprovedVideoPlayer({ videoId }) {
     }
   };
 
-  // Mostrar/ocultar controles con temporizador
-  const showControlsTemporary = () => {
-    setShowControls(true);
-
-    if (controlsTimeoutRef.current) {
-      clearTimeout(controlsTimeoutRef.current);
-    }
-
-    controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying) {
-        setShowControls(false);
-      }
-    }, 3000);
-  };
-
   // Formatear tiempo (segundos a MM:SS)
   const formatTime = (timeInSeconds) => {
-    if (!timeInSeconds) return "00:00";
+    if (!timeInSeconds || isNaN(timeInSeconds)) return "00:00";
 
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
@@ -351,140 +400,107 @@ function ImprovedVideoPlayer({ videoId }) {
       .padStart(2, "0")}`;
   };
 
-  // Manejar error en la carga del video
-  const handleVideoError = (e) => {
-    const videoElement = e.target;
-    const errorCode = videoElement.error ? videoElement.error.code : 0;
-    const errorMessage = videoElement.error ? videoElement.error.message : "";
+  // Generar el reproductor con manejo de estados
 
-    console.error(
-      `Error en el reproductor de video (${errorCode}): ${errorMessage}`,
-      e
-    );
-
-    if (errorCode === 2) {
-      // MEDIA_ERR_NETWORK
-      setError("Error de red al cargar el video. Verifica tu conexión.");
-    } else if (errorCode === 3) {
-      // MEDIA_ERR_DECODE
-      setError(
-        "Error al decodificar el video. El formato podría no ser compatible."
-      );
-    } else if (errorCode === 4) {
-      // MEDIA_ERR_SRC_NOT_SUPPORTED
-      setError("Formato de video no soportado o error de autenticación.");
-    } else {
-      setError(
-        "Error al cargar el video. Es posible que no tengas permisos o el archivo no esté disponible."
-      );
-    }
-
-    // Intentar actualizar la URL con el token principal
-    const token = localStorage.getItem("streamvio_token");
-    if (token) {
-      console.log("Intentando reconstruir URL de streaming debido a error...");
-      const newStreamUrl =
-        streamType === "hls" && hlsAvailable
-          ? `${API_URL}/api/streaming/${videoId}/hls?auth=${token}`
-          : `${API_URL}/api/streaming/${videoId}/stream?auth=${token}`;
-
-      setStreamUrl(newStreamUrl);
-    }
-  };
-
-  // Renderizado condicional para estado de carga
+  // Estado de carga
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-96 bg-gray-900 rounded-lg">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+      <div
+        className="w-full bg-black rounded-lg flex items-center justify-center"
+        style={{ minHeight: "300px" }}
+      >
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+          <p className="text-white">Cargando video...</p>
+        </div>
       </div>
     );
   }
 
-  // Renderizado condicional para estado de error
+  // Estado de error
   if (error) {
     return (
-      <div className="bg-red-900 bg-opacity-50 rounded-lg p-8 text-center h-96 flex flex-col items-center justify-center">
-        <p className="text-red-300 mb-4">{error}</p>
-        <button
-          onClick={() => {
-            setError(null);
-            setLoading(true);
-            // Intentar cargar de nuevo con un pequeño retraso
-            setTimeout(() => {
+      <div
+        className="w-full bg-black bg-opacity-80 rounded-lg p-8 text-center"
+        style={{ minHeight: "300px" }}
+      >
+        <div className="flex flex-col items-center justify-center h-full">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-16 w-16 text-red-500 mb-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          <p className="text-red-500 text-xl font-semibold mb-2">
+            Error de reproducción
+          </p>
+          <p className="text-white mb-4">{error}</p>
+          <button
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              retryCountRef.current = 0;
+
+              // Regenerar URL de streaming con nuevo token
               const token = localStorage.getItem("streamvio_token");
-              // Reconstruir URL con token JWT
-              const newStreamUrl =
-                streamType === "hls" && hlsAvailable
-                  ? `${API_URL}/api/streaming/${videoId}/hls?auth=${token}`
-                  : `${API_URL}/api/streaming/${videoId}/stream?auth=${token}`;
-
-              setStreamUrl(newStreamUrl);
-              setLoading(false);
-            }, 1000);
-          }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded mr-2"
-        >
-          Reintentar
-        </button>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-        >
-          Recargar página
-        </button>
+              if (token) {
+                const timestamp = new Date().getTime();
+                const newUrl = `${API_URL}/api/media/${videoId}/stream?auth=${token}&_t=${timestamp}`;
+                setTimeout(() => {
+                  setLocalStreamUrl(newUrl);
+                  setLoading(false);
+                }, 1000);
+              }
+            }}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded focus:outline-none"
+          >
+            Reintentar
+          </button>
+        </div>
       </div>
     );
   }
 
-  // Renderizado condicional si no hay video
-  if (!video || !streamUrl) {
-    return (
-      <div className="bg-gray-800 rounded-lg p-8 text-center h-96 flex flex-col items-center justify-center">
-        <p className="text-gray-400">
-          No se ha podido cargar el contenido multimedia
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-        >
-          Reintentar
-        </button>
-      </div>
-    );
-  }
-
-  // Renderizado del reproductor
+  // Reproductor normal
   return (
     <div
       ref={playerRef}
-      className="relative bg-black rounded-lg overflow-hidden w-full"
-      onMouseMove={showControlsTemporary}
+      className="relative w-full bg-black rounded-lg overflow-hidden"
+      onMouseMove={resetControlsTimer}
       onMouseEnter={() => setShowControls(true)}
       onMouseLeave={() => isPlaying && setShowControls(false)}
     >
+      {/* Video principal */}
       <video
         ref={videoRef}
         className="w-full h-auto"
-        src={streamUrl}
+        src={localStreamUrl}
         poster={
-          video.thumbnail_url ||
-          `${API_URL}/api/media/${videoId}/thumbnail?auth=${localStorage.getItem(
-            "streamvio_token"
-          )}`
+          video?.thumbnail_path
+            ? `${API_URL}/api/media/${videoId}/thumbnail?auth=${localStorage.getItem(
+                "streamvio_token"
+              )}`
+            : undefined
         }
         controls={false}
-        autoPlay={false}
-        onClick={togglePlay}
-        onPlay={handlePlay}
-        onPause={handlePause}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={handleEnded}
+        onPlay={handleVideoPlay}
+        onPause={handleVideoPause}
+        onTimeUpdate={handleVideoTimeUpdate}
+        onLoadedMetadata={handleVideoMetadataLoaded}
+        onEnded={handleVideoEnd}
         onError={handleVideoError}
+        onClick={togglePlay}
       />
 
-      {/* Controles personalizados */}
+      {/* Capa de controles personalizados */}
       <div
         className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity duration-300 ${
           showControls ? "opacity-100" : "opacity-0"
@@ -496,11 +512,11 @@ function ImprovedVideoPlayer({ videoId }) {
             type="range"
             min="0"
             max="100"
-            value={progress}
+            value={progress || 0}
             onChange={handleSeek}
-            className="w-full h-1 bg-gray-600 rounded-full appearance-none cursor-pointer focus:outline-none"
+            className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer"
             style={{
-              backgroundImage: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #4b5563 ${progress}%, #4b5563 100%)`,
+              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #4b5563 ${progress}%, #4b5563 100%)`,
             }}
           />
         </div>
@@ -508,35 +524,27 @@ function ImprovedVideoPlayer({ videoId }) {
         {/* Controles principales */}
         <div className="flex justify-between items-center">
           <div className="flex items-center space-x-4">
-            {/* Botón de reproducción/pausa */}
+            {/* Botón reproducir/pausar */}
             <button
               onClick={togglePlay}
-              className="text-white focus:outline-none hover:text-blue-400 transition-colors"
+              className="text-white focus:outline-none hover:text-blue-400"
               aria-label={isPlaying ? "Pausar" : "Reproducir"}
             >
               {isPlaying ? (
                 <svg
-                  className="w-6 h-6"
+                  className="w-8 h-8"
                   fill="currentColor"
-                  viewBox="0 0 20 20"
+                  viewBox="0 0 24 24"
                 >
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
+                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                 </svg>
               ) : (
                 <svg
-                  className="w-6 h-6"
+                  className="w-8 h-8"
                   fill="currentColor"
-                  viewBox="0 0 20 20"
+                  viewBox="0 0 24 24"
                 >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                    clipRule="evenodd"
-                  />
+                  <path d="M8 5v14l11-7z" />
                 </svg>
               )}
             </button>
@@ -545,137 +553,78 @@ function ImprovedVideoPlayer({ videoId }) {
             <div className="flex items-center space-x-2">
               <button
                 onClick={toggleMute}
-                className="text-white focus:outline-none hover:text-blue-400 transition-colors"
+                className="text-white focus:outline-none hover:text-blue-400"
                 aria-label={isMuted ? "Activar sonido" : "Silenciar"}
               >
                 {isMuted ? (
                   <svg
-                    className="w-5 h-5"
+                    className="w-6 h-6"
                     fill="currentColor"
-                    viewBox="0 0 20 20"
+                    viewBox="0 0 24 24"
                   >
-                    <path
-                      fillRule="evenodd"
-                      d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z"
-                      clipRule="evenodd"
-                    />
+                    <path d="M3.63 3.63a.996.996 0 0 0 0 1.41L7.29 8.7 7 9H4c-.55 0-1 .45-1 1v4c0 .55.45 1 1 1h3l3.29 3.29c.63.63 1.71.18 1.71-.71v-4.17l4.18 4.18c-.49.37-1.02.68-1.6.91-.36.15-.58.53-.58.92 0 .72.73 1.18 1.39.91.8-.33 1.55-.77 2.22-1.31l1.34 1.34a.996.996 0 1 0 1.41-1.41L5.05 3.63c-.39-.39-1.02-.39-1.42 0zM19 12c0 .82-.15 1.61-.41 2.34l1.53 1.53c.56-1.17.88-2.48.88-3.87 0-3.83-2.4-7.11-5.78-8.4-.59-.23-1.22.23-1.22.86v.19c0 .38.25.71.61.85C17.18 6.54 19 9.06 19 12zm-8.71-6.29l-.17.17L12 7.76V6.41c0-.89-1.08-1.33-1.71-.7zM16.5 12A4.5 4.5 0 0 0 14 7.97v1.79l2.48 2.48c.01-.08.02-.16.02-.24z" />
                   </svg>
                 ) : (
                   <svg
-                    className="w-5 h-5"
+                    className="w-6 h-6"
                     fill="currentColor"
-                    viewBox="0 0 20 20"
+                    viewBox="0 0 24 24"
                   >
-                    <path
-                      fillRule="evenodd"
-                      d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071a1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243a1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828a1 1 0 010-1.415z"
-                      clipRule="evenodd"
-                    />
+                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
                   </svg>
                 )}
               </button>
+
               <input
                 type="range"
                 min="0"
                 max="1"
-                step="0.01"
+                step="0.05"
                 value={volume}
                 onChange={handleVolumeChange}
-                className="w-16 h-1 bg-gray-600 rounded-full appearance-none cursor-pointer focus:outline-none"
+                className="w-16 md:w-24 h-2 bg-gray-700 rounded-full appearance-none cursor-pointer"
                 style={{
-                  backgroundImage: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
+                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
                     volume * 100
                   }%, #4b5563 ${volume * 100}%, #4b5563 100%)`,
                 }}
               />
             </div>
 
-            {/* Contador de tiempo */}
-            <div className="text-white text-sm">
+            {/* Tiempo */}
+            <div className="text-white text-sm hidden sm:block">
               {formatTime(currentTime)} / {formatTime(duration)}
             </div>
-          </div>
-
-          {/* Información de tipo de streaming (solo para usuarios avanzados) */}
-          <div className="hidden md:flex items-center mr-4">
-            <span className="text-xs text-gray-400 px-2 py-1 bg-gray-800 rounded">
-              {streamType === "hls" ? "HLS Adaptativo" : "Directo"}
-            </span>
           </div>
 
           {/* Botón de pantalla completa */}
           <button
             onClick={toggleFullscreen}
-            className="text-white focus:outline-none hover:text-blue-400 transition-colors"
-            aria-label={
-              isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"
-            }
+            className="text-white focus:outline-none hover:text-blue-400"
+            aria-label="Pantalla completa"
           >
-            {isFullscreen ? (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M5 4a1 1 0 00-1 1v4a1 1 0 01-2 0V5a3 3 0 013-3h4a1 1 0 010 2H5zm10 8a1 1 0 00-1 1v2a1 1 0 01-1 1H9a1 1 0 110-2h4V9a1 1 0 112 0v3zm-8-3a1 1 0 00-1-1H3a1 1 0 000 2h3v3a1 1 0 102 0v-4zm8-6a1 1 0 010 2h-3a1 1 0 100 2v3a1 1 0 11-2 0V7a1 1 0 011-1h4z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            )}
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+            </svg>
           </button>
         </div>
       </div>
 
-      {/* Botón de reproducción central cuando está pausado */}
+      {/* Botón central de reproducción cuando está pausado */}
       {!isPlaying && (
-        <button
-          onClick={togglePlay}
-          className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 focus:outline-none"
-          aria-label="Reproducir"
-        >
-          <div className="bg-blue-600 bg-opacity-90 rounded-full p-5 transform transition-transform hover:scale-110">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <button
+            onClick={togglePlay}
+            className="bg-blue-600 bg-opacity-80 rounded-full p-4 focus:outline-none transform transition-transform hover:scale-110"
+            aria-label="Reproducir"
+          >
             <svg
               className="w-12 h-12 text-white"
               fill="currentColor"
-              viewBox="0 0 20 20"
+              viewBox="0 0 24 24"
             >
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                clipRule="evenodd"
-              />
+              <path d="M8 5v14l11-7z" />
             </svg>
-          </div>
-        </button>
-      )}
-
-      {/* Indicador de error de reproducción */}
-      {error && !loading && (
-        <div className="absolute bottom-16 left-0 right-0 bg-red-900 bg-opacity-80 text-white p-3 text-center">
-          <p>{error}</p>
-          <button
-            className="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
-            onClick={() => {
-              setError(null);
-              if (videoRef.current) {
-                const playPromise = videoRef.current.play();
-                if (playPromise !== undefined) {
-                  playPromise.catch(() => {
-                    console.log(
-                      "Reproducción fallida después de intento de recuperación"
-                    );
-                  });
-                }
-              }
-            }}
-          >
-            Intentar reproducir
           </button>
         </div>
       )}
