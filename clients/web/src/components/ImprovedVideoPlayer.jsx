@@ -8,7 +8,7 @@ const API_URL = apiConfig.API_URL;
 
 /**
  * Reproductor de video mejorado con controles personalizados
- * Versión actualizada con mejor manejo de tokens
+ * Versión actualizada con mejor manejo de tokens y depuración
  */
 function ImprovedVideoPlayer(props) {
   const { videoId, autoPlay = false, streamUrl, mediaInfo } = props;
@@ -29,6 +29,9 @@ function ImprovedVideoPlayer(props) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
+  // Estado para alternar entre video e iframe
+  const [useIframe, setUseIframe] = useState(false);
+
   // Referencias
   const videoRef = useRef(null);
   const playerRef = useRef(null);
@@ -41,12 +44,11 @@ function ImprovedVideoPlayer(props) {
   useEffect(() => {
     // Si se proporciona una URL de streaming directamente, usarla
     if (streamUrl) {
-      console.log(
-        "Usando URL de streaming proporcionada:",
-        streamUrl.split("?")[0]
-      ); // No mostrar el token completo
-      setLocalStreamUrl(streamUrl);
+      console.log("URL de streaming recibida:", streamUrl);
+      console.log("URL base (sin token):", streamUrl.split("?")[0]);
+      console.log("¿Contiene 'auth='?", streamUrl.includes("auth="));
 
+      setLocalStreamUrl(streamUrl);
       if (mediaInfo) {
         setVideo(mediaInfo);
       } else if (videoId) {
@@ -57,7 +59,6 @@ function ImprovedVideoPlayer(props) {
             console.warn("No se pudo cargar info del video:", err)
           );
       }
-
       setLoading(false);
       setupProgressTracking();
       return;
@@ -77,12 +78,14 @@ function ImprovedVideoPlayer(props) {
 
         // 2. Generar URL de streaming usando el helper de autenticación
         const streamingUrl = authUrlHelper.getStreamUrl(videoId);
-
         if (!streamingUrl) {
           throw new Error("No se pudo generar la URL de streaming");
         }
 
-        console.log("URL de streaming generada:", streamingUrl.split("?")[0]);
+        console.log("URL de streaming generada:", streamingUrl);
+        console.log("URL base (sin token):", streamingUrl.split("?")[0]);
+        console.log("¿Contiene 'auth='?", streamingUrl.includes("auth="));
+
         setLocalStreamUrl(streamingUrl);
         setLoading(false);
 
@@ -114,17 +117,14 @@ function ImprovedVideoPlayer(props) {
       if (!token) {
         throw new Error("No hay token de autenticación disponible");
       }
-
       const response = await axios.get(`${API_URL}/api/media/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 10000,
       });
-
       console.log("Información del video obtenida:", response.data);
       return response.data;
     } catch (err) {
       console.error("Error al obtener información del video:", err);
-
       if (err.response?.status === 404) {
         throw new Error("El video solicitado no existe");
       } else if (err.response?.status === 401 || err.response?.status === 403) {
@@ -145,7 +145,6 @@ function ImprovedVideoPlayer(props) {
     if (progressUpdateIntervalRef.current) {
       clearInterval(progressUpdateIntervalRef.current);
     }
-
     progressUpdateIntervalRef.current = setInterval(() => {
       if (videoRef.current && isPlaying && currentTime > 0) {
         saveProgress(currentTime);
@@ -156,21 +155,17 @@ function ImprovedVideoPlayer(props) {
   // Guardar progreso de visualización
   const saveProgress = async (timeInSeconds, isCompleted = false) => {
     if (!videoId) return;
-
     try {
       const token = localStorage.getItem("streamvio_token");
       if (!token) return;
-
       console.log(
         `Guardando progreso: ${timeInSeconds}s, completado: ${isCompleted}`
       );
-
       await axios.post(
         `${API_URL}/api/media/${videoId}/progress`,
         { position: timeInSeconds, completed: isCompleted },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
       console.log("Progreso guardado correctamente");
     } catch (err) {
       console.warn("Error al guardar progreso:", err);
@@ -181,15 +176,12 @@ function ImprovedVideoPlayer(props) {
   // Manejo de errores del reproductor
   const handlePlayerError = (err) => {
     console.error("Error en reproductor:", err);
-
     // Determinar mensaje específico según tipo de error
     let errorMessage = "Error al reproducir el video";
-
     if (err.message) {
       errorMessage = err.message;
     } else if (videoRef.current?.error) {
       const videoError = videoRef.current.error;
-
       // Analizar códigos de error de video estándar
       switch (videoError.code) {
         case 1: // MEDIA_ERR_ABORTED
@@ -210,7 +202,6 @@ function ImprovedVideoPlayer(props) {
           errorMessage = videoError.message || "Error desconocido";
       }
     }
-
     setError(errorMessage);
     setLoading(false);
 
@@ -222,12 +213,10 @@ function ImprovedVideoPlayer(props) {
         }/${maxRetries})...`
       );
       retryCountRef.current++;
-
       // Esperar un momento y reintentar con una nueva URL
       setTimeout(() => {
         // Generar una nueva URL con un timestamp para evitar cachés
         const newUrl = authUrlHelper.getStreamUrl(videoId);
-
         if (newUrl) {
           console.log("Reintentando con nueva URL:", newUrl.split("?")[0]);
           setLocalStreamUrl(newUrl);
@@ -253,17 +242,13 @@ function ImprovedVideoPlayer(props) {
 
   const handleVideoTimeUpdate = () => {
     if (!videoRef.current) return;
-
     const video = videoRef.current;
     setCurrentTime(video.currentTime);
-
     // Si ha pasado más de 5% desde la última actualización, guardar progreso
     if (video.duration) {
       const progressPercent = (video.currentTime / video.duration) * 100;
       setProgress(progressPercent);
-
       const lastSavedPercent = (currentTime / duration) * 100;
-
       if (Math.abs(progressPercent - lastSavedPercent) > 5) {
         saveProgress(video.currentTime);
       }
@@ -278,7 +263,6 @@ function ImprovedVideoPlayer(props) {
   const handleVideoMetadataLoaded = () => {
     if (!videoRef.current) return;
     setDuration(videoRef.current.duration);
-
     // Intentar reproducir automáticamente si está habilitado
     if (autoPlay) {
       const playPromise = videoRef.current.play();
@@ -292,17 +276,18 @@ function ImprovedVideoPlayer(props) {
   };
 
   const handleVideoError = (e) => {
+    console.error("Error en elemento video:", e);
+    console.error("Código de error:", videoRef.current?.error?.code);
+    console.error("Mensaje de error:", videoRef.current?.error?.message);
     handlePlayerError(e);
   };
 
   // Mostrar/ocultar controles automáticamente
   const resetControlsTimer = () => {
     setShowControls(true);
-
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
-
     if (isPlaying) {
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
@@ -331,7 +316,6 @@ function ImprovedVideoPlayer(props) {
   // Control de reproducción
   const togglePlay = () => {
     if (!videoRef.current) return;
-
     if (isPlaying) {
       videoRef.current.pause();
     } else {
@@ -347,7 +331,6 @@ function ImprovedVideoPlayer(props) {
   // Control de la barra de progreso
   const handleSeek = (e) => {
     if (!videoRef.current || !duration) return;
-
     const seekPercent = parseFloat(e.target.value);
     const seekTime = (seekPercent / 100) * duration;
     videoRef.current.currentTime = seekTime;
@@ -357,7 +340,6 @@ function ImprovedVideoPlayer(props) {
   // Pantalla completa
   const toggleFullscreen = () => {
     if (!playerRef.current) return;
-
     if (!document.fullscreenElement) {
       if (playerRef.current.requestFullscreen) {
         playerRef.current.requestFullscreen();
@@ -382,7 +364,6 @@ function ImprovedVideoPlayer(props) {
   // Formatear tiempo (segundos a MM:SS)
   const formatTime = (timeInSeconds) => {
     if (!timeInSeconds || isNaN(timeInSeconds)) return "00:00";
-
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
     return `${minutes.toString().padStart(2, "0")}:${seconds
@@ -390,8 +371,22 @@ function ImprovedVideoPlayer(props) {
       .padStart(2, "0")}`;
   };
 
-  // Generar el reproductor con manejo de estados
+  // Renderizar video con iframe
+  const renderVideoWithIframe = () => {
+    return (
+      <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
+        <iframe
+          src={localStreamUrl}
+          className="absolute top-0 left-0 w-full h-full"
+          frameBorder="0"
+          allowFullScreen
+          title="Video Player"
+        ></iframe>
+      </div>
+    );
+  };
 
+  // Generar el reproductor con manejo de estados
   // Estado de carga
   if (loading) {
     return (
@@ -433,23 +428,38 @@ function ImprovedVideoPlayer(props) {
             Error de reproducción
           </p>
           <p className="text-white mb-4">{error}</p>
-          <button
-            onClick={() => {
-              setError(null);
-              setLoading(true);
-              retryCountRef.current = 0;
-
-              // Regenerar URL de streaming
-              const newUrl = authUrlHelper.getStreamUrl(videoId);
-              setTimeout(() => {
-                setLocalStreamUrl(newUrl);
-                setLoading(false);
-              }, 1000);
-            }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded focus:outline-none"
-          >
-            Reintentar
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => {
+                setError(null);
+                setLoading(true);
+                retryCountRef.current = 0;
+                // Regenerar URL de streaming
+                const newUrl = authUrlHelper.getStreamUrl(videoId);
+                setTimeout(() => {
+                  setLocalStreamUrl(newUrl);
+                  setLoading(false);
+                }, 1000);
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded focus:outline-none"
+            >
+              Reintentar
+            </button>
+            <button
+              onClick={() => setUseIframe(!useIframe)}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded focus:outline-none"
+            >
+              {useIframe ? "Usar reproductor nativo" : "Usar iframe"}
+            </button>
+            <a
+              href={localStreamUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded focus:outline-none text-center"
+            >
+              Abrir en nueva pestaña
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -464,134 +474,143 @@ function ImprovedVideoPlayer(props) {
       onMouseEnter={() => setShowControls(true)}
       onMouseLeave={() => isPlaying && setShowControls(false)}
     >
-      {/* Video principal */}
-      <video
-        ref={videoRef}
-        className="w-full h-auto"
-        src={localStreamUrl}
-        poster={videoId ? authUrlHelper.getThumbnailUrl(videoId) : undefined}
-        controls={false}
-        onPlay={handleVideoPlay}
-        onPause={handleVideoPause}
-        onTimeUpdate={handleVideoTimeUpdate}
-        onLoadedMetadata={handleVideoMetadataLoaded}
-        onEnded={handleVideoEnd}
-        onError={handleVideoError}
-        onClick={togglePlay}
-      />
-
-      {/* Capa de controles personalizados */}
-      <div
-        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity duration-300 ${
-          showControls ? "opacity-100" : "opacity-0"
-        }`}
+      {/* Botón para alternar entre video e iframe */}
+      <button
+        onClick={() => setUseIframe(!useIframe)}
+        className="absolute top-2 right-2 z-50 bg-blue-600 text-white px-2 py-1 rounded text-sm opacity-70 hover:opacity-100"
       >
-        {/* Barra de progreso */}
-        <div className="mb-2">
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={progress || 0}
-            onChange={handleSeek}
-            className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer"
-            style={{
-              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #4b5563 ${progress}%, #4b5563 100%)`,
-            }}
-          />
-        </div>
+        {useIframe ? "Usar Video" : "Usar Iframe"}
+      </button>
 
-        {/* Controles principales */}
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            {/* Botón reproducir/pausar */}
-            <button
-              onClick={togglePlay}
-              className="text-white focus:outline-none hover:text-blue-400"
-              aria-label={isPlaying ? "Pausar" : "Reproducir"}
-            >
-              {isPlaying ? (
-                <svg
-                  className="w-8 h-8"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                </svg>
-              ) : (
-                <svg
-                  className="w-8 h-8"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
-            </button>
+      {/* Renderizar video o iframe según el estado */}
+      {useIframe ? (
+        renderVideoWithIframe()
+      ) : (
+        <video
+          ref={videoRef}
+          className="w-full h-auto"
+          src={localStreamUrl}
+          poster={videoId ? authUrlHelper.getThumbnailUrl(videoId) : undefined}
+          controls={false}
+          onPlay={handleVideoPlay}
+          onPause={handleVideoPause}
+          onTimeUpdate={handleVideoTimeUpdate}
+          onLoadedMetadata={handleVideoMetadataLoaded}
+          onEnded={handleVideoEnd}
+          onError={handleVideoError}
+          onClick={togglePlay}
+        />
+      )}
 
-            {/* Control de volumen */}
-            <div className="flex items-center space-x-2">
+      {/* Capa de controles personalizados - solo mostrar si no se usa iframe */}
+      {!useIframe && (
+        <div
+          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity duration-300 ${
+            showControls ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          {/* Barra de progreso */}
+          <div className="mb-2">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={progress || 0}
+              onChange={handleSeek}
+              className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer"
+              style={{
+                background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #4b5563 ${progress}%, #4b5563 100%)`,
+              }}
+            />
+          </div>
+          {/* Controles principales */}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              {/* Botón reproducir/pausar */}
               <button
-                onClick={toggleMute}
+                onClick={togglePlay}
                 className="text-white focus:outline-none hover:text-blue-400"
-                aria-label={isMuted ? "Activar sonido" : "Silenciar"}
+                aria-label={isPlaying ? "Pausar" : "Reproducir"}
               >
-                {isMuted ? (
+                {isPlaying ? (
                   <svg
-                    className="w-6 h-6"
+                    className="w-8 h-8"
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M3.63 3.63a.996.996 0 0 0 0 1.41L7.29 8.7 7 9H4c-.55 0-1 .45-1 1v4c0 .55.45 1 1 1h3l3.29 3.29c.63.63 1.71.18 1.71-.71v-4.17l4.18 4.18c-.49.37-1.02.68-1.6.91-.36.15-.58.53-.58.92 0 .72.73 1.18 1.39.91.8-.33 1.55-.77 2.22-1.31l1.34 1.34a.996.996 0 1 0 1.41-1.41L5.05 3.63c-.39-.39-1.02-.39-1.42 0zM19 12c0 .82-.15 1.61-.41 2.34l1.53 1.53c.56-1.17.88-2.48.88-3.87 0-3.83-2.4-7.11-5.78-8.4-.59-.23-1.22.23-1.22.86v.19c0 .38.25.71.61.85C17.18 6.54 19 9.06 19 12zm-8.71-6.29l-.17.17L12 7.76V6.41c0-.89-1.08-1.33-1.71-.7zM16.5 12A4.5 4.5 0 0 0 14 7.97v1.79l2.48 2.48c.01-.08.02-.16.02-.24z" />
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                   </svg>
                 ) : (
                   <svg
-                    className="w-6 h-6"
+                    className="w-8 h-8"
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                    <path d="M8 5v14l11-7z" />
                   </svg>
                 )}
               </button>
-
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={volume}
-                onChange={handleVolumeChange}
-                className="w-16 md:w-24 h-2 bg-gray-700 rounded-full appearance-none cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
-                    volume * 100
-                  }%, #4b5563 ${volume * 100}%, #4b5563 100%)`,
-                }}
-              />
+              {/* Control de volumen */}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={toggleMute}
+                  className="text-white focus:outline-none hover:text-blue-400"
+                  aria-label={isMuted ? "Activar sonido" : "Silenciar"}
+                >
+                  {isMuted ? (
+                    <svg
+                      className="w-6 h-6"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M3.63 3.63a.996.996 0 0 0 0 1.41L7.29 8.7 7 9H4c-.55 0-1 .45-1 1v4c0 .55.45 1 1 1h3l3.29 3.29c.63.63 1.71.18 1.71-.71v-4.17l4.18 4.18c-.49.37-1.02.68-1.6.91-.36.15-.58.53-.58.92 0 .72.73 1.18 1.39.91.8-.33 1.55-.77 2.22-1.31l1.34 1.34a.996.996 0 1 0 1.41-1.41L5.05 3.63c-.39-.39-1.02-.39-1.42 0zM19 12c0 .82-.15 1.61-.41 2.34l1.53 1.53c.56-1.17.88-2.48.88-3.87 0-3.83-2.4-7.11-5.78-8.4-.59-.23-1.22.23-1.22.86v.19c0 .38.25.71.61.85C17.18 6.54 19 9.06 19 12zm-8.71-6.29l-.17.17L12 7.76V6.41c0-.89-1.08-1.33-1.71-.7zM16.5 12A4.5 4.5 0 0 0 14 7.97v1.79l2.48 2.48c.01-.08.02-.16.02-.24z" />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-6 h-6"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                    </svg>
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  className="w-16 md:w-24 h-2 bg-gray-700 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
+                      volume * 100
+                    }%, #4b5563 ${volume * 100}%, #4b5563 100%)`,
+                  }}
+                />
+              </div>
+              {/* Tiempo */}
+              <div className="text-white text-sm hidden sm:block">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </div>
             </div>
-
-            {/* Tiempo */}
-            <div className="text-white text-sm hidden sm:block">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </div>
+            {/* Botón de pantalla completa */}
+            <button
+              onClick={toggleFullscreen}
+              className="text-white focus:outline-none hover:text-blue-400"
+              aria-label="Pantalla completa"
+            >
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+              </svg>
+            </button>
           </div>
-
-          {/* Botón de pantalla completa */}
-          <button
-            onClick={toggleFullscreen}
-            className="text-white focus:outline-none hover:text-blue-400"
-            aria-label="Pantalla completa"
-          >
-            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-            </svg>
-          </button>
         </div>
-      </div>
+      )}
 
-      {/* Botón central de reproducción cuando está pausado */}
-      {!isPlaying && (
+      {/* Botón central de reproducción cuando está pausado - solo mostrar si no se usa iframe */}
+      {!isPlaying && !useIframe && (
         <div className="absolute inset-0 flex items-center justify-center">
           <button
             onClick={togglePlay}
@@ -606,6 +625,21 @@ function ImprovedVideoPlayer(props) {
               <path d="M8 5v14l11-7z" />
             </svg>
           </button>
+        </div>
+      )}
+
+      {/* Información de depuración - solo visible en desarrollo */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 p-2 text-xs text-white">
+          <div>
+            URL: {localStreamUrl ? localStreamUrl.split("?")[0] : "No URL"}
+          </div>
+          <div>
+            Token:{" "}
+            {localStreamUrl && localStreamUrl.includes("auth=")
+              ? "✅ Presente"
+              : "❌ Ausente"}
+          </div>
         </div>
       )}
     </div>

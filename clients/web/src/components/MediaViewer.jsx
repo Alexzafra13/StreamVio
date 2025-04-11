@@ -20,36 +20,38 @@ function MediaViewer({ mediaId }) {
   // Cargar información del medio y opciones de streaming
   useEffect(() => {
     const fetchMedia = async () => {
-      if (!mediaId) return;
-
+      if (!mediaId) {
+        console.error("MediaViewer: No se proporcionó mediaId");
+        return;
+      }
       try {
         setLoading(true);
         setError(null);
-
         // Obtener token de autenticación
         const token = localStorage.getItem("streamvio_token");
         if (!token) {
+          console.error("MediaViewer: No hay token de autenticación");
           throw new Error("No hay sesión activa");
         }
-
         console.log(`MediaViewer: Obteniendo información del medio ${mediaId}`);
 
         // Obtener información del medio
+        console.log(
+          `MediaViewer: URL de la API: ${API_URL}/api/media/${mediaId}`
+        );
         const response = await axios.get(`${API_URL}/api/media/${mediaId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-
         console.log("MediaViewer: Información obtenida:", response.data);
         setMedia(response.data);
 
-        // Generar URL para streaming usando el helper (asegura formato consistente)
+        // Generar URL para streaming usando el helper
         const streamUrl = authUrlHelper.getStreamUrl(mediaId);
-        console.log("URL de streaming generada:", streamUrl?.split("?")[0]); // Log seguro
+        console.log("URL de streaming completa:", streamUrl); // Log completo para depuración
 
         // Verificar disponibilidad de HLS
         let hlsAvailable = false;
         // Aquí podrías añadir lógica para verificar si hay HLS disponible
-
         setStreamingOptions({
           direct: {
             available: true,
@@ -62,11 +64,10 @@ function MediaViewer({ mediaId }) {
             type: "application/vnd.apple.mpegurl",
           },
         });
-
         setLoading(false);
       } catch (err) {
         console.error("Error al cargar medio:", err);
-
+        console.error("Detalles del error:", err.response?.data || err.message);
         // Manejar diferentes tipos de errores
         if (err.response && err.response.status === 401) {
           setError(

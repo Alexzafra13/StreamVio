@@ -65,11 +65,23 @@ export async function getStaticPaths() {
         return;
       }
       
-      const mediaId = document.location.pathname.split('/').pop();
-      console.log("ID de medio a cargar:", mediaId);
+      // CAMBIO: Obtener ID con mejor manejo de errores
+      let mediaId;
+      try {
+        mediaId = window.location.pathname.split('/').pop();
+        // Verificar que es un número válido
+        if (!mediaId || isNaN(parseInt(mediaId))) {
+          throw new Error(`ID inválido: ${mediaId}`);
+        }
+        console.log("ID de medio a cargar:", mediaId);
+      } catch (pathError) {
+        console.error("Error al obtener ID del medio:", pathError);
+        document.getElementById('media-title').textContent = 'Error: ID de medio inválido';
+        return;
+      }
       
       try {
-        // Cargar datos del medio
+        // Cargar datos del medio DIRECTAMENTE
         const response = await fetch(`${API_URL}/api/media/${mediaId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -78,16 +90,17 @@ export async function getStaticPaths() {
         
         if (!response.ok) {
           if (response.status === 401) {
+            console.error("Error de autenticación:", await response.text());
             alert("Sesión expirada o inválida. Por favor inicia sesión de nuevo.");
             localStorage.removeItem('streamvio_token');
             window.location.href = '/auth';
             return;
           }
-          throw new Error(`Error al cargar datos del medio: ${response.status}`);
+          throw new Error(`Error ${response.status}: ${await response.text()}`);
         }
         
         const mediaData = await response.json();
-        console.log("Datos de medio cargados correctamente");
+        console.log("Datos de medio cargados correctamente:", mediaData);
         
         // Actualizar UI con datos básicos
         document.getElementById('media-title').textContent = mediaData.title || 'Sin título';
@@ -141,13 +154,20 @@ export async function getStaticPaths() {
         
         // Actualizar título de la página
         document.title = `${mediaData.title || 'Contenido'} | StreamVio`;
+
+        // CAMBIO: Forzar la carga del componente MediaViewer
+        const mediaViewer = document.querySelector('media-viewer');
+        if (mediaViewer) {
+          mediaViewer.setAttribute('mediaid', mediaId);
+        }
       } catch (error) {
         console.error('Error al cargar datos del medio:', error);
-        document.getElementById('media-title').textContent = 'Error al cargar información';
+        document.getElementById('media-title').textContent = `Error al cargar información: ${error.message}`;
         document.getElementById('media-type').textContent = 'No se pudo obtener la información del medio';
       }
     } catch (error) {
       console.error("Error en la inicialización:", error);
+      document.getElementById('media-title').textContent = 'Error: ' + error.message;
     }
   });
   
