@@ -1,5 +1,5 @@
 // Configuración unificada para API
-// ya no necesitamos un puerto separado ya que todo se sirve desde el mismo origen
+// Versión actualizada para asegurar el uso de la URL correcta
 
 const getApiUrl = () => {
   try {
@@ -15,17 +15,18 @@ const getApiUrl = () => {
 
     // En el navegador, usar la misma base URL que la aplicación
     if (typeof window !== "undefined" && window.location) {
-      console.log("Usando window.location.origin:", window.location.origin);
-      return window.location.origin;
+      const origin = window.location.origin;
+      console.log("Usando window.location.origin:", origin);
+      return origin;
     }
 
     // Valor por defecto para entorno de servidor o SSR
-    console.log("Usando valor por defecto: http://localhost:45000");
-    return "http://localhost:45000";
+    console.log("Usando valor por defecto: http://192.168.1.100:45000");
+    return "http://192.168.1.100:45000";
   } catch (error) {
     console.error("Error al configurar API_URL:", error);
-    // Fallback seguro
-    return "http://localhost:45000";
+    // Fallback seguro usando la IP específica
+    return "http://192.168.1.100:45000";
   }
 };
 
@@ -58,7 +59,7 @@ if (!config || typeof config !== "object") {
   console.error("Error: La configuración no es un objeto válido", config);
   // Proporcionar un objeto de configuración predeterminado seguro
   config = {
-    API_URL: "http://localhost:45000",
+    API_URL: "http://192.168.1.100:45000",
     endpoints: {
       // endpoints básicos
       auth: "/api/auth",
