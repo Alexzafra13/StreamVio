@@ -1,7 +1,14 @@
-// clients/web/src/utils/authUrlHelper.js - Versión unificada
+// clients/web/src/utils/authUrlHelper.js - Versión optimizada para IP específica
 import apiConfig from "../config/api";
 
 const API_URL = apiConfig.API_URL;
+
+// Verificar que API_URL está configurado correctamente
+if (!API_URL) {
+  console.error("ERROR CRÍTICO: API_URL no está configurado correctamente");
+}
+
+console.log("authUrlHelper inicializado con API_URL:", API_URL);
 
 /**
  * Módulo para manejar URLs con autenticación
@@ -15,6 +22,12 @@ const authUrlHelper = {
   addAuthToken(url) {
     // Obtener token del localStorage
     const token = localStorage.getItem("streamvio_token");
+
+    console.log(
+      "Token recuperado:",
+      token ? `${token.substring(0, 10)}...` : "null"
+    );
+
     if (!token) {
       console.warn("No se encontró token de autenticación para añadir a URL");
       return url;
@@ -25,7 +38,13 @@ const authUrlHelper = {
     const separator = hasParams ? "&" : "?";
 
     // Añadir el token como parámetro de consulta
-    return `${url}${separator}auth=${encodeURIComponent(token)}`;
+    const finalUrl = `${url}${separator}auth=${encodeURIComponent(token)}`;
+    console.log(
+      "URL con token añadido:",
+      finalUrl.split("auth=")[0] + "auth=***"
+    );
+
+    return finalUrl;
   },
 
   /**
@@ -34,6 +53,8 @@ const authUrlHelper = {
    * @returns {string} URL de streaming con autenticación
    */
   getStreamUrl(mediaId) {
+    console.log("getStreamUrl llamado con mediaId:", mediaId);
+
     if (!mediaId) {
       console.error("MediaID no proporcionado a getStreamUrl");
       return null;
@@ -46,11 +67,19 @@ const authUrlHelper = {
     }
 
     // URL para streaming directo con token en query param
+    // Usar la URL completa para asegurar que sea correcta
     const baseUrl = `${API_URL}/api/media/${mediaId}/stream`;
     console.log("URL base de streaming:", baseUrl);
 
     const finalUrl = this.addAuthToken(baseUrl);
-    console.log("URL final de streaming con token:", finalUrl);
+
+    // Verificar que la URL es válida
+    try {
+      new URL(finalUrl);
+      console.log("URL de streaming válida generada");
+    } catch (e) {
+      console.error("URL de streaming inválida:", finalUrl, e);
+    }
 
     return finalUrl;
   },
@@ -103,9 +132,6 @@ const authUrlHelper = {
     );
   },
 };
-
-// Añadir logs para depuración
-console.log("authUrlHelper inicializado con API_URL:", API_URL);
 
 // Exportar solo el objeto por defecto
 export default authUrlHelper;
