@@ -1,13 +1,14 @@
-// clients/web/src/components/ImprovedVideoPlayer.jsx
+// clients/web/src/components/ImprovedVideoPlayer.jsx - Versión optimizada
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
+import authUrlHelper from "../utils/authUrlHelper";
 
 const API_URL = apiConfig.API_URL;
 
 /**
  * Reproductor de video mejorado con controles personalizados
- * Versión actualizada con mejor manejo de rangos y streaming
+ * Versión actualizada con mejor manejo de tokens
  */
 function ImprovedVideoPlayer(props) {
   const { videoId, autoPlay = false, streamUrl, mediaInfo } = props;
@@ -74,35 +75,18 @@ function ImprovedVideoPlayer(props) {
         const videoData = await fetchVideoInfo(videoId);
         setVideo(videoData);
 
-        // 2. Generar la URL de streaming correcta con autenticación
-        const token = localStorage.getItem("streamvio_token");
-        if (!token) {
-          throw new Error("No hay token de autenticación disponible");
+        // 2. Generar URL de streaming usando el helper de autenticación
+        const streamingUrl = authUrlHelper.getStreamUrl(videoId);
+
+        if (!streamingUrl) {
+          throw new Error("No se pudo generar la URL de streaming");
         }
 
-        // 3. Decidir el método de streaming basado en la información disponible
-        let streamingUrl;
-
-        // Si HLS está disponible, usarlo preferentemente
-        if (videoData.has_hls) {
-          const fileName = videoData.file_path
-            ?.split(/[\/\\]/)
-            .pop()
-            .split(".")[0];
-          streamingUrl = `${API_URL}/data/transcoded/${fileName}_hls/master.m3u8?auth=${token}`;
-          console.log("Usando streaming HLS:", streamingUrl);
-        } else {
-          // Streaming directo como fallback
-          streamingUrl = `${API_URL}/api/media/${videoId}/stream?auth=${encodeURIComponent(
-            token
-          )}`;
-          console.log("Usando streaming directo:", streamingUrl.split("?")[0]);
-        }
-
+        console.log("URL de streaming generada:", streamingUrl.split("?")[0]);
         setLocalStreamUrl(streamingUrl);
         setLoading(false);
 
-        // 4. Configurar guardado periódico de progreso
+        // 3. Configurar guardado periódico de progreso
         setupProgressTracking();
       } catch (err) {
         console.error("Error al configurar reproductor:", err);
@@ -241,13 +225,11 @@ function ImprovedVideoPlayer(props) {
 
       // Esperar un momento y reintentar con una nueva URL
       setTimeout(() => {
-        const token = localStorage.getItem("streamvio_token");
-        if (token) {
-          // Reconstruir URL con un timestamp para evitar cachés
-          const timestamp = new Date().getTime();
-          const newUrl = `${API_URL}/api/media/${videoId}/stream?auth=${encodeURIComponent(
-            token
-          )}&_t=${timestamp}`;
+        // Generar una nueva URL con un timestamp para evitar cachés
+        const newUrl = authUrlHelper.getStreamUrl(videoId);
+
+        if (newUrl) {
+          console.log("Reintentando con nueva URL:", newUrl.split("?")[0]);
           setLocalStreamUrl(newUrl);
           setError(null);
         }
@@ -457,18 +439,12 @@ function ImprovedVideoPlayer(props) {
               setLoading(true);
               retryCountRef.current = 0;
 
-              // Regenerar URL de streaming con nuevo token
-              const token = localStorage.getItem("streamvio_token");
-              if (token) {
-                const timestamp = new Date().getTime();
-                const newUrl = `${API_URL}/api/media/${videoId}/stream?auth=${encodeURIComponent(
-                  token
-                )}&_t=${timestamp}`;
-                setTimeout(() => {
-                  setLocalStreamUrl(newUrl);
-                  setLoading(false);
-                }, 1000);
-              }
+              // Regenerar URL de streaming
+              const newUrl = authUrlHelper.getStreamUrl(videoId);
+              setTimeout(() => {
+                setLocalStreamUrl(newUrl);
+                setLoading(false);
+              }, 1000);
             }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded focus:outline-none"
           >
@@ -493,13 +469,7 @@ function ImprovedVideoPlayer(props) {
         ref={videoRef}
         className="w-full h-auto"
         src={localStreamUrl}
-        poster={
-          video?.thumbnail_path
-            ? `${API_URL}/api/media/${videoId}/thumbnail?auth=${encodeURIComponent(
-                localStorage.getItem("streamvio_token")
-              )}`
-            : undefined
-        }
+        poster={videoId ? authUrlHelper.getThumbnailUrl(videoId) : undefined}
         controls={false}
         onPlay={handleVideoPlay}
         onPause={handleVideoPause}

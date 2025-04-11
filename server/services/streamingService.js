@@ -1,4 +1,4 @@
-// server/services/streamingService.js
+// server/services/streamingService.js - Versión optimizada
 const fs = require("fs");
 const path = require("path");
 const { promisify } = require("util");
@@ -80,7 +80,7 @@ class StreamingService {
         );
       }
 
-      // 2. Verificar permisos de acceso
+      // 2. Verificar permisos de acceso (redundante ya que el middleware ya lo hace, pero por si acaso)
       const hasAccess = await this.checkAccess(
         userData.id,
         mediaId,

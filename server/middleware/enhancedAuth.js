@@ -1,45 +1,31 @@
-// server/middleware/enhancedAuth.js - VERSIÓN CORREGIDA
+// server/middleware/enhancedAuth.js - Versión optimizada
 const jwt = require("jsonwebtoken");
 const settings = require("../config/settings");
 const db = require("../config/database");
 
 /**
  * Middleware de autenticación unificado que maneja tanto tokens JWT estándar
- * como tokens de streaming específicos para acceso a medios
+ * como tokens en parámetros de consulta para streaming y recursos estáticos
  */
 const enhancedAuthMiddleware = async (req, res, next) => {
   let token = null;
-  let tokenType = null;
-  let streamingMediaId = null;
+  let tokenSource = null;
 
-  // 1. Extraer token de todas las fuentes posibles
-  // Prioridad: Headers > Query params > Cookies
+  // 1. Extraer token con orden de prioridad claro
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer ")
   ) {
+    // Prioridad 1: Header de autorización
     token = req.headers.authorization.split(" ")[1];
-    tokenType = "bearer";
+    tokenSource = "header";
   } else if (req.query.auth) {
+    // Prioridad 2: Parámetro de consulta 'auth'
     token = req.query.auth;
-    tokenType = "query";
-  } else if (req.query.token) {
-    token = req.query.token;
-    tokenType = "stream";
-
-    // Intentar extraer el ID del medio de la URL para streaming
-    const mediaIdMatch = req.path.match(
-      /\/media\/(\d+)\/stream|\/streaming\/(\d+)/
-    );
-    if (mediaIdMatch) {
-      streamingMediaId = mediaIdMatch[1] || mediaIdMatch[2];
-    }
-  } else if (req.headers["x-stream-token"] || req.headers["stream-token"]) {
-    token = req.headers["x-stream-token"] || req.headers["stream-token"];
-    tokenType = "stream";
+    tokenSource = "query";
   }
 
-  // 2. Si no hay ningún token, devolver error de autenticación
+  // 2. Validar token
   if (!token) {
     console.log(
       `Autenticación fallida: No se proporcionó token para ${req.path}`
@@ -47,13 +33,10 @@ const enhancedAuthMiddleware = async (req, res, next) => {
     return res.status(401).json({
       error: "No autorizado",
       message: "Se requiere autenticación para acceder a este recurso",
-      code: "NO_TOKEN",
     });
   }
 
   try {
-    console.log(`Validando token para ruta ${req.path}`);
-
     // Verificar si el token ha sido enviado con 'Bearer ' por accidente en query param
     if (token.startsWith("Bearer ")) {
       token = token.substring(7);
@@ -64,44 +47,34 @@ const enhancedAuthMiddleware = async (req, res, next) => {
       settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key";
     const decoded = jwt.verify(token, jwtSecret);
 
-    // Log exitoso
-    console.log(
-      `Token válido para usuario ${decoded.id} (${
-        decoded.username || "anónimo"
-      })`
-    );
+    // Log exitoso (pero no para rutas de streaming/thumbnails para evitar llenar logs)
+    if (!req.path.includes("/stream") && !req.path.includes("/thumbnail")) {
+      console.log(
+        `Token válido para usuario ${decoded.id} (${
+          decoded.username || "anónimo"
+        }) - Fuente: ${tokenSource}`
+      );
+    }
 
     // 4. Añadir información del usuario al request para uso en controladores
     req.user = decoded;
     req.token = token;
 
-    // 5. Registrar actividad (sólo para APIs principales, no para streaming/thumbnails)
+    // 5. Si es una solicitud de streaming, verificar acceso al medio específico
     if (
-      req.path.startsWith("/api/") &&
-      !req.path.includes("/stream") &&
-      !req.path.includes("/thumbnail")
+      (req.path.includes("/stream") || req.path.includes("/thumbnail")) &&
+      req.params.id
     ) {
-      console.log(
-        `Usuario ${decoded.id} (${decoded.username || "anónimo"}): ${
-          req.method
-        } ${req.originalUrl}`
-      );
-    }
-
-    // 6. Si es una petición específica de streaming y tenemos el ID del medio,
-    // verificar explícitamente los permisos del usuario para este medio
-    if (tokenType === "stream" && streamingMediaId) {
       try {
-        // Verificar si el usuario tiene acceso a este medio específico
-        const hasAccess = await verifyMediaAccess(decoded.id, streamingMediaId);
+        const mediaId = req.params.id;
+        const hasAccess = await verifyMediaAccess(decoded.id, mediaId);
         if (!hasAccess) {
-          console.error(
-            `Acceso denegado: Usuario ${decoded.id} no tiene permisos para el medio ${streamingMediaId}`
+          console.warn(
+            `Acceso denegado: Usuario ${decoded.id} no tiene permisos para el medio ${mediaId}`
           );
           return res.status(403).json({
             error: "Acceso denegado",
             message: "No tienes permisos para acceder a este contenido",
-            code: "MEDIA_ACCESS_DENIED",
           });
         }
       } catch (accessError) {
@@ -115,22 +88,23 @@ const enhancedAuthMiddleware = async (req, res, next) => {
     // Continuar con la solicitud
     return next();
   } catch (error) {
-    console.error("Error de autenticación:", error.message);
+    console.error(
+      `Error de autenticación para ruta ${req.path}:`,
+      error.message
+    );
 
     // Manejar diferentes tipos de errores de token
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
         error: "Token expirado",
         message: "La sesión ha expirado. Por favor, inicie sesión nuevamente.",
-        code: "TOKEN_EXPIRED",
       });
     }
 
     // Token inválido por otras razones
     return res.status(401).json({
       error: "Token inválido",
-      message: "No autorizado - token inválido",
-      code: "TOKEN_INVALID",
+      message: "Credenciales de autenticación inválidas",
     });
   }
 };
@@ -148,7 +122,7 @@ async function verifyMediaAccess(userId, mediaId) {
       userId,
     ]);
     if (user && user.is_admin === 1) {
-      return true; // Los administradores tienen acceso a todas los medios
+      return true; // Los administradores tienen acceso a todos los medios
     }
 
     // Obtener información del medio
@@ -162,24 +136,23 @@ async function verifyMediaAccess(userId, mediaId) {
       return false; // El medio no existe
     }
 
-    // Verificar si el usuario tiene acceso a la biblioteca del medio
-    if (mediaItem.library_id) {
-      const access = await db.asyncGet(
-        "SELECT has_access FROM user_library_access WHERE user_id = ? AND library_id = ?",
-        [userId, mediaItem.library_id]
-      );
-
-      // Si hay un registro explícito de acceso, comprobar su valor
-      if (access) {
-        return access.has_access === 1;
-      }
-
-      // Si no hay un registro explícito, permitir acceso por defecto
-      // (este comportamiento se puede ajustar según los requisitos de seguridad)
+    // Si el medio no pertenece a ninguna biblioteca, permitir acceso
+    if (!mediaItem.library_id) {
       return true;
     }
 
-    // Si el medio no pertenece a ninguna biblioteca, permitir acceso por defecto
+    // Verificar si el usuario tiene acceso a la biblioteca del medio
+    const access = await db.asyncGet(
+      "SELECT has_access FROM user_library_access WHERE user_id = ? AND library_id = ?",
+      [userId, mediaItem.library_id]
+    );
+
+    // Si hay un registro explícito de acceso, comprobar su valor
+    if (access) {
+      return access.has_access === 1;
+    }
+
+    // Si no hay un registro explícito para el usuario, permitir acceso por defecto
     return true;
   } catch (error) {
     console.error(

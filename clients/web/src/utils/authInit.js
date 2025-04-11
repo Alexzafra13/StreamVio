@@ -1,4 +1,4 @@
-// clients/web/src/utils/authInit.js
+// clients/web/src/utils/authInit.js - Versión optimizada
 import axios from "axios";
 import authUrlHelper from "./authUrlHelper";
 
@@ -14,42 +14,44 @@ const initAuth = () => {
   // 1. Configurar axios para incluir el token en todas las peticiones
   authUrlHelper.setupAxiosAuth(axios);
 
-  // 2. Sobrescribir fetch nativo para incluir el token
+  // 2. Sobrescribir fetch nativo para incluir el token de manera coherente
   const originalFetch = window.fetch;
   window.fetch = function (resource, options = {}) {
-    // Solo modificar solicitudes a nuestra API
+    // Obtener token de localStorage
     const token = localStorage.getItem("streamvio_token");
+    if (!token) {
+      return originalFetch.call(this, resource, options);
+    }
 
-    if (
-      token &&
+    // Determinar si estamos accediendo a una API o a un recurso
+    const isApiRequest =
+      typeof resource === "string" && resource.includes("/api/");
+    const isResourceRequest =
       typeof resource === "string" &&
-      (resource.startsWith("/api/") || resource.includes("/data/"))
-    ) {
-      // Si no hay headers, inicializar
-      options.headers = options.headers || {};
+      (resource.includes("/stream") ||
+        resource.includes("/thumbnail") ||
+        resource.includes("/data/"));
 
-      // Si no existe Authorization header, y existe token, añadirlo
+    if (!isApiRequest && !isResourceRequest) {
+      return originalFetch.call(this, resource, options);
+    }
+
+    // Tratar APIs y recursos de forma distinta
+    if (isApiRequest && !isResourceRequest) {
+      // Para APIs REST: usar Bearer token en headers
+      options.headers = options.headers || {};
       if (!options.headers.Authorization && !options.headers.authorization) {
         options.headers.Authorization = `Bearer ${token}`;
       }
-
-      // Para recursos que no aceptan encabezados (como medios o miniaturas)
-      // Añadir el token como parámetro de consulta
-      if (
-        resource.includes("/stream") ||
-        resource.includes("/thumbnail") ||
-        resource.includes("/data/")
-      ) {
-        // Verificar si ya hay parámetros en la URL
-        const hasParams = resource.includes("?");
-        const separator = hasParams ? "&" : "?";
-
-        // Añadir el token como parámetro
-        resource = `${resource}${separator}auth=${token}`;
-      }
+    } else if (isResourceRequest) {
+      // Para recursos: añadir token como query param
+      // Verificar si ya hay parámetros en la URL
+      const hasParams = resource.includes("?");
+      const separator = hasParams ? "&" : "?";
+      resource = `${resource}${separator}auth=${token}`;
     }
 
-    // Continuar con el fetch original
+    // Continuar con el fetch original con los cambios aplicados
     return originalFetch.call(this, resource, options);
   };
 

@@ -1,8 +1,9 @@
-// clients/web/src/components/MediaViewer.jsx
+// clients/web/src/components/MediaViewer.jsx - Versión optimizada
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import apiConfig from "../config/api";
 import ImprovedVideoPlayer from "./ImprovedVideoPlayer";
+import authUrlHelper from "../utils/authUrlHelper";
 
 const API_URL = apiConfig.API_URL;
 
@@ -41,16 +42,13 @@ function MediaViewer({ mediaId }) {
         console.log("MediaViewer: Información obtenida:", response.data);
         setMedia(response.data);
 
+        // Generar URL para streaming usando el helper (asegura formato consistente)
+        const streamUrl = authUrlHelper.getStreamUrl(mediaId);
+        console.log("URL de streaming generada:", streamUrl?.split("?")[0]); // Log seguro
+
         // Verificar disponibilidad de HLS
         let hlsAvailable = false;
-
-        // Configurar opciones de streaming
-        // Generar URL con token para streaming directo
-        const streamUrl = `${API_URL}/api/media/${mediaId}/stream?auth=${encodeURIComponent(
-          token
-        )}`;
-
-        console.log("URL de streaming generada:", streamUrl.split("?")[0]); // Log seguro
+        // Aquí podrías añadir lógica para verificar si hay HLS disponible
 
         setStreamingOptions({
           direct: {
@@ -148,17 +146,27 @@ function MediaViewer({ mediaId }) {
 
   // Renderizado según el tipo de medio
   const renderContent = () => {
-    const token = localStorage.getItem("streamvio_token");
-
     switch (media.type) {
       case "movie":
       case "episode":
-        // Obtener la URL de streaming directamente
-        const streamUrl =
-          streamingOptions?.direct?.url ||
-          `${API_URL}/api/media/${mediaId}/stream?auth=${encodeURIComponent(
-            token
-          )}`;
+        // Usar la URL de streaming de las opciones
+        const streamUrl = streamingOptions?.direct?.url;
+
+        if (!streamUrl) {
+          return (
+            <div className="bg-red-900 bg-opacity-50 rounded-lg p-8 text-center">
+              <p className="text-red-300 mb-4">
+                No se pudo obtener la URL de streaming
+              </p>
+              <button
+                onClick={() => setRetryCount((current) => current + 1)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+              >
+                Reintentar
+              </button>
+            </div>
+          );
+        }
 
         return (
           <ImprovedVideoPlayer
@@ -169,13 +177,12 @@ function MediaViewer({ mediaId }) {
         );
 
       case "photo":
-        // Renderizar imagen con token directo
+        // Renderizar imagen con token
+        const thumbnailUrl = authUrlHelper.getThumbnailUrl(mediaId);
         return (
           <div className="bg-black rounded-lg flex items-center justify-center">
             <img
-              src={`${API_URL}/api/media/${mediaId}/thumbnail?auth=${encodeURIComponent(
-                token
-              )}`}
+              src={thumbnailUrl}
               alt={media.title || "Imagen"}
               className="max-w-full max-h-[80vh] object-contain"
               onError={(e) => {
@@ -186,15 +193,16 @@ function MediaViewer({ mediaId }) {
         );
 
       case "music":
-        // Renderizar reproductor de audio con token directo
+        // Renderizar reproductor de audio
+        const audioUrl = authUrlHelper.getStreamUrl(mediaId);
+        const audioThumbnailUrl = authUrlHelper.getThumbnailUrl(mediaId);
+
         return (
           <div className="bg-gray-800 rounded-lg p-6">
             <div className="flex flex-col items-center">
               <div className="w-48 h-48 bg-gray-700 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
                 <img
-                  src={`${API_URL}/api/media/${mediaId}/thumbnail?auth=${encodeURIComponent(
-                    token
-                  )}`}
+                  src={audioThumbnailUrl}
                   alt={media.title || "Portada"}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -208,13 +216,7 @@ function MediaViewer({ mediaId }) {
                 <p className="text-gray-400 mb-4">{media.artist}</p>
               )}
 
-              <audio
-                controls
-                className="w-full mt-4"
-                src={`${API_URL}/api/media/${mediaId}/stream?auth=${encodeURIComponent(
-                  token
-                )}`}
-              >
+              <audio controls className="w-full mt-4" src={audioUrl}>
                 Tu navegador no soporta el elemento de audio.
               </audio>
             </div>

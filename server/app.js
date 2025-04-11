@@ -17,7 +17,8 @@ const adminRoutes = require("./routes/admin");
 const transcodingRoutes = require("./routes/transcoding");
 const metadataRoutes = require("./routes/metadata");
 const filesystemRoutes = require("./routes/filesystem");
-const streamingRoutes = require("./routes/streaming");
+// COMMENTED OUT: Ya no necesitamos esto ya que usamos el servicio en mediaRoutes
+// const streamingRoutes = require("./routes/streaming");
 const setupRoutes = require("./routes/setup");
 const userHistoryRoutes = require("./routes/user-history");
 
@@ -186,7 +187,8 @@ async function setupApp() {
   app.use("/api/transcoding", enhancedAuthMiddleware, transcodingRoutes);
   app.use("/api/metadata", enhancedAuthMiddleware, metadataRoutes);
   app.use("/api/filesystem", enhancedAuthMiddleware, filesystemRoutes);
-  app.use("/api/streaming", enhancedAuthMiddleware, streamingRoutes);
+  // COMMENTED OUT: Eliminamos la ruta de streaming ya que está integrada en mediaRoutes
+  // app.use("/api/streaming", enhancedAuthMiddleware, streamingRoutes);
   app.use("/api/user", enhancedAuthMiddleware, userHistoryRoutes);
 
   // Ruta para verificar si un usuario es administrador

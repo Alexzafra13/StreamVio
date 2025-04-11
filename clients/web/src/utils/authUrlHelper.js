@@ -1,4 +1,4 @@
-// clients/web/src/utils/authUrlHelper.js
+// clients/web/src/utils/authUrlHelper.js - Versión optimizada
 import apiConfig from "../config/api";
 
 const API_URL = apiConfig.API_URL;
@@ -6,19 +6,15 @@ const API_URL = apiConfig.API_URL;
 /**
  * Añade el token de autenticación a una URL
  * @param {string} url - La URL base a la que añadir el token
- * @param {Object} options - Opciones adicionales
- * @param {boolean} options.forceRefresh - Si se debe forzar la regeneración del token desde localStorage
  * @returns {string} URL con token de autenticación añadido
  */
-export const addAuthToken = (url, options = {}) => {
+export const addAuthToken = (url) => {
   // Obtener token del localStorage
   const token = localStorage.getItem("streamvio_token");
   if (!token) {
-    console.error("No se encontró token de autenticación");
+    console.warn("No se encontró token de autenticación para añadir a URL");
     return url;
   }
-
-  console.log("Añadiendo token a URL:", url.split("?")[0]); // Log seguro sin mostrar el token completo
 
   // Determinar si la URL ya tiene parámetros
   const hasParams = url.includes("?");
@@ -34,7 +30,7 @@ export const addAuthToken = (url, options = {}) => {
  * @param {string} streamType - Tipo de streaming ('direct' o 'hls')
  * @returns {string} URL de streaming con autenticación
  */
-export const getStreamUrl = (mediaId, streamType = "direct") => {
+export const getStreamUrl = (mediaId) => {
   if (!mediaId) {
     console.error("MediaID no proporcionado a getStreamUrl");
     return null;
@@ -46,17 +42,8 @@ export const getStreamUrl = (mediaId, streamType = "direct") => {
     return null;
   }
 
-  console.log(
-    `Generando URL de streaming para medio ${mediaId}, tipo: ${streamType}`
-  );
-
-  // URL para streaming directo
-  const streamUrl = `${API_URL}/api/media/${mediaId}/stream?auth=${encodeURIComponent(
-    token
-  )}`;
-  console.log("URL de stream generada:", streamUrl.split("?")[0]);
-
-  return streamUrl;
+  // URL para streaming directo con token en query param
+  return addAuthToken(`${API_URL}/api/media/${mediaId}/stream`);
 };
 
 /**
@@ -70,46 +57,7 @@ export const getThumbnailUrl = (mediaId) => {
   const token = localStorage.getItem("streamvio_token");
   if (!token) return "/assets/default-media.jpg";
 
-  return `${API_URL}/api/media/${mediaId}/thumbnail?auth=${encodeURIComponent(
-    token
-  )}`;
-};
-
-/**
- * Obtiene la URL para cualquier API de StreamVio con el token de autenticación
- * @param {string} endpoint - Endpoint de la API (sin la base URL ni `/api/`)
- * @param {Object} params - Parámetros de consulta a añadir
- * @returns {string} URL completa con autenticación
- */
-export const getApiUrl = (endpoint, params = {}) => {
-  // Construir URL base
-  let url = `${API_URL}/api/${endpoint}`;
-
-  // Añadir parámetros de consulta
-  const searchParams = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== null && value !== undefined) {
-      searchParams.append(key, value);
-    }
-  });
-
-  const queryString = searchParams.toString();
-  if (queryString) {
-    url = `${url}?${queryString}`;
-  }
-
-  // Si ya hay parámetros, no usar addAuthToken para evitar doble procesamiento
-  // En su lugar, añadir el token manualmente
-  if (queryString) {
-    const token = localStorage.getItem("streamvio_token");
-    if (token) {
-      url = `${url}&auth=${encodeURIComponent(token)}`;
-    }
-    return url;
-  }
-
-  // Si no hay parámetros, usar addAuthToken
-  return addAuthToken(url);
+  return addAuthToken(`${API_URL}/api/media/${mediaId}/thumbnail`);
 };
 
 /**
@@ -123,19 +71,21 @@ export const setupAxiosAuth = (axiosInstance) => {
     axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
   } else {
     console.warn("No se encontró token para configurar axios");
+    // Limpiar token si no hay ninguno
+    delete axiosInstance.defaults.headers.common["Authorization"];
   }
 
   // Interceptor para renovar el token si es necesario
   axiosInstance.interceptors.response.use(
     (response) => response,
     async (error) => {
-      // Si el error es 401 (No autorizado), podemos intentar renovar el token
+      // Si el error es 401 (No autorizado), podemos redirigir al login
       if (error.response && error.response.status === 401) {
         console.warn("Token expirado o inválido. Redirigiendo a login...");
-        // En una versión futura, aquí podríamos implementar la renovación automática del token
-
-        // Por ahora, redirigir al login
-        window.location.href = "/auth";
+        // Si estamos en el navegador, redirigir al login
+        if (typeof window !== "undefined") {
+          window.location.href = "/auth";
+        }
       }
       return Promise.reject(error);
     }
@@ -146,6 +96,5 @@ export default {
   addAuthToken,
   getStreamUrl,
   getThumbnailUrl,
-  getApiUrl,
   setupAxiosAuth,
 };
