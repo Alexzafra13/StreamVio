@@ -23,7 +23,7 @@ const setupRoutes = require("./routes/setup");
 const userHistoryRoutes = require("./routes/user-history");
 
 // Importar middleware de autenticación (solo una vez)
-const enhancedAuthMiddleware = require("./middleware/enhancedAuth");
+const authMiddleware = require("./middleware/authMiddleware");
 
 // Crear aplicación Express
 const app = express();
@@ -180,54 +180,47 @@ async function setupApp() {
   app.use("/api/auth", authRoutes);
   app.use("/api/setup", setupRoutes);
 
-  // Rutas protegidas con enhancedAuthMiddleware
-  app.use("/api/libraries", enhancedAuthMiddleware, librariesRoutes);
-  app.use("/api/media", enhancedAuthMiddleware, mediaRoutes);
-  app.use("/api/admin", enhancedAuthMiddleware, adminRoutes);
-  app.use("/api/transcoding", enhancedAuthMiddleware, transcodingRoutes);
-  app.use("/api/metadata", enhancedAuthMiddleware, metadataRoutes);
-  app.use("/api/filesystem", enhancedAuthMiddleware, filesystemRoutes);
+  // Rutas protegidas con authMiddleware
+  app.use("/api/libraries", authMiddleware, librariesRoutes);
+  app.use("/api/media", authMiddleware, mediaRoutes);
+  app.use("/api/admin", authMiddleware, adminRoutes);
+  app.use("/api/transcoding", authMiddleware, transcodingRoutes);
+  app.use("/api/metadata", authMiddleware, metadataRoutes);
+  app.use("/api/filesystem", authMiddleware, filesystemRoutes);
   // COMMENTED OUT: Eliminamos la ruta de streaming ya que está integrada en mediaRoutes
-  // app.use("/api/streaming", enhancedAuthMiddleware, streamingRoutes);
-  app.use("/api/user", enhancedAuthMiddleware, userHistoryRoutes);
+  // app.use("/api/streaming", authMiddleware, streamingRoutes);
+  app.use("/api/user", authMiddleware, userHistoryRoutes);
 
   // Ruta para verificar si un usuario es administrador
-  app.get(
-    "/api/auth/verify-admin",
-    enhancedAuthMiddleware,
-    async (req, res) => {
-      try {
-        const userId = req.user.id;
-        const db = require("./config/database");
+  app.get("/api/auth/verify-admin", authMiddleware, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const db = require("./config/database");
 
-        const user = await db.asyncGet(
-          "SELECT is_admin FROM users WHERE id = ?",
-          [userId]
-        );
+      const user = await db.asyncGet(
+        "SELECT is_admin FROM users WHERE id = ?",
+        [userId]
+      );
 
-        if (!user || !user.is_admin) {
-          return res.status(403).json({
-            error: "Acceso denegado",
-            message: "El usuario no tiene privilegios de administrador",
-          });
-        }
-
-        res.json({
-          isAdmin: true,
-          message: "El usuario tiene privilegios de administrador",
-        });
-      } catch (error) {
-        console.error(
-          "Error al verificar privilegios de administrador:",
-          error
-        );
-        res.status(500).json({
-          error: "Error del servidor",
-          message: "Error al verificar privilegios de administrador",
+      if (!user || !user.is_admin) {
+        return res.status(403).json({
+          error: "Acceso denegado",
+          message: "El usuario no tiene privilegios de administrador",
         });
       }
+
+      res.json({
+        isAdmin: true,
+        message: "El usuario tiene privilegios de administrador",
+      });
+    } catch (error) {
+      console.error("Error al verificar privilegios de administrador:", error);
+      res.status(500).json({
+        error: "Error del servidor",
+        message: "Error al verificar privilegios de administrador",
+      });
     }
-  );
+  });
 
   const dataDir = path.join(__dirname, "data");
   if (!fs.existsSync(dataDir)) {
@@ -299,11 +292,7 @@ async function setupApp() {
     };
   };
 
-  app.use(
-    "/data",
-    enhancedAuthMiddleware,
-    serveStaticWithErrorHandling(dataDir)
-  );
+  app.use("/data", authMiddleware, serveStaticWithErrorHandling(dataDir));
 
   const enhancedTranscoder = require("./services/enhancedTranscoderService");
 
