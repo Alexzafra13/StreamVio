@@ -10,19 +10,17 @@ const settings = require("./config/settings");
 require("dotenv").config();
 
 // Importar rutas
-const authRoutes = require("./routes/auth"); // Añadido: importar rutas de autenticación
+const authRoutes = require("./routes/auth");
 const librariesRoutes = require("./routes/libraries");
 const mediaRoutes = require("./routes/media");
 const adminRoutes = require("./routes/admin");
 const transcodingRoutes = require("./routes/transcoding");
 const metadataRoutes = require("./routes/metadata");
 const filesystemRoutes = require("./routes/filesystem");
-// COMMENTED OUT: Ya no necesitamos esto ya que usamos el servicio en mediaRoutes
-// const streamingRoutes = require("./routes/streaming");
 const setupRoutes = require("./routes/setup");
 const userHistoryRoutes = require("./routes/user-history");
 
-// Importar middleware de autenticación (solo una vez)
+// Importar middleware de autenticación
 const authMiddleware = require("./middleware/authMiddleware");
 
 // Crear aplicación Express
@@ -182,52 +180,43 @@ async function setupApp() {
 
   // Rutas protegidas con authMiddleware
   app.use("/api/libraries", authMiddleware, librariesRoutes);
-  app.use("/api/media", authMiddleware, mediaRoutes);
+  app.use("/api/media", mediaRoutes); // Nota: El middleware de auth ya se usa en el router
   app.use("/api/admin", authMiddleware, adminRoutes);
   app.use("/api/transcoding", authMiddleware, transcodingRoutes);
   app.use("/api/metadata", authMiddleware, metadataRoutes);
   app.use("/api/filesystem", authMiddleware, filesystemRoutes);
-  // COMMENTED OUT: Eliminamos la ruta de streaming ya que está integrada en mediaRoutes
-  // app.use("/api/streaming", authMiddleware, streamingRoutes);
   app.use("/api/user", authMiddleware, userHistoryRoutes);
 
   // Ruta para verificar si un usuario es administrador
-  app.get(
-    "/api/auth/verify-admin",
-    authMiddleware, // <-- CAMBIO: enhancedAuthMiddleware a authMiddleware
-    async (req, res) => {
-      try {
-        const userId = req.user.id;
-        const db = require("./config/database");
+  app.get("/api/auth/verify-admin", authMiddleware, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const db = require("./config/database");
 
-        const user = await db.asyncGet(
-          "SELECT is_admin FROM users WHERE id = ?",
-          [userId]
-        );
+      const user = await db.asyncGet(
+        "SELECT is_admin FROM users WHERE id = ?",
+        [userId]
+      );
 
-        if (!user || !user.is_admin) {
-          return res.status(403).json({
-            error: "Acceso denegado",
-            message: "El usuario no tiene privilegios de administrador",
-          });
-        }
-
-        res.json({
-          isAdmin: true,
-          message: "El usuario tiene privilegios de administrador",
-        });
-      } catch (error) {
-        console.error(
-          "Error al verificar privilegios de administrador:",
-          error
-        );
-        res.status(500).json({
-          error: "Error del servidor",
-          message: "Error al verificar privilegios de administrador",
+      if (!user || !user.is_admin) {
+        return res.status(403).json({
+          error: "Acceso denegado",
+          message: "El usuario no tiene privilegios de administrador",
         });
       }
+
+      res.json({
+        isAdmin: true,
+        message: "El usuario tiene privilegios de administrador",
+      });
+    } catch (error) {
+      console.error("Error al verificar privilegios de administrador:", error);
+      res.status(500).json({
+        error: "Error del servidor",
+        message: "Error al verificar privilegios de administrador",
+      });
     }
-  );
+  });
 
   const dataDir = path.join(__dirname, "data");
   if (!fs.existsSync(dataDir)) {
@@ -299,47 +288,15 @@ async function setupApp() {
     };
   };
 
-  app.use(
-    "/data",
-    authMiddleware, // <-- CAMBIO: enhancedAuthMiddleware a authMiddleware
-    serveStaticWithErrorHandling(dataDir)
-  );
+  app.use("/data", authMiddleware, serveStaticWithErrorHandling(dataDir));
 
-  // CAMBIO: Reemplazamos el servicio de transcodificación con el servicio de streaming
+  // Obtener servicio de streaming
   const streamingService = require("./services/streamingService");
 
-  // CAMBIO: Añadimos métodos compatibles con enhancedTranscoder si no existen
-  if (typeof streamingService.on === "function") {
-    streamingService.on("jobStarted", (data) => {
-      console.log(
-        `Trabajo de transcodificación iniciado: ${data.jobId} para media ${data.mediaId}`
-      );
-    });
-
-    streamingService.on("jobCompleted", (data) => {
-      console.log(
-        `Trabajo de transcodificación completado: ${data.jobId}, archivo: ${data.outputPath}`
-      );
-    });
-
-    streamingService.on("jobFailed", (data) => {
-      console.error(
-        `Trabajo de transcodificación fallido: ${data.jobId}, error: ${data.error}`
-      );
-      if (
-        data.error &&
-        (data.error.includes("EACCES") || data.error.includes("permission"))
-      ) {
-        logPermissionIssue(data.outputPath || "ruta desconocida", {
-          code: "EACCES",
-          message: data.error,
-        });
-      }
-    });
-  }
-
+  // Servir archivos estáticos del frontend
   app.use(serveStaticWithErrorHandling(frontendDistPath));
 
+  // Manejar todas las demás rutas para SPA
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api/")) return next();
     const indexPath = path.join(frontendDistPath, "index.html");
@@ -374,6 +331,7 @@ async function setupApp() {
     });
   });
 
+  // Manejo de rutas API no encontradas
   app.use("/api/*", (req, res) => {
     res.status(404).json({
       error: "Ruta no encontrada",
@@ -381,6 +339,7 @@ async function setupApp() {
     });
   });
 
+  // Manejo global de errores
   app.use((err, req, res, next) => {
     console.error("Error en la aplicación:", err);
     if (req.path.startsWith("/api/")) {
@@ -463,7 +422,7 @@ setupApp()
         console.log(`Servidor StreamVio ejecutándose en el puerto ${PORT}`);
         console.log(`==============================================`);
         console.log(`Acceso local: http://localhost:${PORT}`);
-        console.log(`Acceso en red: ${LOCAL_IP}:${PORT}`);
+        console.log(`Acceso en red: http://${LOCAL_IP}:${PORT}`);
         console.log(`API disponible en http://${LOCAL_IP}:${PORT}/api`);
         console.log(
           `Usuario actual: ${process.getuid ? process.getuid() : "desconocido"}`

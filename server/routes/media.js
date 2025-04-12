@@ -1,151 +1,35 @@
-// server/routes/media.js (parte del streaming)
+// server/routes/media.js
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 const db = require("../config/database");
+const streamingService = require("../services/streamingService");
+
+// Usar middleware de autenticación para todas las rutas
+router.use(authMiddleware);
 
 /**
  * @route   GET /api/media/:id/stream
  * @desc    Transmitir un archivo multimedia con soporte para streaming parcial
  * @access  Private
  */
-router.get("/:id/stream", authMiddleware, async (req, res) => {
+router.get("/:id/stream", async (req, res) => {
   const mediaId = req.params.id;
-  const userId = req.user.id;
 
+  // El usuario está autenticado gracias al middleware authMiddleware
   try {
-    // 1. Obtener información del elemento multimedia
-    const mediaItem = await db.asyncGet(
-      "SELECT * FROM media_items WHERE id = ?",
-      [mediaId]
-    );
-
-    if (!mediaItem || !mediaItem.file_path) {
-      return res.status(404).json({
-        error: "No encontrado",
-        message: "Archivo multimedia no encontrado",
-      });
-    }
-
-    // 2. Verificar que el archivo existe
-    const filePath = mediaItem.file_path;
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        error: "Archivo no encontrado",
-        message: "El archivo físico no existe en el servidor",
-      });
-    }
-
-    // 3. Registrar la visualización (asíncrono, sin bloquear respuesta)
-    try {
-      // Verificar si ya existe un registro
-      const existing = await db.asyncGet(
-        "SELECT id FROM watch_history WHERE user_id = ? AND media_id = ?",
-        [userId, mediaId]
-      );
-
-      if (existing) {
-        // Actualizar registro existente
-        await db.asyncRun(
-          "UPDATE watch_history SET watched_at = CURRENT_TIMESTAMP WHERE id = ?",
-          [existing.id]
-        );
-      } else {
-        // Crear nuevo registro
-        await db.asyncRun(
-          "INSERT INTO watch_history (user_id, media_id, position, completed) VALUES (?, ?, 0, 0)",
-          [userId, mediaId]
-        );
-      }
-    } catch (watchError) {
-      console.warn("Error al registrar visualización:", watchError);
-      // No bloqueamos el streaming por este error
-    }
-
-    // 4. Obtener información del archivo
-    const stat = fs.statSync(filePath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
-
-    // 5. Determinar tipo MIME basado en extensión
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes = {
-      ".mp4": "video/mp4",
-      ".mkv": "video/x-matroska",
-      ".avi": "video/x-msvideo",
-      ".mov": "video/quicktime",
-      ".wmv": "video/x-ms-wmv",
-      ".m4v": "video/mp4",
-      ".webm": "video/webm",
-      ".mp3": "audio/mpeg",
-      ".wav": "audio/wav",
-      ".ogg": "audio/ogg",
-      ".flac": "audio/flac",
-      ".m4a": "audio/mp4",
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".png": "image/png",
-      ".gif": "image/gif",
-      ".webp": "image/webp",
-    };
-    const contentType = mimeTypes[ext] || "application/octet-stream";
-
-    // 6. Manejar streaming parcial (ranges) para video/audio
-    if (
-      range &&
-      (contentType.startsWith("video/") || contentType.startsWith("audio/"))
-    ) {
-      // Parsear rango
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      // Validar rango
-      if (isNaN(start) || start < 0 || start >= fileSize) {
-        return res.status(416).json({
-          error: "Rango no satisfactorio",
-          message: "El rango solicitado es inválido",
-        });
-      }
-
-      // Ajustar fin para no exceder el tamaño
-      end = Math.min(end, fileSize - 1);
-      const chunkSize = end - start + 1;
-
-      // Configurar headers para respuesta parcial
-      res.status(206);
-      res.set({
-        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-        "Accept-Ranges": "bytes",
-        "Content-Length": chunkSize,
-        "Content-Type": contentType,
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-      });
-
-      // Stream parcial del archivo
-      const stream = fs.createReadStream(filePath, { start, end });
-      stream.pipe(res);
-    } else {
-      // 7. Si no hay rango, enviar archivo completo
-      res.set({
-        "Content-Length": fileSize,
-        "Content-Type": contentType,
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-      });
-
-      fs.createReadStream(filePath).pipe(res);
-    }
+    // Usar el servicio de streaming para manejar la solicitud
+    await streamingService.handleStreamRequest(req, res, mediaId, req.user);
   } catch (error) {
-    console.error(`Error al transmitir archivo para medio ${mediaId}:`, error);
+    console.error(`Error en streaming de media ${mediaId}:`, error);
 
+    // Solo enviar respuesta si aún no se han enviado headers
     if (!res.headersSent) {
       res.status(500).json({
-        error: "Error del servidor",
-        message: "Error al procesar la solicitud de streaming",
+        error: "Error de streaming",
+        message: "Error al procesar el archivo multimedia",
       });
     }
   }
@@ -156,7 +40,7 @@ router.get("/:id/stream", authMiddleware, async (req, res) => {
  * @desc    Obtener la miniatura de un elemento multimedia
  * @access  Private
  */
-router.get("/:id/thumbnail", authMiddleware, async (req, res) => {
+router.get("/:id/thumbnail", async (req, res) => {
   const mediaId = req.params.id;
 
   try {
@@ -219,7 +103,7 @@ router.get("/:id/thumbnail", authMiddleware, async (req, res) => {
  * @desc    Guardar el progreso de reproducción
  * @access  Private
  */
-router.post("/:id/progress", authMiddleware, async (req, res) => {
+router.post("/:id/progress", async (req, res) => {
   const mediaId = req.params.id;
   const userId = req.user.id;
   const { position, completed } = req.body;
@@ -309,7 +193,7 @@ router.post("/:id/progress", authMiddleware, async (req, res) => {
  * @desc    Obtener el progreso de reproducción
  * @access  Private
  */
-router.get("/:id/progress", authMiddleware, async (req, res) => {
+router.get("/:id/progress", async (req, res) => {
   const mediaId = req.params.id;
   const userId = req.user.id;
 
@@ -346,6 +230,180 @@ router.get("/:id/progress", authMiddleware, async (req, res) => {
       completed: false,
       watched: false,
       error: "No se pudo obtener el progreso",
+    });
+  }
+});
+
+/**
+ * @route   GET /api/media
+ * @desc    Obtener lista de elementos multimedia con filtros
+ * @access  Private
+ */
+router.get("/", async (req, res) => {
+  try {
+    // Obtener parámetros de consulta
+    const {
+      type,
+      library,
+      search,
+      page = 1,
+      limit = 20,
+      sort = "title",
+      order = "asc",
+    } = req.query;
+
+    // Construir consulta SQL
+    let query = `
+      SELECT m.*, l.name as library_name 
+      FROM media_items m
+      LEFT JOIN libraries l ON m.library_id = l.id
+      WHERE 1=1
+    `;
+
+    const params = [];
+
+    // Filtrar por tipo
+    if (type) {
+      query += " AND m.type = ?";
+      params.push(type);
+    }
+
+    // Filtrar por biblioteca
+    if (library) {
+      query += " AND m.library_id = ?";
+      params.push(library);
+    }
+
+    // Búsqueda por título
+    if (search) {
+      query += " AND (m.title LIKE ? OR m.description LIKE ?)";
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    // Ordenar resultados
+    const validSorts = ["title", "created_at", "year", "type"];
+    const validOrders = ["asc", "desc"];
+
+    const sortField = validSorts.includes(sort) ? sort : "title";
+    const orderDir = validOrders.includes(order.toLowerCase())
+      ? order.toLowerCase()
+      : "asc";
+
+    query += ` ORDER BY m.${sortField} ${orderDir}`;
+
+    // Paginación
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 20;
+    const offset = (pageNum - 1) * limitNum;
+
+    // Consulta de conteo total para paginación
+    const countQuery = query.replace(
+      "m.*, l.name as library_name",
+      "COUNT(*) as total"
+    );
+
+    // Añadir LIMIT y OFFSET a la consulta principal
+    query += " LIMIT ? OFFSET ?";
+    params.push(limitNum, offset);
+
+    // Ejecutar consultas
+    const totalResult = await db.asyncGet(countQuery, params.slice(0, -2));
+    const items = await db.asyncAll(query, params);
+
+    // Construir respuesta paginada
+    res.json({
+      items,
+      pagination: {
+        total: totalResult ? totalResult.total : 0,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil((totalResult ? totalResult.total : 0) / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Error al obtener elementos multimedia:", error);
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al obtener la lista de elementos multimedia",
+    });
+  }
+});
+
+/**
+ * @route   GET /api/media/:id
+ * @desc    Obtener detalles de un elemento multimedia
+ * @access  Private
+ */
+router.get("/:id", async (req, res) => {
+  const mediaId = req.params.id;
+
+  try {
+    // Consulta principal para obtener información del medio
+    const mediaItem = await db.asyncGet(
+      `
+      SELECT m.*, l.name as library_name, l.type as library_type 
+      FROM media_items m
+      LEFT JOIN libraries l ON m.library_id = l.id
+      WHERE m.id = ?
+    `,
+      [mediaId]
+    );
+
+    if (!mediaItem) {
+      return res.status(404).json({
+        error: "No encontrado",
+        message: "Elemento multimedia no encontrado",
+      });
+    }
+
+    // Para series/temporadas, obtener episodios relacionados
+    let children = [];
+    if (mediaItem.type === "series" || mediaItem.type === "season") {
+      children = await db.asyncAll(
+        `
+        SELECT * FROM media_items 
+        WHERE parent_id = ? 
+        ORDER BY 
+          CASE 
+            WHEN season_number IS NOT NULL THEN season_number 
+            ELSE 9999 
+          END,
+          CASE 
+            WHEN episode_number IS NOT NULL THEN episode_number 
+            ELSE 9999 
+          END
+      `,
+        [mediaId]
+      );
+    }
+
+    // Verificar si el elemento está en favoritos para este usuario
+    const userId = req.user.id;
+    const isFavorite = await db.asyncGet(
+      "SELECT id FROM favorites WHERE user_id = ? AND media_id = ?",
+      [userId, mediaId]
+    );
+
+    // Incluir historial de visualización
+    const watchHistory = await db.asyncGet(
+      "SELECT position, completed, watched_at FROM watch_history WHERE user_id = ? AND media_id = ?",
+      [userId, mediaId]
+    );
+
+    // Construir respuesta detallada
+    const response = {
+      ...mediaItem,
+      isFavorite: !!isFavorite,
+      watchHistory: watchHistory || { position: 0, completed: false },
+      children: children || [],
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error(`Error al obtener detalles del medio ${mediaId}:`, error);
+    res.status(500).json({
+      error: "Error del servidor",
+      message: "Error al obtener los detalles del elemento multimedia",
     });
   }
 });
