@@ -194,7 +194,7 @@ async function setupApp() {
   // Ruta para verificar si un usuario es administrador
   app.get(
     "/api/auth/verify-admin",
-    enhancedAuthMiddleware,
+    authMiddleware, // <-- CAMBIO: enhancedAuthMiddleware a authMiddleware
     async (req, res) => {
       try {
         const userId = req.user.id;
@@ -301,33 +301,42 @@ async function setupApp() {
 
   app.use(
     "/data",
-    enhancedAuthMiddleware,
+    authMiddleware, // <-- CAMBIO: enhancedAuthMiddleware a authMiddleware
     serveStaticWithErrorHandling(dataDir)
   );
 
-  const enhancedTranscoder = require("./services/enhancedTranscoderService");
+  // CAMBIO: Reemplazamos el servicio de transcodificación con el servicio de streaming
+  const streamingService = require("./services/streamingService");
 
-  enhancedTranscoder.on("jobStarted", (data) => {
-    console.log(
-      `Trabajo de transcodificación iniciado: ${data.jobId} para media ${data.mediaId}`
-    );
-  });
-  enhancedTranscoder.on("jobCompleted", (data) => {
-    console.log(
-      `Trabajo de transcodificación completado: ${data.jobId}, archivo: ${data.outputPath}`
-    );
-  });
-  enhancedTranscoder.on("jobFailed", (data) => {
-    console.error(
-      `Trabajo de transcodificación fallido: ${data.jobId}, error: ${data.error}`
-    );
-    if (data.error.includes("EACCES") || data.error.includes("permission")) {
-      logPermissionIssue(data.outputPath || "ruta desconocida", {
-        code: "EACCES",
-        message: data.error,
-      });
-    }
-  });
+  // CAMBIO: Añadimos métodos compatibles con enhancedTranscoder si no existen
+  if (typeof streamingService.on === "function") {
+    streamingService.on("jobStarted", (data) => {
+      console.log(
+        `Trabajo de transcodificación iniciado: ${data.jobId} para media ${data.mediaId}`
+      );
+    });
+
+    streamingService.on("jobCompleted", (data) => {
+      console.log(
+        `Trabajo de transcodificación completado: ${data.jobId}, archivo: ${data.outputPath}`
+      );
+    });
+
+    streamingService.on("jobFailed", (data) => {
+      console.error(
+        `Trabajo de transcodificación fallido: ${data.jobId}, error: ${data.error}`
+      );
+      if (
+        data.error &&
+        (data.error.includes("EACCES") || data.error.includes("permission"))
+      ) {
+        logPermissionIssue(data.outputPath || "ruta desconocida", {
+          code: "EACCES",
+          message: data.error,
+        });
+      }
+    });
+  }
 
   app.use(serveStaticWithErrorHandling(frontendDistPath));
 
