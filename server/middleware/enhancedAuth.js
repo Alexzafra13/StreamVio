@@ -1,35 +1,35 @@
-// server/middleware/enhancedAuth.js - Versión optimizada
+// server/middleware/enhancedAuth.js
 const jwt = require("jsonwebtoken");
 const settings = require("../config/settings");
 const db = require("../config/database");
 
 /**
- * Middleware de autenticación unificado que maneja tanto tokens JWT estándar
- * como tokens en parámetros de consulta para streaming y recursos estáticos
+ * Middleware de autenticación mejorado
+ * - Soporte para Bearer token en headers
+ * - Soporte para token en parámetro 'auth' en URL
+ * - Validación que evita problemas con formatos incorrectos
  */
 const enhancedAuthMiddleware = async (req, res, next) => {
+  // 1. Extraer token de todas las posibles fuentes
   let token = null;
-  let tokenSource = null;
 
-  // 1. Extraer token con orden de prioridad claro
+  // Prioridad: Authorization header > Query params 'auth'
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer ")
   ) {
-    // Prioridad 1: Header de autorización
     token = req.headers.authorization.split(" ")[1];
-    tokenSource = "header";
   } else if (req.query.auth) {
-    // Prioridad 2: Parámetro de consulta 'auth'
     token = req.query.auth;
-    tokenSource = "query";
   }
 
-  // 2. Validar token
+  // Tratar casos donde el token viene con 'Bearer ' por error en el query param
+  if (token && token.startsWith("Bearer ")) {
+    token = token.substring(7);
+  }
+
+  // 2. Si no hay token, denegar acceso
   if (!token) {
-    console.log(
-      `Autenticación fallida: No se proporcionó token para ${req.path}`
-    );
     return res.status(401).json({
       error: "No autorizado",
       message: "Se requiere autenticación para acceder a este recurso",
@@ -37,131 +37,59 @@ const enhancedAuthMiddleware = async (req, res, next) => {
   }
 
   try {
-    // Verificar si el token ha sido enviado con 'Bearer ' por accidente en query param
-    if (token.startsWith("Bearer ")) {
-      token = token.substring(7);
-    }
-
-    // 3. Verificar el token con la clave secreta del sistema
+    // 3. Verificar el token
     const jwtSecret =
       settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key";
     const decoded = jwt.verify(token, jwtSecret);
 
-    // Log exitoso (pero no para rutas de streaming/thumbnails para evitar llenar logs)
-    if (!req.path.includes("/stream") && !req.path.includes("/thumbnail")) {
-      console.log(
-        `Token válido para usuario ${decoded.id} (${
-          decoded.username || "anónimo"
-        }) - Fuente: ${tokenSource}`
-      );
-    }
-
-    // 4. Añadir información del usuario al request para uso en controladores
+    // 4. Añadir información del usuario al request
     req.user = decoded;
     req.token = token;
 
-    // 5. Si es una solicitud de streaming, verificar acceso al medio específico
-    if (
-      (req.path.includes("/stream") || req.path.includes("/thumbnail")) &&
-      req.params.id
-    ) {
-      try {
-        const mediaId = req.params.id;
-        const hasAccess = await verifyMediaAccess(decoded.id, mediaId);
-        if (!hasAccess) {
-          console.warn(
-            `Acceso denegado: Usuario ${decoded.id} no tiene permisos para el medio ${mediaId}`
-          );
-          return res.status(403).json({
-            error: "Acceso denegado",
-            message: "No tienes permisos para acceder a este contenido",
-          });
-        }
-      } catch (accessError) {
-        console.error(
-          `Error al verificar acceso al medio: ${accessError.message}`
+    // 5. Verificar si el usuario existe en la base de datos (opcional)
+    try {
+      const userId = decoded.id;
+      const user = await db.asyncGet(
+        "SELECT id, username, is_admin FROM users WHERE id = ?",
+        [userId]
+      );
+
+      if (!user) {
+        console.warn(
+          `Usuario ${userId} no existe en la base de datos pero tiene token válido`
         );
-        // Continuamos aunque haya un error en la verificación para mantener compatibilidad
+        // Podemos seguir permitiendo acceso ya que el token es válido
+        // O podemos denegar acceso si queremos una validación más estricta
       }
+    } catch (dbError) {
+      console.error("Error al verificar usuario en BD:", dbError.message);
+      // No bloqueamos el acceso por errores de BD si el token es válido
     }
 
-    // Continuar con la solicitud
-    return next();
+    // 6. Continuar con la solicitud
+    next();
   } catch (error) {
-    console.error(
-      `Error de autenticación para ruta ${req.path}:`,
-      error.message
-    );
+    // Manejar errores específicos de JWT
+    console.error(`Error de autenticación: ${error.message}`);
 
-    // Manejar diferentes tipos de errores de token
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
         error: "Token expirado",
         message: "La sesión ha expirado. Por favor, inicie sesión nuevamente.",
       });
+    } else if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        error: "Token inválido",
+        message: "El token de autenticación no es válido",
+      });
     }
 
-    // Token inválido por otras razones
+    // Error genérico
     return res.status(401).json({
-      error: "Token inválido",
-      message: "Credenciales de autenticación inválidas",
+      error: "Error de autenticación",
+      message: "No autorizado - error de autenticación",
     });
   }
 };
-
-/**
- * Verifica si un usuario tiene acceso a un medio específico
- * @param {number} userId - ID del usuario
- * @param {number} mediaId - ID del medio
- * @returns {Promise<boolean>} - true si tiene acceso, false en caso contrario
- */
-async function verifyMediaAccess(userId, mediaId) {
-  try {
-    // Primero verificar si el usuario es administrador (tienen acceso a todo)
-    const user = await db.asyncGet("SELECT is_admin FROM users WHERE id = ?", [
-      userId,
-    ]);
-    if (user && user.is_admin === 1) {
-      return true; // Los administradores tienen acceso a todos los medios
-    }
-
-    // Obtener información del medio
-    const mediaItem = await db.asyncGet(
-      "SELECT library_id FROM media_items WHERE id = ?",
-      [mediaId]
-    );
-
-    if (!mediaItem) {
-      console.error(`Medio no encontrado: ${mediaId}`);
-      return false; // El medio no existe
-    }
-
-    // Si el medio no pertenece a ninguna biblioteca, permitir acceso
-    if (!mediaItem.library_id) {
-      return true;
-    }
-
-    // Verificar si el usuario tiene acceso a la biblioteca del medio
-    const access = await db.asyncGet(
-      "SELECT has_access FROM user_library_access WHERE user_id = ? AND library_id = ?",
-      [userId, mediaItem.library_id]
-    );
-
-    // Si hay un registro explícito de acceso, comprobar su valor
-    if (access) {
-      return access.has_access === 1;
-    }
-
-    // Si no hay un registro explícito para el usuario, permitir acceso por defecto
-    return true;
-  } catch (error) {
-    console.error(
-      `Error al verificar acceso de usuario ${userId} a medio ${mediaId}:`,
-      error
-    );
-    // En caso de error, permitir acceso para evitar bloquear contenido legítimo
-    return true;
-  }
-}
 
 module.exports = enhancedAuthMiddleware;

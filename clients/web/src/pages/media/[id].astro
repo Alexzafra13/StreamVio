@@ -1,5 +1,5 @@
 ---
-// clients/web/src/pages/media/[id].astro - Página detallada de medio
+// clients/web/src/pages/media/[id].astro
 import Layout from '../../layouts/Layout.astro';
 import MediaViewer from '../../components/MediaViewer';
 
@@ -7,13 +7,13 @@ import MediaViewer from '../../components/MediaViewer';
 const { id } = Astro.params;
 
 // Imprescindible para rutas dinámicas en Astro
-export async function getStaticPaths() {
+export function getStaticPaths() {
   return [{ params: { id: 'placeholder' } }];
 }
 ---
 
-<Layout title="Detalles del medio">
-  <main>
+<Layout title="Detalle del medio">
+  <main class="container mx-auto px-4 py-8">
     <div class="max-w-6xl mx-auto">
       <a href="/media" class="inline-block mb-6 text-blue-500 hover:underline">&larr; Volver a la biblioteca</a>
       
@@ -41,6 +41,25 @@ export async function getStaticPaths() {
               </div>
             </div>
           </div>
+          
+          <!-- Acciones adicionales -->
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="text-lg font-semibold mb-4">Acciones</h3>
+            <div class="flex flex-col space-y-2">
+              <button 
+                id="open-external"
+                class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded"
+              >
+                Ver en reproductor externo
+              </button>
+              <button 
+                id="view-details"
+                class="bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded hidden"
+              >
+                Ver detalles técnicos
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -54,7 +73,7 @@ export async function getStaticPaths() {
   const API_URL = apiConfig.API_URL;
 
   document.addEventListener('DOMContentLoaded', async () => {
-    // Verificar autenticación de manera más explícita
+    // Verificar autenticación
     try {
       const token = localStorage.getItem('streamvio_token');
       console.log("Token disponible:", token ? "Sí" : "No");
@@ -65,23 +84,11 @@ export async function getStaticPaths() {
         return;
       }
       
-      // CAMBIO: Obtener ID con mejor manejo de errores
-      let mediaId;
-      try {
-        mediaId = window.location.pathname.split('/').pop();
-        // Verificar que es un número válido
-        if (!mediaId || isNaN(parseInt(mediaId))) {
-          throw new Error(`ID inválido: ${mediaId}`);
-        }
-        console.log("ID de medio a cargar:", mediaId);
-      } catch (pathError) {
-        console.error("Error al obtener ID del medio:", pathError);
-        document.getElementById('media-title').textContent = 'Error: ID de medio inválido';
-        return;
-      }
+      const mediaId = document.location.pathname.split('/').pop();
+      console.log("ID de medio a cargar:", mediaId);
       
       try {
-        // Cargar datos del medio DIRECTAMENTE
+        // Cargar datos del medio
         const response = await fetch(`${API_URL}/api/media/${mediaId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -90,21 +97,20 @@ export async function getStaticPaths() {
         
         if (!response.ok) {
           if (response.status === 401) {
-            console.error("Error de autenticación:", await response.text());
             alert("Sesión expirada o inválida. Por favor inicia sesión de nuevo.");
             localStorage.removeItem('streamvio_token');
             window.location.href = '/auth';
             return;
           }
-          throw new Error(`Error ${response.status}: ${await response.text()}`);
+          throw new Error(`Error al cargar datos del medio: ${response.status}`);
         }
         
         const mediaData = await response.json();
-        console.log("Datos de medio cargados correctamente:", mediaData);
+        console.log("Datos de medio cargados correctamente");
         
         // Actualizar UI con datos básicos
         document.getElementById('media-title').textContent = mediaData.title || 'Sin título';
-        document.getElementById('media-type').textContent = formatMediaType(mediaData.type);
+        document.getElementById('media-type').textContent = `Tipo: ${formatMediaType(mediaData.type)}`;
         
         if (mediaData.width && mediaData.height) {
           document.getElementById('media-resolution').textContent = `Resolución: ${mediaData.width}x${mediaData.height}`;
@@ -152,22 +158,35 @@ export async function getStaticPaths() {
           additionalContainer.classList.remove('hidden');
         }
         
+        // Configurar botones de acciones
+        const openExternalBtn = document.getElementById('open-external');
+        if (openExternalBtn) {
+          openExternalBtn.addEventListener('click', () => {
+            const streamUrl = `${API_URL}/api/media/${mediaId}/stream?auth=${encodeURIComponent(token)}`;
+            window.open(streamUrl, '_blank');
+          });
+        }
+        
+        // Mostrar botón de detalles técnicos si hay ruta de archivo
+        if (mediaData.file_path) {
+          const viewDetailsBtn = document.getElementById('view-details');
+          if (viewDetailsBtn) {
+            viewDetailsBtn.classList.remove('hidden');
+            viewDetailsBtn.addEventListener('click', () => {
+              window.location.href = `/media/${mediaId}/details`;
+            });
+          }
+        }
+        
         // Actualizar título de la página
         document.title = `${mediaData.title || 'Contenido'} | StreamVio`;
-
-        // CAMBIO: Forzar la carga del componente MediaViewer
-        const mediaViewer = document.querySelector('media-viewer');
-        if (mediaViewer) {
-          mediaViewer.setAttribute('mediaid', mediaId);
-        }
       } catch (error) {
         console.error('Error al cargar datos del medio:', error);
-        document.getElementById('media-title').textContent = `Error al cargar información: ${error.message}`;
+        document.getElementById('media-title').textContent = 'Error al cargar información';
         document.getElementById('media-type').textContent = 'No se pudo obtener la información del medio';
       }
     } catch (error) {
       console.error("Error en la inicialización:", error);
-      document.getElementById('media-title').textContent = 'Error: ' + error.message;
     }
   });
   
