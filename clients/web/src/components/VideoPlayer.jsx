@@ -1,137 +1,115 @@
 // clients/web/src/components/VideoPlayer.jsx
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import apiConfig from "../config/api";
-
-const API_URL = apiConfig.API_URL;
+import auth from "../utils/auth";
 
 /**
- * Componente de reproductor de video simplificado
- * @param {Object} props - Propiedades del componente
- * @param {string|number} props.mediaId - ID del medio a reproducir
- * @param {string} props.streamUrl - URL directa del stream (opcional)
- * @param {Object} props.mediaInfo - Información del medio (opcional)
- * @param {boolean} props.autoPlay - Reproducir automáticamente (opcional)
+ * Componente mejorado para reproducción de video
+ * - Gestión integrada de tokens de autenticación
+ * - Progreso automático
+ * - Controles personalizados
  */
-function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
+function VideoPlayer({ mediaId, autoPlay = false }) {
   // Referencias
   const videoRef = useRef(null);
-  const playerRef = useRef(null);
   const controlsTimerRef = useRef(null);
+  const playerContainerRef = useRef(null);
 
-  // Estados para reproducción
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  // Estados
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [progress, setProgress] = useState(0);
-  const [videoUrl, setVideoUrl] = useState(streamUrl || null);
-  const [videoInfo, setVideoInfo] = useState(mediaInfo || null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [streamUrl, setStreamUrl] = useState(null);
+  const [mediaInfo, setMediaInfo] = useState(null);
 
-  // Cargar datos necesarios al montar el componente
+  // Cargar datos y URL de streaming
   useEffect(() => {
-    if (!mediaId && !streamUrl) {
-      setError("No se proporcionó ID del medio o URL de stream");
-      setIsLoading(false);
+    if (!mediaId) {
+      setError("ID de medio no proporcionado");
+      setLoading(false);
       return;
     }
 
-    // Si ya tenemos una URL de stream, usarla directamente
-    if (streamUrl) {
-      console.log(
-        "Usando URL de stream proporcionada:",
-        streamUrl.split("?")[0]
-      ); // No mostrar token en logs
-      setVideoUrl(streamUrl);
-      setIsLoading(false);
-      return;
-    }
-
-    // Si no hay URL, pero hay ID, cargar la información y generar URL
     const loadVideoData = async () => {
       try {
-        setIsLoading(true);
+        setLoading(true);
         setError(null);
 
-        // Obtener token de autenticación
-        const token = localStorage.getItem("streamvio_token");
-        if (!token) {
-          throw new Error("No hay sesión activa");
-        }
+        // 1. Obtener información del medio
+        const response = await axios.get(`/api/media/${mediaId}`, {
+          headers: auth.getAuthHeaders(),
+        });
+        setMediaInfo(response.data);
 
-        // 1. Obtener información del video si no se proporcionó
-        if (!mediaInfo) {
-          const response = await axios.get(`${API_URL}/api/media/${mediaId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+        // 2. Generar URL de streaming con autenticación
+        const streamUrl = auth.getStreamUrl(mediaId);
+        setStreamUrl(streamUrl);
 
-          setVideoInfo(response.data);
-        }
-
-        // 2. Generar URL de streaming con el token
-        const streamUrl = `${API_URL}/api/media/${mediaId}/stream?auth=${encodeURIComponent(
-          token
-        )}`;
-        console.log("URL de streaming generada:", streamUrl.split("?")[0]);
-
-        setVideoUrl(streamUrl);
-        setIsLoading(false);
-
-        // 3. Obtener progreso de reproducción si existe
+        // 3. Obtener progreso anterior si existe
         try {
           const progressResponse = await axios.get(
-            `${API_URL}/api/media/${mediaId}/progress`,
+            `/api/media/${mediaId}/progress`,
             {
-              headers: { Authorization: `Bearer ${token}` },
+              headers: auth.getAuthHeaders(),
             }
           );
 
+          // Si hay progreso guardado, lo aplicaremos después de cargar el video
           if (progressResponse.data && progressResponse.data.position > 0) {
-            // Asignar tiempo inicial al cargar el video
             const savedPosition = progressResponse.data.position;
-            console.log(`Progreso guardado encontrado: ${savedPosition}s`);
+            console.log(`Progreso guardado: ${savedPosition}s`);
 
-            // Aplicaremos la posición guardada cuando se carguen los metadatos
+            // Establecer posición cuando el video esté listo
+            const handleMetadataLoaded = () => {
+              if (
+                videoRef.current &&
+                savedPosition > 0 &&
+                savedPosition < videoRef.current.duration - 30
+              ) {
+                videoRef.current.currentTime = savedPosition;
+                console.log(`Posición establecida a ${savedPosition}s`);
+              }
+              videoRef.current.removeEventListener(
+                "loadedmetadata",
+                handleMetadataLoaded
+              );
+            };
+
             if (videoRef.current) {
               videoRef.current.addEventListener(
                 "loadedmetadata",
-                () => {
-                  if (
-                    savedPosition > 0 &&
-                    savedPosition < videoRef.current.duration - 30
-                  ) {
-                    videoRef.current.currentTime = savedPosition;
-                    console.log(`Posición establecida a ${savedPosition}s`);
-                  }
-                },
-                { once: true }
+                handleMetadataLoaded
               );
             }
           }
         } catch (progressError) {
           console.warn("Error al obtener progreso:", progressError);
-          // No bloqueamos la reproducción por este error
+          // No bloqueamos la reproducción por error en progreso
         }
+
+        setLoading(false);
       } catch (error) {
-        console.error("Error al cargar datos del video:", error);
+        console.error("Error al cargar video:", error);
         setError(error.response?.data?.message || "Error al cargar el video");
-        setIsLoading(false);
+        setLoading(false);
       }
     };
 
     loadVideoData();
 
-    // Configurar guardado periódico de progreso
+    // Función para guardar progreso periódicamente (cada 10 segundos)
     const progressInterval = setInterval(() => {
       if (videoRef.current && isPlaying && currentTime > 0) {
         saveProgress(currentTime);
       }
-    }, 30000); // Guardar cada 30 segundos
+    }, 10000);
 
     // Limpieza
     return () => {
@@ -140,43 +118,48 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
         clearTimeout(controlsTimerRef.current);
       }
     };
-  }, [mediaId, streamUrl, mediaInfo]);
+  }, [mediaId]);
 
-  // Guardar progreso de reproducción
+  // Función para guardar progreso
   const saveProgress = async (timeInSeconds, isCompleted = false) => {
     if (!mediaId) return;
 
     try {
-      const token = localStorage.getItem("streamvio_token");
-      if (!token) return;
-
       await axios.post(
-        `${API_URL}/api/media/${mediaId}/progress`,
-        { position: Math.floor(timeInSeconds), completed: isCompleted },
-        { headers: { Authorization: `Bearer ${token}` } }
+        `/api/media/${mediaId}/progress`,
+        {
+          position: Math.floor(timeInSeconds),
+          completed: isCompleted,
+        },
+        {
+          headers: auth.getAuthHeaders(),
+        }
       );
-
       console.log(`Progreso guardado: ${Math.floor(timeInSeconds)}s`);
     } catch (error) {
       console.warn("Error al guardar progreso:", error);
     }
   };
 
-  // Manejadores de eventos de video
-  const handleVideoPlay = () => {
+  // Gestión de eventos del video
+  const handlePlay = () => {
     setIsPlaying(true);
     resetControlsTimer();
   };
 
-  const handleVideoPause = () => {
+  const handlePause = () => {
     setIsPlaying(false);
     setShowControls(true);
-    if (controlsTimerRef.current) {
-      clearTimeout(controlsTimerRef.current);
-    }
   };
 
-  const handleVideoTimeUpdate = () => {
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setShowControls(true);
+    // Marcar como completado
+    saveProgress(duration, true);
+  };
+
+  const handleTimeUpdate = () => {
     if (!videoRef.current) return;
 
     const video = videoRef.current;
@@ -188,74 +171,27 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
     }
   };
 
-  const handleVideoEnded = () => {
-    setIsPlaying(false);
-    setShowControls(true);
-
-    // Marcar como completado
-    saveProgress(duration, true);
-  };
-
-  const handleVideoMetadataLoaded = () => {
+  const handleLoadedMetadata = () => {
     if (!videoRef.current) return;
 
     setDuration(videoRef.current.duration);
+    setLoading(false);
 
-    // Iniciar reproducción automática si está habilitada
+    // Reproducción automática si está habilitada
     if (autoPlay) {
-      const playPromise = videoRef.current.play();
-
-      if (playPromise !== undefined) {
-        playPromise.catch((error) => {
-          console.warn("Error de reproducción automática:", error);
-          // La mayoría de navegadores requieren interacción del usuario antes de reproducir
-        });
-      }
+      videoRef.current.play().catch((error) => {
+        console.warn("Reproducción automática bloqueada:", error);
+      });
     }
   };
 
-  const handleVideoError = (e) => {
-    console.error("Error de reproducción:", e);
-
-    let errorMessage = "Error al reproducir el video";
-
-    if (videoRef.current && videoRef.current.error) {
-      switch (videoRef.current.error.code) {
-        case 1: // MEDIA_ERR_ABORTED
-          errorMessage = "Reproducción abortada";
-          break;
-        case 2: // MEDIA_ERR_NETWORK
-          errorMessage = "Error de red al cargar el video";
-          break;
-        case 3: // MEDIA_ERR_DECODE
-          errorMessage = "Error al decodificar el video";
-          break;
-        case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
-          errorMessage = "Formato de video no soportado";
-          break;
-        default:
-          errorMessage = videoRef.current.error.message || "Error desconocido";
-      }
-    }
-
-    setError(errorMessage);
-  };
-
-  // Funciones de control
-  const togglePlay = () => {
+  const handleVolumeChange = (e) => {
     if (!videoRef.current) return;
 
-    if (isPlaying) {
-      videoRef.current.pause();
-    } else {
-      const playPromise = videoRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((error) => {
-          console.error("Error al reproducir:", error);
-          setError("No se pudo iniciar la reproducción");
-        });
-      }
-    }
+    const newVolume = parseFloat(e.target.value);
+    videoRef.current.volume = newVolume;
+    setVolume(newVolume);
+    setIsMuted(newVolume === 0);
   };
 
   const toggleMute = () => {
@@ -264,16 +200,6 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
     const newMuteState = !isMuted;
     videoRef.current.muted = newMuteState;
     setIsMuted(newMuteState);
-  };
-
-  const handleVolumeChange = (e) => {
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-
-    if (videoRef.current) {
-      videoRef.current.volume = newVolume;
-      setIsMuted(newVolume === 0);
-    }
   };
 
   const handleSeek = (e) => {
@@ -286,17 +212,30 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
     setCurrentTime(seekTime);
   };
 
+  const togglePlay = () => {
+    if (!videoRef.current) return;
+
+    if (isPlaying) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play().catch((error) => {
+        console.error("Error al reproducir:", error);
+        setError("No se pudo iniciar la reproducción");
+      });
+    }
+  };
+
   const toggleFullscreen = () => {
-    if (!playerRef.current) return;
+    if (!playerContainerRef.current) return;
 
     if (!document.fullscreenElement) {
       // Entrar a pantalla completa
-      if (playerRef.current.requestFullscreen) {
-        playerRef.current.requestFullscreen();
-      } else if (playerRef.current.webkitRequestFullscreen) {
-        playerRef.current.webkitRequestFullscreen();
-      } else if (playerRef.current.msRequestFullscreen) {
-        playerRef.current.msRequestFullscreen();
+      if (playerContainerRef.current.requestFullscreen) {
+        playerContainerRef.current.requestFullscreen();
+      } else if (playerContainerRef.current.webkitRequestFullscreen) {
+        playerContainerRef.current.webkitRequestFullscreen();
+      } else if (playerContainerRef.current.msRequestFullscreen) {
+        playerContainerRef.current.msRequestFullscreen();
       }
       setIsFullscreen(true);
     } else {
@@ -312,7 +251,6 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
     }
   };
 
-  // Control de visibilidad de controles
   const resetControlsTimer = () => {
     setShowControls(true);
 
@@ -323,13 +261,13 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
     if (isPlaying) {
       controlsTimerRef.current = setTimeout(() => {
         setShowControls(false);
-      }, 3000); // Ocultar controles después de 3 segundos
+      }, 3000);
     }
   };
 
-  // Formatear tiempo (segundos a MM:SS)
+  // Formatear tiempo
   const formatTime = (timeInSeconds) => {
-    if (!timeInSeconds || isNaN(timeInSeconds)) return "00:00";
+    if (isNaN(timeInSeconds) || timeInSeconds === Infinity) return "00:00";
 
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
@@ -339,56 +277,24 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
       .padStart(2, "0")}`;
   };
 
-  // Reintentar reproducción
-  const retryPlayback = () => {
-    if (!mediaId) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    // Regenerar URL con token fresco (añadiendo timestamp para evitar caché)
-    const token = localStorage.getItem("streamvio_token");
-    if (token) {
-      const timestamp = new Date().getTime();
-      const newUrl = `${API_URL}/api/media/${mediaId}/stream?auth=${encodeURIComponent(
-        token
-      )}&_t=${timestamp}`;
-
-      setVideoUrl(newUrl);
-      setIsLoading(false);
-    } else {
-      setError("No hay sesión activa. Inicia sesión nuevamente.");
-    }
-  };
-
-  // RENDERIZADO DEL COMPONENTE
-
-  // Estado de carga
-  if (isLoading) {
+  // Renderizado condicional para estados de carga y error
+  if (loading) {
     return (
-      <div
-        className="w-full bg-black rounded-lg flex items-center justify-center"
-        style={{ minHeight: "300px" }}
-      >
+      <div className="w-full h-64 md:h-80 lg:h-96 bg-gray-900 rounded-lg flex items-center justify-center">
         <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-          <p className="text-white">Cargando video...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-3"></div>
+          <span className="text-gray-300">Cargando video...</span>
         </div>
       </div>
     );
   }
 
-  // Estado de error
   if (error) {
     return (
-      <div
-        className="w-full bg-black bg-opacity-80 rounded-lg p-8 text-center"
-        style={{ minHeight: "300px" }}
-      >
-        <div className="flex flex-col items-center justify-center h-full">
+      <div className="w-full h-64 md:h-80 lg:h-96 bg-gray-900 rounded-lg flex items-center justify-center">
+        <div className="flex flex-col items-center text-center p-4">
           <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-16 w-16 text-red-500 mb-4"
+            className="w-12 h-12 text-red-500 mb-3"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -397,16 +303,16 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          <p className="text-red-500 text-xl font-semibold mb-2">
+          <span className="text-red-400 font-medium mb-2">
             Error de reproducción
-          </p>
-          <p className="text-white mb-4">{error}</p>
+          </span>
+          <p className="text-gray-400 mb-4">{error}</p>
           <button
-            onClick={retryPlayback}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded focus:outline-none"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition"
+            onClick={() => window.location.reload()}
           >
             Reintentar
           </button>
@@ -415,10 +321,10 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
     );
   }
 
-  // Reproductor normal
+  // Renderizado del reproductor
   return (
     <div
-      ref={playerRef}
+      ref={playerContainerRef}
       className="relative w-full bg-black rounded-lg overflow-hidden"
       onMouseMove={resetControlsTimer}
       onMouseEnter={() => setShowControls(true)}
@@ -428,53 +334,49 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
       <video
         ref={videoRef}
         className="w-full h-auto"
-        src={videoUrl}
+        src={streamUrl}
         poster={
-          videoInfo?.thumbnail_path
-            ? `${API_URL}/api/media/${mediaId}/thumbnail?auth=${encodeURIComponent(
-                localStorage.getItem("streamvio_token") || ""
-              )}`
-            : undefined
+          mediaInfo?.thumbnail_path ? auth.getThumbnailUrl(mediaId) : undefined
         }
-        controls={false}
-        playsInline
-        onPlay={handleVideoPlay}
-        onPause={handleVideoPause}
-        onTimeUpdate={handleVideoTimeUpdate}
-        onLoadedMetadata={handleVideoMetadataLoaded}
-        onEnded={handleVideoEnded}
-        onError={handleVideoError}
         onClick={togglePlay}
+        onPlay={handlePlay}
+        onPause={handlePause}
+        onEnded={handleEnded}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onError={() => setError("Error al reproducir el video")}
+        playsInline
+        controls={false}
       />
 
-      {/* Capa de controles personalizados */}
+      {/* Controles personalizados */}
       <div
-        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity duration-300 ${
-          showControls ? "opacity-100" : "opacity-0"
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent px-4 py-3 transition-opacity duration-300 ${
+          showControls ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
         {/* Barra de progreso */}
-        <div className="mb-2">
+        <div className="mb-3">
           <input
             type="range"
             min="0"
             max="100"
             value={progress || 0}
             onChange={handleSeek}
-            className="w-full h-2 bg-gray-700 rounded-full appearance-none cursor-pointer"
+            className="w-full h-2 rounded-full appearance-none cursor-pointer"
             style={{
-              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #4b5563 ${progress}%, #4b5563 100%)`,
+              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #6b7280 ${progress}%, #6b7280 100%)`,
             }}
           />
         </div>
 
         {/* Controles principales */}
         <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            {/* Botón reproducir/pausar */}
+          <div className="flex items-center space-x-2 md:space-x-4">
+            {/* Botón de play/pause */}
             <button
+              className="text-white hover:text-blue-400 transition focus:outline-none"
               onClick={togglePlay}
-              className="text-white focus:outline-none hover:text-blue-400"
               aria-label={isPlaying ? "Pausar" : "Reproducir"}
             >
               {isPlaying ? (
@@ -483,7 +385,7 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                  <path fillRule="evenodd" d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                 </svg>
               ) : (
                 <svg
@@ -497,10 +399,10 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
             </button>
 
             {/* Control de volumen */}
-            <div className="flex items-center space-x-2">
+            <div className="hidden sm:flex items-center space-x-1">
               <button
+                className="text-white hover:text-blue-400 transition focus:outline-none"
                 onClick={toggleMute}
-                className="text-white focus:outline-none hover:text-blue-400"
                 aria-label={isMuted ? "Activar sonido" : "Silenciar"}
               >
                 {isMuted ? (
@@ -509,7 +411,7 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M3.63 3.63a.996.996 0 0 0 0 1.41L7.29 8.7 7 9H4c-.55 0-1 .45-1 1v4c0 .55.45 1 1 1h3l3.29 3.29c.63.63 1.71.18 1.71-.71v-4.17l4.18 4.18c-.49.37-1.02.68-1.6.91-.36.15-.58.53-.58.92 0 .72.73 1.18 1.39.91.8-.33 1.55-.77 2.22-1.31l1.34 1.34a.996.996 0 1 0 1.41-1.41L5.05 3.63c-.39-.39-1.02-.39-1.42 0zM19 12c0 .82-.15 1.61-.41 2.34l1.53 1.53c.56-1.17.88-2.48.88-3.87 0-3.83-2.4-7.11-5.78-8.4-.59-.23-1.22.23-1.22.86v.19c0 .38.25.71.61.85C17.18 6.54 19 9.06 19 12zm-8.71-6.29l-.17.17L12 7.76V6.41c0-.89-1.08-1.33-1.71-.7zM16.5 12A4.5 4.5 0 0 0 14 7.97v1.79l2.48 2.48c.01-.08.02-.16.02-.24z" />
+                    <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
                   </svg>
                 ) : (
                   <svg
@@ -526,47 +428,55 @@ function VideoPlayer({ mediaId, streamUrl, mediaInfo, autoPlay = false }) {
                 type="range"
                 min="0"
                 max="1"
-                step="0.05"
+                step="0.1"
                 value={volume}
                 onChange={handleVolumeChange}
-                className="w-16 md:w-24 h-2 bg-gray-700 rounded-full appearance-none cursor-pointer"
+                className="w-16 md:w-24 h-1.5 bg-gray-600 rounded-full appearance-none cursor-pointer"
                 style={{
                   background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
                     volume * 100
-                  }%, #4b5563 ${volume * 100}%, #4b5563 100%)`,
+                  }%, #6b7280 ${volume * 100}%, #6b7280 100%)`,
                 }}
               />
             </div>
 
-            {/* Tiempo */}
-            <div className="text-white text-sm hidden sm:block">
+            {/* Tiempo actual / duración */}
+            <div className="text-white text-sm">
               {formatTime(currentTime)} / {formatTime(duration)}
             </div>
           </div>
 
           {/* Botón de pantalla completa */}
           <button
+            className="text-white hover:text-blue-400 transition focus:outline-none"
             onClick={toggleFullscreen}
-            className="text-white focus:outline-none hover:text-blue-400"
-            aria-label="Pantalla completa"
+            aria-label={
+              isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"
+            }
           >
-            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-            </svg>
+            {isFullscreen ? (
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+              </svg>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Botón central de reproducción cuando está pausado */}
+      {/* Botón central de play/pause */}
       {!isPlaying && (
         <div className="absolute inset-0 flex items-center justify-center">
           <button
+            className="bg-blue-600 bg-opacity-70 hover:bg-opacity-90 rounded-full p-5 transform transition hover:scale-110 focus:outline-none"
             onClick={togglePlay}
-            className="bg-blue-600 bg-opacity-80 rounded-full p-4 focus:outline-none transform transition-transform hover:scale-110"
             aria-label="Reproducir"
           >
             <svg
-              className="w-12 h-12 text-white"
+              className="w-10 h-10 text-white"
               fill="currentColor"
               viewBox="0 0 24 24"
             >
