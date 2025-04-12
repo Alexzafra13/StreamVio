@@ -1,7 +1,7 @@
 // server/routes/filesystem.js - Versión simplificada y más robusta
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../middleware/enhancedAuth");
+const authMiddleware = require("../middleware/authMiddleware");
 const filesystemService = require("../services/filesystemService");
 
 // Middleware de autenticación para todas las rutas

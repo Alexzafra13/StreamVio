@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/database");
-const enhancedAuthMiddleware = require("../middleware/enhancedAuth");
+const authMiddleware = require("../middleware/authMiddleware");
 
 // Middleware de autenticación para todas las rutas
 router.use(enhancedAuthMiddleware);

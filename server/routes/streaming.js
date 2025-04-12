@@ -3,7 +3,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const router = express.Router();
-const authMiddleware = require("../middleware/enhancedAuth");
+const authMiddleware = require("../middleware/authMiddleware");
 const db = require("../config/database");
 const streamingService = require("../services/streamingService");
 
