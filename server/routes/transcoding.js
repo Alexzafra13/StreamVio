@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 const db = require("../config/database");
-const enhancedTranscoder = require("../services/enhancedTranscoderService");
+const enhancedTranscoder = require("../services/streamingService");
 const path = require("path");
 const fs = require("fs");
 
