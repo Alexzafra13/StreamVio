@@ -1,354 +1,269 @@
-// server/services/authService.js
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
-const db = require("../config/database");
-const settings = require("../config/settings");
+// clients/web/src/services/authService.js
+import axios from "axios";
+import apiConfig from "../config/api";
+
+const API_URL = apiConfig.API_URL;
 
 /**
- * Servicio para manejar la autenticación y permisos
+ * Servicio para gestionar autenticación y sesiones en el cliente
  */
 class AuthService {
   constructor() {
-    this.jwtSecret =
-      process.env.JWT_SECRET || settings.jwtSecret || "streamvio_secret_key";
-    this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || "7d"; // 7 días por defecto
+    // Configurar interceptores de Axios al instanciar el servicio
+    this.setupAxiosInterceptors();
+
+    // Validar token al inicio para evitar problemas con tokens inválidos
+    this.validateCurrentToken();
   }
 
   /**
-   * Genera un token JWT para un usuario
-   * @param {Object} user - Datos del usuario
-   * @returns {string} Token JWT generado
-   */
-  generateToken(user) {
-    // Datos que se incluirán en el token
-    const payload = {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      isAdmin: user.is_admin === 1,
-    };
-
-    // Generar y firmar el token
-    return jwt.sign(payload, this.jwtSecret, { expiresIn: this.jwtExpiresIn });
-  }
-
-  /**
-   * Verifica un token JWT
-   * @param {string} token - Token a verificar
-   * @returns {Object} Datos decodificados del token o null si es inválido
-   */
-  verifyToken(token) {
-    try {
-      return jwt.verify(token, this.jwtSecret);
-    } catch (error) {
-      console.error("Error al verificar token JWT:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Verifica las credenciales de un usuario
-   * @param {string} email - Email del usuario
-   * @param {string} password - Contraseña del usuario
-   * @returns {Promise<Object>} Datos del usuario si las credenciales son válidas
-   */
-  async verifyCredentials(email, password) {
-    try {
-      // Buscar usuario por email
-      const user = await db.asyncGet(
-        "SELECT id, username, email, password, is_admin, force_password_change FROM users WHERE email = ?",
-        [email]
-      );
-
-      if (!user) {
-        throw new Error("Credenciales inválidas");
-      }
-
-      // Verificar contraseña
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      if (!isPasswordValid) {
-        throw new Error("Credenciales inválidas");
-      }
-
-      // Eliminar la contraseña hash del objeto usuario
-      delete user.password;
-
-      return user;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  /**
-   * Inicia sesión de un usuario
-   * @param {string} email - Email del usuario
-   * @param {string} password - Contraseña del usuario
-   * @returns {Promise<Object>} Datos de sesión y usuario
+   * Inicia sesión de usuario
+   * @param {string} email
+   * @param {string} password
+   * @returns {Promise} Datos del usuario y token
    */
   async login(email, password) {
     try {
-      // Verificar credenciales
-      const user = await this.verifyCredentials(email, password);
+      const response = await axios.post(`${API_URL}/api/auth/login`, {
+        email,
+        password,
+      });
 
-      // Generar token JWT
-      const token = this.generateToken(user);
-
-      try {
-        // Registrar sesión en la base de datos
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + 7); // Sesión válida por 7 días
-
-        await db.asyncRun(
-          `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
-           VALUES (?, ?, ?, ?, ?)`,
-          [user.id, token, "Web Client", "N/A", expiryDate.toISOString()]
-        );
-      } catch (sessionError) {
-        console.error("Error al registrar sesión:", sessionError);
-        // No impedir el login si falla la inserción de la sesión
+      if (response.data.token) {
+        this.setToken(response.data.token);
+        this.setUserData(response.data);
       }
 
-      try {
-        // Registrar inicio de sesión en historial
-        await db.asyncRun(
-          `INSERT INTO user_history (user_id, media_id, action_type) 
-           VALUES (?, NULL, 'login')`,
-          [user.id]
-        );
-      } catch (historyError) {
-        console.error("Error al registrar historial:", historyError);
-        // No impedir el login si falla el registro de historial
-      }
-
-      return {
-        token,
-        userId: user.id,
-        username: user.username,
-        email: user.email,
-        isAdmin: user.is_admin === 1,
-        forcePasswordChange: user.force_password_change === 1,
-      };
+      return response.data;
     } catch (error) {
+      console.error("Error de login:", error);
       throw error;
     }
   }
 
   /**
    * Registra un nuevo usuario
-   * @param {Object} userData - Datos del nuevo usuario
-   * @returns {Promise<Object>} Datos del usuario creado
+   * @param {Object} userData
+   * @returns {Promise} Datos del usuario registrado
    */
   async register(userData) {
     try {
-      // Verificar si el usuario ya existe
-      const existingUser = await db.asyncGet(
-        "SELECT id FROM users WHERE username = ? OR email = ?",
-        [userData.username, userData.email]
+      const response = await axios.post(
+        `${API_URL}/api/auth/register-with-invitation`,
+        userData
       );
 
-      if (existingUser) {
-        throw new Error("El nombre de usuario o email ya está en uso");
+      if (response.data.token) {
+        this.setToken(response.data.token);
+        this.setUserData(response.data);
       }
 
-      // Hash de la contraseña
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(userData.password, salt);
-
-      // Insertar el nuevo usuario
-      const result = await db.asyncRun(
-        "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-        [userData.username, userData.email, hashedPassword]
-      );
-
-      // Obtener el ID del usuario creado
-      const userId = result.lastID;
-
-      // Generar token JWT
-      const token = this.generateToken({
-        id: userId,
-        username: userData.username,
-        email: userData.email,
-        is_admin: 0,
-      });
-
-      try {
-        // Registrar sesión
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + 7);
-
-        await db.asyncRun(
-          `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
-           VALUES (?, ?, ?, ?, ?)`,
-          [userId, token, "Web Client", "N/A", expiryDate.toISOString()]
-        );
-      } catch (sessionError) {
-        console.error("Error al registrar sesión:", sessionError);
-        // No impedir el registro si falla la inserción de la sesión
-      }
-
-      return {
-        token,
-        userId,
-        username: userData.username,
-        email: userData.email,
-        isAdmin: false,
-      };
+      return response.data;
     } catch (error) {
+      console.error("Error de registro:", error);
       throw error;
     }
   }
 
   /**
-   * Cierra la sesión de un usuario
-   * @param {number} userId - ID del usuario
+   * Cierra la sesión del usuario actual
    */
-  async logout(userId) {
+  logout() {
+    localStorage.removeItem("streamvio_token");
+    localStorage.removeItem("streamvio_user");
+
+    // Eliminar token de axios headers
+    delete axios.defaults.headers.common["Authorization"];
+
+    // Notificar cambio de autenticación
+    window.dispatchEvent(new Event("streamvio-auth-change"));
+  }
+
+  /**
+   * Almacena el token JWT en localStorage
+   * @param {string} token
+   */
+  setToken(token) {
+    localStorage.setItem("streamvio_token", token);
+
+    // Configurar Axios para usar este token
+    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+  }
+
+  /**
+   * Almacena datos del usuario en localStorage
+   * @param {Object} userData
+   */
+  setUserData(userData) {
+    const userInfo = {
+      id: userData.userId,
+      username: userData.username,
+      email: userData.email,
+      isAdmin: userData.isAdmin === true || userData.is_admin === 1,
+    };
+
+    localStorage.setItem("streamvio_user", JSON.stringify(userInfo));
+
+    // Disparar evento de cambio de autenticación
+    window.dispatchEvent(new Event("streamvio-auth-change"));
+  }
+
+  /**
+   * Obtiene el token actual del localStorage
+   * @returns {string|null} Token JWT o null
+   */
+  getToken() {
     try {
-      try {
-        // Registrar cierre de sesión
-        await db.asyncRun(
-          `INSERT INTO user_history (user_id, media_id, action_type) 
-           VALUES (?, NULL, 'logout')`,
-          [userId]
-        );
-      } catch (historyError) {
-        console.error("Error al registrar historial de logout:", historyError);
-      }
-
-      try {
-        // Invalidar todas las sesiones del usuario
-        await db.asyncRun(
-          "UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE user_id = ?",
-          [userId]
-        );
-      } catch (sessionError) {
-        console.error("Error al invalidar sesiones:", sessionError);
-      }
-
-      return { success: true };
+      return localStorage.getItem("streamvio_token");
     } catch (error) {
-      console.error("Error al cerrar sesión:", error);
-      return { success: false, error: error.message };
+      console.error("Error al acceder a localStorage:", error);
+      return null;
     }
   }
 
   /**
-   * Cambia la contraseña de un usuario
-   * @param {number} userId - ID del usuario
-   * @param {string} currentPassword - Contraseña actual
-   * @param {string} newPassword - Nueva contraseña
-   * @returns {Promise<Object>} Resultado de la operación
+   * Obtiene información del usuario actual
+   * @returns {Object|null} Datos del usuario o null
    */
-  async changePassword(userId, currentPassword, newPassword) {
+  getCurrentUser() {
     try {
-      // Obtener datos del usuario
-      const user = await db.asyncGet(
-        "SELECT password, username, email, is_admin FROM users WHERE id = ?",
-        [userId]
-      );
+      const userStr = localStorage.getItem("streamvio_user");
+      return userStr ? JSON.parse(userStr) : null;
+    } catch (error) {
+      console.error("Error al obtener información de usuario:", error);
+      return null;
+    }
+  }
 
-      if (!user) {
-        throw new Error("Usuario no encontrado");
-      }
+  /**
+   * Verifica si hay una sesión activa
+   * @returns {boolean} true si hay sesión activa
+   */
+  isLoggedIn() {
+    return !!this.getToken();
+  }
 
-      // Verificar contraseña actual (excepto para administradores en su primer inicio de sesión)
-      const isAdmin = user.is_admin === 1;
-      const needsCheck = !(isAdmin && currentPassword === "admin");
+  /**
+   * Verifica si el usuario actual es administrador
+   * @returns {boolean} true si es administrador
+   */
+  isAdmin() {
+    const user = this.getCurrentUser();
+    return user && (user.isAdmin === true || user.is_admin === 1);
+  }
 
-      if (needsCheck) {
-        const isPasswordValid = await bcrypt.compare(
-          currentPassword,
-          user.password
-        );
-        if (!isPasswordValid) {
-          throw new Error("La contraseña actual es incorrecta");
+  /**
+   * Configura interceptores de Axios para manejar autenticación en todas las peticiones
+   */
+  setupAxiosInterceptors() {
+    // Interceptor para añadir token a todas las peticiones
+    axios.interceptors.request.use(
+      (config) => {
+        const token = this.getToken();
+
+        if (token) {
+          // Asegurar que el formato sea "Bearer <token>"
+          config.headers.Authorization = `Bearer ${token}`;
         }
+
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    // Interceptor para manejar errores de autenticación
+    axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        // Si hay error 401, puede ser token inválido o expirado
+        if (error.response && error.response.status === 401) {
+          console.warn("Sesión expirada o token inválido");
+
+          // Solo cerrar sesión automáticamente si no es en rutas de login/registro
+          const isAuthRoute =
+            error.config.url.includes("/api/auth/login") ||
+            error.config.url.includes("/api/auth/register");
+
+          if (!isAuthRoute) {
+            this.logout();
+
+            // Redirigir a login (solo si estamos en una página privada)
+            const publicPaths = ["/", "/auth", "/register", "/login"];
+            if (!publicPaths.includes(window.location.pathname)) {
+              window.location.href = "/auth";
+            }
+          }
+        }
+
+        return Promise.reject(error);
       }
+    );
+  }
 
-      // Hash de la nueva contraseña
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(newPassword, salt);
+  /**
+   * Valida el token actual para asegurarse que sea válido
+   */
+  async validateCurrentToken() {
+    const token = this.getToken();
 
-      // Actualizar contraseña y quitar flag de cambio forzado
-      await db.asyncRun(
-        "UPDATE users SET password = ?, force_password_change = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        [hashedPassword, userId]
-      );
+    if (!token) return;
 
-      // Generar nuevo token con fecha de expiración actualizada
-      const newToken = this.generateToken({
-        id: userId,
-        username: user.username,
-        email: user.email,
-        is_admin: user.is_admin,
+    try {
+      // Configurar el token en axios para esta petición específica
+      const response = await axios.get(`${API_URL}/api/auth/user`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      try {
-        // Invalidar todas las sesiones anteriores
-        await db.asyncRun(
-          "UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE user_id = ? AND token <> ?",
-          [userId, newToken]
-        );
-
-        // Crear nueva sesión
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + 7);
-
-        await db.asyncRun(
-          `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
-           VALUES (?, ?, ?, ?, ?)`,
-          [userId, newToken, "Web Client", "N/A", expiryDate.toISOString()]
-        );
-      } catch (sessionError) {
-        console.error(
-          "Error al gestionar sesiones para cambio de contraseña:",
-          sessionError
-        );
+      // Si el token es válido, actualizar datos del usuario
+      if (response.data) {
+        this.setUserData({
+          userId: response.data.id,
+          username: response.data.username,
+          email: response.data.email,
+          isAdmin:
+            response.data.is_admin === 1 || response.data.isAdmin === true,
+        });
       }
-
-      return {
-        success: true,
-        message: "Contraseña actualizada correctamente",
-        token: newToken,
-      };
     } catch (error) {
-      throw error;
+      console.warn("Token inválido o expirado. Cerrando sesión...");
+      this.logout();
     }
   }
 
   /**
-   * Verifica si un usuario tiene acceso a una biblioteca
-   * @param {number} userId - ID del usuario
-   * @param {number} libraryId - ID de la biblioteca
-   * @returns {Promise<boolean>} true si tiene acceso, false si no
+   * Añade el token de autenticación a una URL (para recursos estáticos)
+   * @param {string} url - URL base
+   * @returns {string} URL con token añadido
    */
-  async hasLibraryAccess(userId, libraryId) {
-    try {
-      // Verificar si el usuario es administrador
-      const user = await db.asyncGet(
-        "SELECT is_admin FROM users WHERE id = ?",
-        [userId]
-      );
+  addTokenToUrl(url) {
+    const token = this.getToken();
+    if (!token || !url) return url;
 
-      // Los administradores tienen acceso a todas las bibliotecas
-      if (user && user.is_admin === 1) {
-        return true;
-      }
+    const hasParams = url.includes("?");
+    return `${url}${hasParams ? "&" : "?"}auth=${encodeURIComponent(token)}`;
+  }
 
-      // Verificar acceso específico a la biblioteca
-      const access = await db.asyncGet(
-        "SELECT has_access FROM user_library_access WHERE user_id = ? AND library_id = ?",
-        [userId, libraryId]
-      );
+  /**
+   * Obtiene la URL para un recurso multimedia con token
+   * @param {number} mediaId - ID del elemento multimedia
+   * @returns {string} URL con token
+   */
+  getMediaUrl(mediaId) {
+    if (!mediaId) return null;
+    return this.addTokenToUrl(`${API_URL}/api/media/${mediaId}/stream`);
+  }
 
-      return access && access.has_access === 1;
-    } catch (error) {
-      console.error("Error al verificar acceso a biblioteca:", error);
-      return false;
-    }
+  /**
+   * Obtiene la URL para una miniatura con token
+   * @param {number} mediaId - ID del elemento multimedia
+   * @returns {string} URL con token
+   */
+  getThumbnailUrl(mediaId) {
+    if (!mediaId) return null;
+    return this.addTokenToUrl(`${API_URL}/api/media/${mediaId}/thumbnail`);
   }
 }
 
-// Exportar una instancia del servicio
+// Exportar instancia única del servicio
 const authService = new AuthService();
-module.exports = authService;
+export default authService;

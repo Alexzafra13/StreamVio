@@ -1,34 +1,42 @@
 // clients/web/src/utils/appInit.js
 import axios from "axios";
-import auth from "./auth";
+import authService from "../services/authService";
 
 /**
- * Inicializa la aplicación con todas las configuraciones necesarias
- * - Configura axios para autenticación automática
- * - Mejora fetch nativo para incluir tokens de autenticación
- * - Configura eventos para detectar cambios de sesión
+ * Función para inicializar la aplicación
+ * - Configura interceptores de Axios
+ * - Verifica el estado de autenticación
+ * - Establece listeners para eventos de autenticación
  */
 const initializeApp = () => {
-  console.log("Inicializando aplicación StreamVio...");
+  console.log("🚀 Inicializando aplicación StreamVio...");
 
-  // 1. Configurar axios para incluir token en todas las peticiones
-  auth.setupAxios(axios);
+  // 1. Verificar estado de autenticación inicial
+  const isAuthenticated = authService.isLoggedIn();
+  console.log(
+    `Estado de autenticación inicial: ${
+      isAuthenticated ? "Autenticado" : "No autenticado"
+    }`
+  );
 
-  // 2. Mejorar fetch nativo para incluir token automáticamente
+  // 2. Si hay un token, asegurarse de que se usa en todas las peticiones
+  if (isAuthenticated) {
+    const token = authService.getToken();
+    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    console.log("Token de autenticación configurado globalmente");
+  }
+
+  // 3. Mejorar el fetch nativo para incluir token automáticamente
   enhanceFetch();
+  console.log("Fetch nativo mejorado para incluir token de autenticación");
 
-  // 3. Configurar listeners para eventos de autenticación
-  setupAuthListeners();
-
-  // 4. Verificar estado de autenticación inicial
-  checkAuthStatus();
-
-  console.log("Inicialización de la aplicación completada");
+  // 4. Verificar validez del token periódicamente
+  setupTokenRefresh();
+  console.log("Verificación periódica de token configurada");
 };
 
 /**
  * Mejora el método fetch nativo para incluir token de autenticación
- * para peticiones a nuestra API y recursos
  */
 const enhanceFetch = () => {
   const originalFetch = window.fetch;
@@ -42,16 +50,14 @@ const enhanceFetch = () => {
     // Detectar si es una petición a nuestra API o recursos
     const isApiRequest = resource.includes("/api/");
     const isResourceRequest =
-      resource.includes("/stream") ||
-      resource.includes("/thumbnail") ||
-      resource.includes("/data/");
+      resource.includes("/stream") || resource.includes("/thumbnail");
 
     if (!isApiRequest && !isResourceRequest) {
       return originalFetch.call(this, resource, options);
     }
 
     // Obtener token de autenticación
-    const token = auth.getToken();
+    const token = authService.getToken();
     if (!token) {
       return originalFetch.call(this, resource, options);
     }
@@ -66,7 +72,10 @@ const enhanceFetch = () => {
 
     // Si es recurso (streaming/thumbnails), agregar token como parámetro
     if (isResourceRequest) {
-      resource = auth.addTokenToUrl(resource);
+      const hasParams = resource.includes("?");
+      resource = `${resource}${hasParams ? "&" : "?"}auth=${encodeURIComponent(
+        token
+      )}`;
     }
 
     return originalFetch.call(this, resource, options);
@@ -74,94 +83,26 @@ const enhanceFetch = () => {
 };
 
 /**
- * Configura listeners para detectar cambios en la autenticación
+ * Configura la verificación y refresco periódico del token
  */
-const setupAuthListeners = () => {
-  // Listener para cambios en localStorage (otras pestañas)
-  window.addEventListener("storage", (event) => {
-    if (event.key === "streamvio_token") {
-      if (!event.newValue) {
-        // Token eliminado en otra pestaña
-        console.log("Sesión cerrada en otra pestaña");
-        redirectIfProtectedPage();
-      } else if (event.newValue !== event.oldValue) {
-        // Token actualizado en otra pestaña
-        console.log("Sesión actualizada en otra pestaña");
-        auth.setupAxios(axios);
-      }
-    }
-  });
-
-  // Listener para evento personalizado de cambios de autenticación
-  window.addEventListener("streamvio-auth-change", () => {
-    console.log("Evento de cambio de autenticación detectado");
-
-    // Si no hay token y estamos en página protegida, redirigir
-    if (!auth.isLoggedIn()) {
-      redirectIfProtectedPage();
-    }
-  });
-};
-
-/**
- * Verifica el estado de autenticación al iniciar la aplicación
- */
-const checkAuthStatus = () => {
-  if (!auth.isLoggedIn()) {
-    console.log("Iniciando sin sesión activa");
-    redirectIfProtectedPage();
-    return;
-  }
-
-  console.log("Sesión activa detectada");
-
-  // Verificar token periódicamente
+const setupTokenRefresh = () => {
+  // Verificar el token cada 5 minutos
   setInterval(() => {
-    verifyTokenValidity();
-  }, 5 * 60 * 1000); // Cada 5 minutos
-
-  // Verificar inmediatamente
-  verifyTokenValidity();
-};
-
-/**
- * Verifica si el token actual es válido
- */
-const verifyTokenValidity = async () => {
-  if (!auth.isLoggedIn()) return;
-
-  try {
-    await axios.get("/api/auth/user", {
-      headers: auth.getAuthHeaders(),
-    });
-    console.log("Token válido verificado");
-  } catch (error) {
-    if (error.response && error.response.status === 401) {
-      console.warn("Token inválido o expirado");
-      auth.logout();
-      redirectIfProtectedPage();
+    if (authService.isLoggedIn()) {
+      authService.validateCurrentToken().catch((error) => {
+        console.warn("Error al validar token:", error);
+        // Si hay error de validación, cerrar sesión
+        authService.logout();
+      });
     }
-  }
+  }, 5 * 60 * 1000); // Cada 5 minutos
 };
 
 /**
- * Redirige al login si estamos en una página protegida
+ * Inicializa la aplicación cuando se carga la ventana
  */
-const redirectIfProtectedPage = () => {
-  // Lista de rutas públicas que no requieren autenticación
-  const publicPaths = ["/", "/auth", "/login", "/register", "/about"];
-  const currentPath = window.location.pathname;
-
-  if (
-    !publicPaths.includes(currentPath) &&
-    !currentPath.startsWith("/public/")
-  ) {
-    // Guardar la URL actual para redirigir después del login
-    const returnUrl = encodeURIComponent(
-      window.location.pathname + window.location.search
-    );
-    window.location.href = `/auth?redirect=${returnUrl}`;
-  }
-};
+window.addEventListener("DOMContentLoaded", () => {
+  initializeApp();
+});
 
 export default initializeApp;

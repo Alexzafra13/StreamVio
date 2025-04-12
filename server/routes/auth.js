@@ -38,16 +38,25 @@ router.get("/check-first-time", async (req, res) => {
   }
 });
 
+// Agregar esta ruta a tu archivo server/routes/auth.js existente
+
 /**
  * @route   POST /api/auth/setup-first-user
  * @desc    Configurar el primer usuario administrador
  * @access  Public
  */
 router.post("/setup-first-user", async (req, res) => {
+  console.log("Recibida solicitud para configurar usuario inicial");
   const { username, email, password } = req.body;
+
+  // Log para depuración
+  console.log(
+    `Datos recibidos: username=${username}, email=${email}, password=****`
+  );
 
   // Validar entrada
   if (!username || !email || !password) {
+    console.log("Datos incompletos en la solicitud");
     return res.status(400).json({
       error: "Datos incompletos",
       message: "Se requiere nombre de usuario, email y contraseña",
@@ -57,8 +66,14 @@ router.post("/setup-first-user", async (req, res) => {
   try {
     // Verificar que no haya usuarios existentes
     const userCount = await db.asyncGet("SELECT COUNT(*) as count FROM users");
+    console.log(
+      `Verificando usuarios existentes: ${
+        userCount ? userCount.count : "Error"
+      }`
+    );
 
     if (userCount && userCount.count > 0) {
+      console.log("Ya existen usuarios en el sistema, operación no permitida");
       return res.status(403).json({
         error: "Operación no permitida",
         message: "Ya existe al menos un usuario en el sistema",
@@ -68,22 +83,38 @@ router.post("/setup-first-user", async (req, res) => {
     // Hash de la contraseña
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    console.log("Contraseña hasheada correctamente");
 
     // Insertar como usuario administrador
+    console.log("Insertando usuario administrador en la base de datos...");
     const result = await db.asyncRun(
       "INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)",
       [username, email, hashedPassword, 1] // is_admin = 1
     );
 
-    // Generar token JWT
+    // Obtener ID del usuario insertado
     const userId = result.lastID;
-    const token = jwt.sign(
-      { id: userId, username, email },
-      settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key",
-      { expiresIn: "7d" }
+    console.log(`Usuario creado con ID: ${userId}`);
+
+    // Generar token JWT
+    const jwtSecret =
+      settings.jwtSecret || process.env.JWT_SECRET || "streamvio_secret_key";
+    console.log(
+      `Usando clave JWT (primeros 4 caracteres): ${jwtSecret.substring(
+        0,
+        4
+      )}...`
     );
 
+    const token = jwt.sign(
+      { id: userId, username, email, isAdmin: true },
+      jwtSecret,
+      { expiresIn: "7d" }
+    );
+    console.log("Token JWT generado correctamente");
+
     // Responder con token y datos básicos del usuario
+    console.log("Enviando respuesta exitosa al cliente");
     res.status(201).json({
       message: "Configuración inicial completada exitosamente",
       token,
@@ -97,6 +128,7 @@ router.post("/setup-first-user", async (req, res) => {
     res.status(500).json({
       error: "Error del servidor",
       message: "Error al configurar el primer usuario",
+      details: error.message,
     });
   }
 });
