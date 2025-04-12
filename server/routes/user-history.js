@@ -5,7 +5,7 @@ const db = require("../config/database");
 const authMiddleware = require("../middleware/authMiddleware");
 
 // Middleware de autenticación para todas las rutas
-router.use(enhancedAuthMiddleware);
+router.use(authMiddleware);
 
 /**
  * @route   GET /api/user/history
