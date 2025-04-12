@@ -3,7 +3,7 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("../config/database");
-const authMiddleware = require("../middleware/enhancedAuth");
+const authMiddleware = require("../middleware/authMiddleware");
 const settings = require("../config/settings.js");
 const crypto = require("crypto");
 
