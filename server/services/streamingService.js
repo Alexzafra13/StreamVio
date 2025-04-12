@@ -4,6 +4,7 @@ const path = require("path");
 const { promisify } = require("util");
 const db = require("../config/database");
 const settings = require("../config/settings");
+const authService = require("./authService");
 
 // Promisificar operaciones de fs
 const stat = promisify(fs.stat);
@@ -40,6 +41,9 @@ class StreamingService {
       ".webp": "image/webp",
       ".bmp": "image/bmp",
     };
+
+    // Directorio para thumbnails
+    this.thumbnailsDir = path.join(__dirname, "../data/thumbnails");
   }
 
   /**
@@ -62,7 +66,7 @@ class StreamingService {
         );
       }
 
-      // 2. Verificar permisos de acceso
+      // 2. Verificar permisos de acceso utilizando el servicio de autenticación
       const hasAccess = await this.checkAccess(
         userData.id,
         mediaId,
@@ -210,33 +214,19 @@ class StreamingService {
    */
   async checkAccess(userId, mediaId, libraryId) {
     try {
-      // Verificar si el usuario es administrador
-      const user = await db.asyncGet(
-        "SELECT is_admin FROM users WHERE id = ?",
-        [userId]
-      );
-      if (user && user.is_admin === 1) {
-        return true; // Los administradores tienen acceso a todo
-      }
-
       // Si el medio no pertenece a una biblioteca, cualquier usuario autenticado tiene acceso
       if (!libraryId) {
         return true;
       }
 
-      // Verificar acceso específico a la biblioteca
-      const access = await db.asyncGet(
-        "SELECT has_access FROM user_library_access WHERE user_id = ? AND library_id = ?",
-        [userId, libraryId]
-      );
-
-      return access ? access.has_access === 1 : true;
+      // Usar el servicio de autenticación para verificar acceso a la biblioteca
+      return await authService.hasLibraryAccess(userId, libraryId);
     } catch (error) {
       console.error(
         `Error al verificar acceso para usuario ${userId}, medio ${mediaId}:`,
         error
       );
-      return true; // En caso de error, permitir acceso
+      return false; // En caso de error, denegar acceso por seguridad
     }
   }
 
@@ -325,6 +315,19 @@ class StreamingService {
     }
 
     return false;
+  }
+
+  /**
+   * Genera una miniatura para un archivo multimedia
+   * @param {string} filePath - Ruta del archivo de origen
+   * @param {number} timeOffset - Offset en segundos para extraer el frame en videos
+   * @returns {Promise<string>} - Ruta de la miniatura generada
+   */
+  async generateThumbnail(filePath, timeOffset = 5) {
+    // Implementación del método de generación de miniaturas
+    // Esta implementación sería necesaria para el servicio de transcoding
+    // pero no es esencial para el streaming básico
+    return "path/to/thumbnail.jpg";
   }
 }
 

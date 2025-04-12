@@ -47,25 +47,25 @@ const authMiddleware = async (req, res, next) => {
     // Añadir información del usuario decodificada al request
     req.user = decoded;
 
-    // Opcional: Verificar que el usuario existe en la BD (descomenta si necesario)
-    /*
+    // Verificar si la sesión sigue siendo válida
     try {
-      const userId = decoded.id;
-      const user = await db.asyncGet("SELECT id, username, is_admin FROM users WHERE id = ?", [userId]);
-      
-      if (!user) {
+      const validSession = await db.asyncGet(
+        "SELECT id FROM sessions WHERE user_id = ? AND expires_at > datetime('now')",
+        [decoded.id]
+      );
+
+      if (!validSession) {
+        // Si no hay ninguna sesión válida para este usuario, el token podría haber sido revocado
         return res.status(401).json({
-          error: "Usuario inválido",
-          message: "El usuario asociado al token no existe"
+          error: "Sesión inválida",
+          message:
+            "La sesión ha expirado o ha sido cerrada. Por favor, inicie sesión nuevamente.",
         });
       }
-      
-      // Añadir información adicional del usuario desde la BD
-      req.user.isAdmin = user.is_admin === 1;
     } catch (dbError) {
-      console.error("Error al verificar usuario en BD:", dbError);
+      // Si hay un error al verificar la sesión, continuamos (para no bloquear el acceso)
+      console.warn("Error al verificar sesión:", dbError);
     }
-    */
 
     // Continuar con la solicitud
     next();

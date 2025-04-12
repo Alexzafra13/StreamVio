@@ -3,7 +3,7 @@
  * Este script:
  * 1. Crea todas las tablas necesarias si no existen
  * 2. Verifica e inserta configuraciones por defecto
- * 3. Crea tablas complementarias (streaming_tokens)
+ * 3. Crea tablas complementarias (sessions)
  * 4. Crea directorios necesarios con permisos correctos
  */
 const sqlite3 = require("sqlite3").verbose();
@@ -348,22 +348,6 @@ async function initialize() {
     )`);
     console.log(`${colors.green}✓ Tabla invitation_codes${colors.reset}`);
 
-    // Tabla para tokens de streaming
-    await dbAsync.asyncRun(`CREATE TABLE IF NOT EXISTS streaming_tokens (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      token_id TEXT NOT NULL UNIQUE,
-      user_id INTEGER NOT NULL,
-      media_id INTEGER NOT NULL,
-      ip_address TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      expires_at TIMESTAMP NOT NULL,
-      revoked BOOLEAN DEFAULT 0,
-      revoked_at TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-      FOREIGN KEY (media_id) REFERENCES media_items (id) ON DELETE CASCADE
-    )`);
-    console.log(`${colors.green}✓ Tabla streaming_tokens${colors.reset}`);
-
     // Tabla para permisos de acceso a bibliotecas por usuario
     await dbAsync.asyncRun(`CREATE TABLE IF NOT EXISTS user_library_access (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -386,13 +370,13 @@ async function initialize() {
       `CREATE INDEX IF NOT EXISTS idx_media_items_type ON media_items(type)`
     );
     await dbAsync.asyncRun(
-      `CREATE INDEX IF NOT EXISTS idx_streaming_tokens_token_id ON streaming_tokens(token_id)`
+      `CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token)`
     );
     await dbAsync.asyncRun(
-      `CREATE INDEX IF NOT EXISTS idx_streaming_tokens_user_id ON streaming_tokens(user_id)`
+      `CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`
     );
     await dbAsync.asyncRun(
-      `CREATE INDEX IF NOT EXISTS idx_streaming_tokens_expires ON streaming_tokens(expires_at)`
+      `CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`
     );
     await dbAsync.asyncRun(
       `CREATE INDEX IF NOT EXISTS idx_media_items_parent ON media_items(parent_id)`

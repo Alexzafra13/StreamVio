@@ -3,7 +3,6 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const db = require("../config/database");
 const settings = require("../config/settings");
-const streamingTokenService = require("./streamingTokenService");
 
 /**
  * Servicio para manejar la autenticación y permisos
@@ -94,7 +93,17 @@ class AuthService {
       // Generar token JWT
       const token = this.generateToken(user);
 
-      // Registrar inicio de sesión
+      // Registrar sesión en la base de datos
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7); // Sesión válida por 7 días
+
+      await db.asyncRun(
+        `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [user.id, token, "Web Client", "N/A", expiryDate.toISOString()]
+      );
+
+      // Registrar inicio de sesión en historial
       await db.asyncRun(
         `INSERT INTO user_history (user_id, media_id, action_type) 
          VALUES (?, NULL, 'login')`,
@@ -152,6 +161,16 @@ class AuthService {
         is_admin: 0,
       });
 
+      // Registrar sesión
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7);
+
+      await db.asyncRun(
+        `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, token, "Web Client", "N/A", expiryDate.toISOString()]
+      );
+
       return {
         token,
         userId,
@@ -177,8 +196,11 @@ class AuthService {
         [userId]
       );
 
-      // Revocar todos los tokens de streaming del usuario
-      await streamingTokenService.revokeAllUserTokens(userId);
+      // Invalidar todas las sesiones del usuario
+      await db.asyncRun(
+        "UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE user_id = ?",
+        [userId]
+      );
 
       return { success: true };
     } catch (error) {
@@ -238,8 +260,21 @@ class AuthService {
         is_admin: user.is_admin,
       });
 
-      // Revocar todos los tokens de streaming (por seguridad)
-      await streamingTokenService.revokeAllUserTokens(userId);
+      // Invalidar todas las sesiones anteriores
+      await db.asyncRun(
+        "UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE user_id = ? AND token <> ?",
+        [userId, newToken]
+      );
+
+      // Crear nueva sesión
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7);
+
+      await db.asyncRun(
+        `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, newToken, "Web Client", "N/A", expiryDate.toISOString()]
+      );
 
       return {
         success: true,
