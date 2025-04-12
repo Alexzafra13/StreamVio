@@ -2,20 +2,20 @@
 const fs = require("fs");
 const path = require("path");
 const { promisify } = require("util");
-const db = require("../config/database");
-const settings = require("../config/settings");
-const authService = require("./authService");
+const mediaRepository = require("../data/repositories/mediaRepository");
+const mediaService = require("./mediaService");
+const eventBus = require("./eventBus");
 
 // Promisificar operaciones de fs
 const stat = promisify(fs.stat);
 const access = promisify(fs.access);
 
 /**
- * Servicio unificado para streaming de archivos multimedia
+ * Servicio para streaming de contenido multimedia
  */
 class StreamingService {
   constructor() {
-    // Configuración por defecto
+    // Mapa de tipos MIME
     this.mimeTypes = {
       // Video
       ".mp4": "video/mp4",
@@ -41,22 +41,22 @@ class StreamingService {
       ".webp": "image/webp",
       ".bmp": "image/bmp",
     };
-
-    // Directorio para thumbnails
-    this.thumbnailsDir = path.join(__dirname, "../data/thumbnails");
   }
 
   /**
-   * Maneja una solicitud de streaming
+   * Manejar una solicitud de streaming
    * @param {Object} req - Objeto de solicitud Express
    * @param {Object} res - Objeto de respuesta Express
    * @param {number} mediaId - ID del medio a transmitir
    * @param {Object} userData - Datos del usuario autenticado
+   * @returns {Promise<boolean>} - true si se manejó correctamente
+   * @throws {Error} - Si ocurre un error
    */
   async handleStreamRequest(req, res, mediaId, userData) {
     try {
       // 1. Obtener información del medio desde la base de datos
-      const mediaItem = await this.getMediaItem(mediaId);
+      const mediaItem = await mediaRepository.findById(mediaId);
+
       if (!mediaItem) {
         return this.sendError(
           res,
@@ -66,12 +66,12 @@ class StreamingService {
         );
       }
 
-      // 2. Verificar permisos de acceso utilizando el servicio de autenticación
-      const hasAccess = await this.checkAccess(
+      // 2. Verificar permisos de acceso
+      const hasAccess = await mediaService.checkAccess(
         userData.id,
-        mediaId,
         mediaItem.library_id
       );
+
       if (!hasAccess) {
         return this.sendError(
           res,
@@ -82,7 +82,7 @@ class StreamingService {
       }
 
       // 3. Verificar existencia y permisos del archivo
-      const filePath = mediaItem.file_path.replace(/\\/g, "/");
+      const filePath = mediaItem.file_path;
 
       try {
         // Verificar que el archivo existe
@@ -121,7 +121,7 @@ class StreamingService {
       const mimeType = this.getMimeType(filePath);
 
       // 5. Registrar visualización en el historial (sin bloquear la respuesta)
-      this.recordViewing(userData.id, mediaId).catch((err) => {
+      this.recordWatching(userData.id, mediaId).catch((err) => {
         console.warn(`Error al registrar visualización: ${err.message}`);
       });
 
@@ -131,6 +131,7 @@ class StreamingService {
       // Si no hay solicitud de rango, enviar archivo completo
       if (!range) {
         console.log(`Streaming completo: ${filePath} (${fileSize} bytes)`);
+
         res.writeHead(200, {
           "Content-Type": mimeType,
           "Content-Length": fileSize,
@@ -139,7 +140,7 @@ class StreamingService {
         });
 
         fs.createReadStream(filePath).pipe(res);
-        return;
+        return true;
       }
 
       // Procesar petición de rango para streaming
@@ -175,67 +176,31 @@ class StreamingService {
       });
 
       fs.createReadStream(filePath, { start, end }).pipe(res);
+      return true;
     } catch (error) {
       console.error(`Error en el streaming: ${error.message}`);
-      return this.sendError(
-        res,
-        500,
-        "Error interno",
-        "Error al procesar la solicitud de streaming"
-      );
-    }
-  }
 
-  /**
-   * Obtiene información del medio desde la base de datos
-   * @param {number} mediaId - ID del medio
-   * @returns {Promise<Object|null>} - Información del medio o null si no existe
-   */
-  async getMediaItem(mediaId) {
-    try {
-      return await db.asyncGet("SELECT * FROM media_items WHERE id = ?", [
-        mediaId,
-      ]);
-    } catch (error) {
-      console.error(
-        `Error al obtener información del medio ${mediaId}:`,
-        error
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Verifica si un usuario tiene acceso a un medio
-   * @param {number} userId - ID del usuario
-   * @param {number} mediaId - ID del medio
-   * @param {number|null} libraryId - ID de la biblioteca
-   * @returns {Promise<boolean>} - true si tiene acceso, false en caso contrario
-   */
-  async checkAccess(userId, mediaId, libraryId) {
-    try {
-      // Si el medio no pertenece a una biblioteca, cualquier usuario autenticado tiene acceso
-      if (!libraryId) {
-        return true;
+      // Si aún no se ha enviado respuesta, enviar error
+      if (!res.headersSent) {
+        return this.sendError(
+          res,
+          500,
+          "Error interno",
+          "Error al procesar la solicitud de streaming"
+        );
       }
 
-      // Usar el servicio de autenticación para verificar acceso a la biblioteca
-      return await authService.hasLibraryAccess(userId, libraryId);
-    } catch (error) {
-      console.error(
-        `Error al verificar acceso para usuario ${userId}, medio ${mediaId}:`,
-        error
-      );
-      return false; // En caso de error, denegar acceso por seguridad
+      return false;
     }
   }
 
   /**
-   * Registra una visualización en el historial
+   * Registrar visualización de un elemento
    * @param {number} userId - ID del usuario
-   * @param {number} mediaId - ID del medio
+   * @param {number} mediaId - ID del elemento
+   * @returns {Promise<void>}
    */
-  async recordViewing(userId, mediaId) {
+  async recordWatching(userId, mediaId) {
     try {
       // Verificar si ya existe un registro
       const existing = await db.asyncGet(
@@ -256,34 +221,12 @@ class StreamingService {
           [userId, mediaId]
         );
       }
+
+      // Emitir evento
+      eventBus.emitEvent("media:watched", { userId, mediaId });
     } catch (error) {
       console.warn(`Error al registrar visualización: ${error.message}`);
-
-      // Si la tabla no existe, intentar crearla
-      if (error.message && error.message.includes("no such table")) {
-        try {
-          await db.asyncRun(`
-            CREATE TABLE IF NOT EXISTS watch_history (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              user_id INTEGER NOT NULL,
-              media_id INTEGER NOT NULL,
-              watched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              position INTEGER DEFAULT 0,
-              completed BOOLEAN DEFAULT 0,
-              FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-              FOREIGN KEY (media_id) REFERENCES media_items (id) ON DELETE CASCADE
-            )
-          `);
-
-          // Intentar nuevamente la inserción
-          await db.asyncRun(
-            "INSERT INTO watch_history (user_id, media_id, position, completed) VALUES (?, ?, 0, 0)",
-            [userId, mediaId]
-          );
-        } catch (err) {
-          console.error(`Error al crear tabla watch_history: ${err.message}`);
-        }
-      }
+      throw error;
     }
   }
 
@@ -303,6 +246,7 @@ class StreamingService {
    * @param {number} status - Código de estado HTTP
    * @param {string} title - Título del error
    * @param {string} message - Mensaje detallado
+   * @returns {boolean} - false para indicar error
    */
   sendError(res, status, title, message) {
     console.error(`Error ${status}: ${title} - ${message}`);
@@ -318,18 +262,83 @@ class StreamingService {
   }
 
   /**
-   * Genera una miniatura para un archivo multimedia
-   * @param {string} filePath - Ruta del archivo de origen
-   * @param {number} timeOffset - Offset en segundos para extraer el frame en videos
-   * @returns {Promise<string>} - Ruta de la miniatura generada
+   * Obtener información de opciones de streaming disponibles
+   * @param {number} mediaId - ID del elemento
+   * @param {string} token - Token de autenticación para URLs
+   * @returns {Promise<Object>} - Información de streaming
    */
-  async generateThumbnail(filePath, timeOffset = 5) {
-    // Implementación del método de generación de miniaturas
-    // Esta implementación sería necesaria para el servicio de transcoding
-    // pero no es esencial para el streaming básico
-    return "path/to/thumbnail.jpg";
+  async getStreamingOptions(mediaId, token) {
+    // Obtener información del medio
+    const mediaItem = await mediaRepository.findById(mediaId);
+
+    if (!mediaItem) {
+      throw new Error("Elemento multimedia no encontrado");
+    }
+
+    // Normalizar la ruta del archivo
+    const filePath = mediaItem.file_path
+      ? mediaItem.file_path.replace(/\\/g, "/")
+      : null;
+
+    // Verificar si hay versión HLS disponible
+    let hlsAvailable = false;
+    let hlsPath = null;
+
+    if (filePath) {
+      const fileName = path.basename(filePath, path.extname(filePath));
+      const hlsDir = path.join(
+        process.cwd(),
+        "data-storage/transcoded",
+        `${fileName}_hls`
+      );
+      const masterPlaylist = path.join(hlsDir, "master.m3u8");
+
+      hlsAvailable = fs.existsSync(masterPlaylist);
+
+      if (hlsAvailable) {
+        hlsPath = `/data-storage/transcoded/${fileName}_hls/master.m3u8`;
+      }
+    }
+
+    // Verificar archivo original
+    let fileInfo = null;
+
+    if (filePath) {
+      try {
+        const stats = await stat(filePath);
+        fileInfo = {
+          exists: true,
+          size: stats.size,
+          mimeType: this.getMimeType(filePath),
+        };
+      } catch (fsError) {
+        fileInfo = { exists: false, error: fsError.code };
+      }
+    }
+
+    // Construir respuesta con opciones de streaming
+    const authParam = token ? `?auth=${token}` : "";
+
+    return {
+      mediaId,
+      title: mediaItem.title,
+      type: mediaItem.type,
+      fileExists: fileInfo?.exists || false,
+      fileSize: fileInfo?.size,
+      options: {
+        direct: {
+          available: fileInfo?.exists || false,
+          url: `/api/streaming/${mediaId}/stream${authParam}`,
+          type: fileInfo?.mimeType || "video/mp4",
+        },
+        hls: {
+          available: hlsAvailable,
+          url: hlsAvailable ? `${hlsPath}${authParam}` : null,
+          type: "application/vnd.apple.mpegurl",
+        },
+      },
+    };
   }
 }
 
-// Exportar instancia única del servicio
 module.exports = new StreamingService();

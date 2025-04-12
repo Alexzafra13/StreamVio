@@ -1,0 +1,351 @@
+streamvio/
+├── server/                # Backend Node.js
+│   ├── api/               # API REST y GraphQL
+│   ├── services/          # Lógica de negocio
+│   ├── data/              # Acceso a datos (modelos/repositorios)
+│   ├── config/            # Configuración centralizada
+│   ├── utils/             # Utilidades comunes
+│   ├── media/             # Gestión de medios
+│   │   ├── scanner/       # Escaneo de bibliotecas
+│   │   ├── metadata/      # Gestión de metadatos
+│   │   └── transcoder/    # Interfaz con el core de transcodificación
+│   ├── auth/              # Autenticación y autorización
+│   └── socket/            # Comunicación en tiempo real
+│
+├── core/                  # Core de transcodificación C++
+│   ├── include/           # Cabeceras públicas
+│   ├── src/               # Implementación
+│   │   ├── transcoder/    # Lógica de transcodificación
+│   │   ├── analyzer/      # Análisis de medios
+│   │   └── utils/         # Utilidades comunes
+│   ├── tests/             # Pruebas unitarias
+│   └── bindings/          # Bindings para Node.js
+│
+├── client/                # Frontend
+│   ├── src/
+│   │   ├── components/    # Componentes React reutilizables
+│   │   │   ├── ui/        # Componentes de UI básicos
+│   │   │   ├── auth/      # Componentes de autenticación
+│   │   │   ├── media/     # Componentes relacionados con medios
+│   │   │   └── admin/     # Componentes de administración
+│   │   ├── pages/         # Páginas Astro
+│   │   ├── layouts/       # Layouts reutilizables
+│   │   ├── hooks/         # Hooks personalizados
+│   │   ├── context/       # Contextos de React (estado global)
+│   │   ├── services/      # Servicios para comunicación con API
+│   │   ├── utils/         # Utilidades comunes
+│   │   └── styles/        # Estilos globales
+│   ├── public/            # Archivos estáticos
+│   └── tests/             # Pruebas del frontend
+│
+├── shared/                # Código compartido entre frontend y backend
+│   ├── types/             # Definiciones de tipos TypeScript
+│   ├── constants/         # Constantes compartidas
+│   └── utils/             # Utilidades comunes
+│
+├── scripts/               # Scripts de utilidad para desarrollo y CI/CD
+├── docs/                  # Documentación
+└── config/                # Configuración global del proyecto
+
+
+Backend (server)
+api/
+
+    controllers/: Controladores para cada recurso (users, media, libraries)
+    routes/: Definición de rutas Express
+    middlewares/: Middlewares para autenticación, logging, etc.
+    validators/: Validación de entrada
+    responses/: Formateadores de respuesta estandarizados
+
+services/
+
+        authService.js: Gestión de autenticación y autorización
+        libraryService.js: Gestión de bibliotecas
+        mediaService.js: Operaciones con elementos multimedia
+        metadataService.js: Obtención y gestión de metadatos
+        streamingService.js: Lógica de streaming
+        transcodingService.js: Interfaz con el core de transcodificación
+        userService.js: Gestión de usuarios y permisos
+        eventBus.js: Sistema de eventos para comunicación entre servicios
+
+data/
+
+     models/: Definiciones de modelos (User, Media, Library, etc.)
+     repositories/: Acceso a datos con métodos CRUD
+     migrations/: Migraciones de base de datos
+    seeds/: Datos iniciales
+    db.js: Configuración y conexión a la base de datos
+
+3. Core de Transcodificación
+
+src/transcoder/
+
+    transcoder.cpp/.h: Clase principal para transcodificación
+    stream_processor.cpp/.h: Procesamiento de streams
+    codec_manager.cpp/.h: Gestión de codecs
+
+src/analyzer/
+
+       media_analyzer.cpp/.h: Análisis de archivos multimedia
+       metadata_extractor.cpp/.h: Extracción de metadatos técnicos
+
+bindings/
+
+     node/: Bindings para Node.js usando N-API
+     wasm/: Versión WebAssembly para uso directo en navegador
+
+4. Frontend (client)
+
+components/
+Organización por dominio y no por tipo:
+
+      ui/: Componentes básicos (Button, Card, Modal, etc.)
+      layout/: Componentes estructurales (Sidebar, Header, etc.)
+      auth/: Componentes de autenticación
+      media/: Componentes relacionados con medios
+
+          browser/: Navegación de contenido
+          player/: Reproductor
+           details/: Visualización de detalles
+
+
+     library/: Gestión de bibliotecas
+     admin/: Componentes de administración
+
+services/
+
+     api.js: Cliente API base
+     authService.js: Gestión de autenticación
+     mediaService.js: Interacción con API de medios
+     libraryService.js: Gestión de bibliotecas
+     userService.js: Operaciones de usuario
+    socketService.js: Comunicación en tiempo real
+
+context/
+
+     AuthContext.jsx: Estado global de autenticación
+     MediaContext.jsx: Estado relacionado con medios
+     UIContext.jsx: Estado de la interfaz
+
+
+     streamvio/
+├── server/
+│   ├── api/
+│   │   ├── controllers/
+│   │   │   ├── authController.js
+│   │   │   ├── libraryController.js
+│   │   │   ├── mediaController.js
+│   │   │   ├── metadataController.js
+│   │   │   ├── streamingController.js
+│   │   │   ├── transcodingController.js
+│   │   │   └── userController.js
+│   │   ├── routes/
+│   │   │   ├── authRoutes.js
+│   │   │   ├── libraryRoutes.js
+│   │   │   ├── mediaRoutes.js
+│   │   │   ├── metadataRoutes.js
+│   │   │   ├── streamingRoutes.js
+│   │   │   ├── transcodingRoutes.js
+│   │   │   └── userRoutes.js
+│   │   ├── middlewares/
+│   │   │   ├── authMiddleware.js
+│   │   │   ├── errorMiddleware.js
+│   │   │   ├── libraryAccessMiddleware.js
+│   │   │   ├── requestLogger.js
+│   │   │   └── validator.js
+│   │   └── index.js
+│   ├── services/
+│   │   ├── authService.js
+│   │   ├── libraryService.js
+│   │   ├── mediaService.js
+│   │   ├── metadataService.js
+│   │   ├── scannerService.js
+│   │   ├── streamingService.js
+│   │   ├── transcodingService.js
+│   │   ├── userService.js
+│   │   └── eventBus.js
+│   ├── data/
+│   │   ├── models/
+│   │   │   ├── User.js
+│   │   │   ├── Library.js
+│   │   │   ├── MediaItem.js
+│   │   │   ├── WatchHistory.js
+│   │   │   ├── Session.js
+│   │   │   └── Setting.js
+│   │   ├── repositories/
+│   │   │   ├── userRepository.js
+│   │   │   ├── libraryRepository.js
+│   │   │   ├── mediaRepository.js
+│   │   │   ├── watchHistoryRepository.js
+│   │   │   └── settingRepository.js
+│   │   ├── migrations/
+│   │   │   ├── 001_initial_schema.js
+│   │   │   └── 002_add_streaming_settings.js
+│   │   ├── seeds/
+│   │   │   └── defaultSettings.js
+│   │   └── db.js
+│   ├── config/
+│   │   ├── environment.js
+│   │   ├── constants.js
+│   │   └── paths.js
+│   ├── utils/
+│   │   ├── logger.js
+│   │   ├── errors.js
+│   │   ├── filesystem.js
+│   │   └── security.js
+│   ├── media/
+│   │   ├── scanner/
+│   │   │   ├── directoryScanner.js
+│   │   │   └── fileAnalyzer.js
+│   │   ├── metadata/
+│   │   │   ├── tmdbProvider.js
+│   │   │   └── localMetadataManager.js
+│   │   └── transcoder/
+│   │       ├── transcoderInterface.js
+│   │       └── formatConverter.js
+│   ├── data-storage/
+│   │   ├── thumbnails/
+│   │   ├── transcoded/
+│   │   └── metadata/
+│   ├── app.js
+│   ├── server.js
+│   ├── init.js
+│   └── package.json
+├── core/
+│   ├── include/
+│   │   ├── transcoder/
+│   │   │   ├── transcoder.h
+│   │   │   └── stream_processor.h
+│   │   ├── analyzer/
+│   │   │   ├── media_analyzer.h
+│   │   │   └── metadata_extractor.h
+│   │   └── utils/
+│   │       ├── error_handling.h
+│   │       └── logging.h
+│   ├── src/
+│   │   ├── transcoder/
+│   │   │   ├── transcoder.cpp
+│   │   │   └── stream_processor.cpp
+│   │   ├── analyzer/
+│   │   │   ├── media_analyzer.cpp
+│   │   │   └── metadata_extractor.cpp
+│   │   └── utils/
+│   │       ├── error_handling.cpp
+│   │       └── logging.cpp
+│   ├── bindings/
+│   │   └── node/
+│   │       ├── transcoder_binding.cc
+│   │       └── binding.gyp
+│   ├── tests/
+│   │   ├── transcoder_tests.cpp
+│   │   └── analyzer_tests.cpp
+│   ├── CMakeLists.txt
+│   └── package.json
+├── client/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ui/
+│   │   │   │   ├── Button.jsx
+│   │   │   │   ├── Card.jsx
+│   │   │   │   ├── Modal.jsx
+│   │   │   │   └── ...
+│   │   │   ├── layout/
+│   │   │   │   ├── Sidebar.jsx
+│   │   │   │   ├── Header.jsx
+│   │   │   │   └── ...
+│   │   │   ├── auth/
+│   │   │   │   ├── LoginForm.jsx
+│   │   │   │   ├── RegisterForm.jsx
+│   │   │   │   └── ...
+│   │   │   ├── media/
+│   │   │   │   ├── browser/
+│   │   │   │   │   ├── MediaGrid.jsx
+│   │   │   │   │   └── ...
+│   │   │   │   ├── player/
+│   │   │   │   │   ├── VideoPlayer.jsx
+│   │   │   │   │   └── ...
+│   │   │   │   └── details/
+│   │   │   │       ├── MediaDetails.jsx
+│   │   │   │       └── ...
+│   │   │   ├── library/
+│   │   │   │   ├── LibraryBrowser.jsx
+│   │   │   │   ├── LibrarySetup.jsx
+│   │   │   │   └── ...
+│   │   │   └── admin/
+│   │   │       ├── UserManagement.jsx
+│   │   │       ├── SystemSettings.jsx
+│   │   │       └── ...
+│   │   ├── pages/
+│   │   │   ├── index.astro
+│   │   │   ├── login.astro
+│   │   │   ├── register.astro
+│   │   │   ├── dashboard.astro
+│   │   │   ├── libraries/
+│   │   │   │   ├── index.astro
+│   │   │   │   └── [id].astro
+│   │   │   ├── media/
+│   │   │   │   ├── index.astro
+│   │   │   │   └── [id].astro
+│   │   │   └── admin/
+│   │   │       ├── users.astro
+│   │   │       ├── settings.astro
+│   │   │       └── libraries.astro
+│   │   ├── layouts/
+│   │   │   ├── MainLayout.astro
+│   │   │   ├── AdminLayout.astro
+│   │   │   └── AuthLayout.astro
+│   │   ├── hooks/
+│   │   │   ├── useAuth.js
+│   │   │   ├── useMedia.js
+│   │   │   └── ...
+│   │   ├── context/
+│   │   │   ├── AuthContext.jsx
+│   │   │   ├── MediaContext.jsx
+│   │   │   └── UIContext.jsx
+│   │   ├── services/
+│   │   │   ├── api.js
+│   │   │   ├── authService.js
+│   │   │   ├── mediaService.js
+│   │   │   ├── libraryService.js
+│   │   │   ├── userService.js
+│   │   │   └── socketService.js
+│   │   ├── utils/
+│   │   │   ├── formatters.js
+│   │   │   ├── validators.js
+│   │   │   └── storage.js
+│   │   └── styles/
+│   │       ├── global.css
+│   │       └── tailwind.css
+│   ├── public/
+│   │   ├── assets/
+│   │   │   ├── images/
+│   │   │   └── fonts/
+│   │   └── favicon.ico
+│   ├── astro.config.mjs
+│   ├── tailwind.config.js
+│   └── package.json
+├── shared/
+│   ├── types/
+│   │   ├── User.ts
+│   │   ├── Media.ts
+│   │   ├── Library.ts
+│   │   └── ...
+│   ├── constants/
+│   │   ├── mediaTypes.js
+│   │   ├── errorCodes.js
+│   │   └── ...
+│   └── utils/
+│       ├── formatters.js
+│       └── validators.js
+├── scripts/
+│   ├── setup.sh
+│   ├── install-dependencies.js
+│   └── verify-system.js
+├── docs/
+│   ├── api/
+│   ├── architecture/
+│   ├── deployment/
+│   └── development/
+├── .env.example
+├── package.json
+└── README.md
