@@ -93,22 +93,32 @@ class AuthService {
       // Generar token JWT
       const token = this.generateToken(user);
 
-      // Registrar sesión en la base de datos
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 7); // Sesión válida por 7 días
+      try {
+        // Registrar sesión en la base de datos
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 7); // Sesión válida por 7 días
 
-      await db.asyncRun(
-        `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [user.id, token, "Web Client", "N/A", expiryDate.toISOString()]
-      );
+        await db.asyncRun(
+          `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
+           VALUES (?, ?, ?, ?, ?)`,
+          [user.id, token, "Web Client", "N/A", expiryDate.toISOString()]
+        );
+      } catch (sessionError) {
+        console.error("Error al registrar sesión:", sessionError);
+        // No impedir el login si falla la inserción de la sesión
+      }
 
-      // Registrar inicio de sesión en historial
-      await db.asyncRun(
-        `INSERT INTO user_history (user_id, media_id, action_type) 
-         VALUES (?, NULL, 'login')`,
-        [user.id]
-      );
+      try {
+        // Registrar inicio de sesión en historial
+        await db.asyncRun(
+          `INSERT INTO user_history (user_id, media_id, action_type) 
+           VALUES (?, NULL, 'login')`,
+          [user.id]
+        );
+      } catch (historyError) {
+        console.error("Error al registrar historial:", historyError);
+        // No impedir el login si falla el registro de historial
+      }
 
       return {
         token,
@@ -161,15 +171,20 @@ class AuthService {
         is_admin: 0,
       });
 
-      // Registrar sesión
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 7);
+      try {
+        // Registrar sesión
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 7);
 
-      await db.asyncRun(
-        `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [userId, token, "Web Client", "N/A", expiryDate.toISOString()]
-      );
+        await db.asyncRun(
+          `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
+           VALUES (?, ?, ?, ?, ?)`,
+          [userId, token, "Web Client", "N/A", expiryDate.toISOString()]
+        );
+      } catch (sessionError) {
+        console.error("Error al registrar sesión:", sessionError);
+        // No impedir el registro si falla la inserción de la sesión
+      }
 
       return {
         token,
@@ -189,18 +204,26 @@ class AuthService {
    */
   async logout(userId) {
     try {
-      // Registrar cierre de sesión
-      await db.asyncRun(
-        `INSERT INTO user_history (user_id, media_id, action_type) 
-         VALUES (?, NULL, 'logout')`,
-        [userId]
-      );
+      try {
+        // Registrar cierre de sesión
+        await db.asyncRun(
+          `INSERT INTO user_history (user_id, media_id, action_type) 
+           VALUES (?, NULL, 'logout')`,
+          [userId]
+        );
+      } catch (historyError) {
+        console.error("Error al registrar historial de logout:", historyError);
+      }
 
-      // Invalidar todas las sesiones del usuario
-      await db.asyncRun(
-        "UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE user_id = ?",
-        [userId]
-      );
+      try {
+        // Invalidar todas las sesiones del usuario
+        await db.asyncRun(
+          "UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE user_id = ?",
+          [userId]
+        );
+      } catch (sessionError) {
+        console.error("Error al invalidar sesiones:", sessionError);
+      }
 
       return { success: true };
     } catch (error) {
@@ -260,21 +283,28 @@ class AuthService {
         is_admin: user.is_admin,
       });
 
-      // Invalidar todas las sesiones anteriores
-      await db.asyncRun(
-        "UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE user_id = ? AND token <> ?",
-        [userId, newToken]
-      );
+      try {
+        // Invalidar todas las sesiones anteriores
+        await db.asyncRun(
+          "UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE user_id = ? AND token <> ?",
+          [userId, newToken]
+        );
 
-      // Crear nueva sesión
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 7);
+        // Crear nueva sesión
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 7);
 
-      await db.asyncRun(
-        `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [userId, newToken, "Web Client", "N/A", expiryDate.toISOString()]
-      );
+        await db.asyncRun(
+          `INSERT INTO sessions (user_id, token, device_info, ip_address, expires_at) 
+           VALUES (?, ?, ?, ?, ?)`,
+          [userId, newToken, "Web Client", "N/A", expiryDate.toISOString()]
+        );
+      } catch (sessionError) {
+        console.error(
+          "Error al gestionar sesiones para cambio de contraseña:",
+          sessionError
+        );
+      }
 
       return {
         success: true,

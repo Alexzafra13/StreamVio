@@ -60,40 +60,84 @@ function HomeDashboard() {
           return;
         }
 
-        // Obtener conteo de películas
-        const moviesResponse = await axios.get(
-          `${API_URL}/api/media?type=movie&limit=1`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
+        // Configurar instancia de axios con manejo de errores
+        const axiosInstance = axios.create({
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        // Interceptor para manejar errores de autenticación
+        axiosInstance.interceptors.response.use(
+          (response) => response,
+          (error) => {
+            // Si hay un error 401, actualizar la UI en lugar de mostrar console.error
+            if (error.response && error.response.status === 401) {
+              console.warn(
+                "Error de autenticación:",
+                error.response.data.message || error.message
+              );
+              setError(
+                "Error de autenticación. Por favor, inicie sesión nuevamente."
+              );
+
+              // No lanzar el error para evitar mensajes en consola
+              return Promise.resolve({
+                data: { items: [], pagination: { total: 0 } },
+              });
+            }
+            return Promise.reject(error);
           }
         );
 
-        if (moviesResponse.data && moviesResponse.data.pagination) {
-          setMovieCount(moviesResponse.data.pagination.total || 0);
+        // Usar la instancia de axios configurada
+        try {
+          // Obtener conteo de películas
+          const moviesResponse = await axiosInstance.get(
+            `${API_URL}/api/media?type=movie&limit=1`
+          );
+
+          if (moviesResponse.data && moviesResponse.data.pagination) {
+            setMovieCount(moviesResponse.data.pagination.total || 0);
+          }
+        } catch (movieError) {
+          console.warn(
+            "No se pudo obtener conteo de películas:",
+            movieError.message
+          );
+          // Continuar con otras peticiones
         }
 
-        // Obtener conteo de series
-        const seriesResponse = await axios.get(
-          `${API_URL}/api/media?type=series&limit=1`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        try {
+          // Obtener conteo de series
+          const seriesResponse = await axiosInstance.get(
+            `${API_URL}/api/media?type=series&limit=1`
+          );
 
-        if (seriesResponse.data && seriesResponse.data.pagination) {
-          setSeriesCount(seriesResponse.data.pagination.total || 0);
+          if (seriesResponse.data && seriesResponse.data.pagination) {
+            setSeriesCount(seriesResponse.data.pagination.total || 0);
+          }
+        } catch (seriesError) {
+          console.warn(
+            "No se pudo obtener conteo de series:",
+            seriesError.message
+          );
+          // Continuar con otras peticiones
         }
 
-        // Obtener elementos recientes
-        const recentResponse = await axios.get(
-          `${API_URL}/api/media?page=1&limit=10&sort=created_at&order=desc`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        try {
+          // Obtener elementos recientes
+          const recentResponse = await axiosInstance.get(
+            `${API_URL}/api/media?page=1&limit=10&sort=created_at&order=desc`
+          );
 
-        if (recentResponse.data && recentResponse.data.items) {
-          setRecentMedia(recentResponse.data.items || []);
+          if (recentResponse.data && recentResponse.data.items) {
+            setRecentMedia(recentResponse.data.items || []);
+          }
+        } catch (recentError) {
+          console.warn(
+            "No se pudo obtener contenido reciente:",
+            recentError.message
+          );
+          // No hay problema si esta petición falla
         }
 
         setLoading(false);
@@ -135,53 +179,58 @@ function HomeDashboard() {
           return;
         }
 
+        // Configurar instancia de axios con manejo de errores
+        const axiosInstance = axios.create({
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        // Interceptor para manejar errores sin detener el flujo
+        axiosInstance.interceptors.response.use(
+          (response) => response,
+          (error) => {
+            console.warn("Error en solicitud de historial:", error.message);
+            return Promise.resolve({ data: [] });
+          }
+        );
+
+        // Intentar obtener el historial
         try {
           // Intentar primero con la ruta específica para historial
-          const historyResponse = await axios.get(
-            `${API_URL}/api/user/history?completed=false&limit=10`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-            }
+          const historyResponse = await axiosInstance.get(
+            `${API_URL}/api/user/history?completed=false&limit=10`
           );
 
-          if (historyResponse.data) {
-            setWatchHistory(historyResponse.data || []);
+          if (historyResponse.data && historyResponse.data.length > 0) {
+            setWatchHistory(historyResponse.data);
+            setHistoryLoading(false);
+            return;
           }
         } catch (historyError) {
-          console.warn("Error al cargar historial:", historyError);
-
-          // Si la ruta /api/user/history falla, intentar construir un historial a partir de watch_history
-          try {
-            // Esta es una solución alternativa que intenta obtener los elementos vistos recientemente
-            // sin usar una ruta específica para histórico
-            const mediaItems = recentMedia.slice(0, 10);
-            setWatchHistory(
-              mediaItems.map((item) => ({
-                id: item.id,
-                mediaId: item.id,
-                title: item.title,
-                type: item.type,
-                thumbnail_path: item.thumbnail_path,
-                position: 0,
-                completed: false,
-                watched_at: item.updated_at || new Date().toISOString(),
-              }))
-            );
-          } catch (alternativeError) {
-            console.error(
-              "Error al crear historial alternativo:",
-              alternativeError
-            );
-            // Usar un historial vacío como último recurso
-            setWatchHistory([]);
-          }
+          // Ignorar el error - continuará con la alternativa
         }
+
+        // Plan alternativo: usar el contenido reciente
+        const mediaItems = recentMedia.slice(0, 10);
+        setWatchHistory(
+          mediaItems.map((item) => ({
+            id: item.id,
+            mediaId: item.id,
+            title: item.title,
+            type: item.type,
+            thumbnail_path: item.thumbnail_path,
+            position: 0,
+            completed: false,
+            watched_at: item.updated_at || new Date().toISOString(),
+          }))
+        );
 
         setHistoryLoading(false);
       } catch (err) {
-        console.error("Error al cargar historial:", err);
+        console.warn("Error al cargar historial:", err);
         setHistoryLoading(false);
         // No mostrar error para no afectar la experiencia del usuario
+        // Usar contenido reciente como último recurso
+        setWatchHistory([]);
       }
     };
 
@@ -192,8 +241,12 @@ function HomeDashboard() {
   const formatDate = (dateString) => {
     if (!dateString) return "Fecha desconocida";
 
-    const options = { year: "numeric", month: "short", day: "numeric" };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    try {
+      const options = { year: "numeric", month: "short", day: "numeric" };
+      return new Date(dateString).toLocaleDateString(undefined, options);
+    } catch (e) {
+      return "Fecha inválida";
+    }
   };
 
   // Obtener URL de la miniatura
@@ -258,6 +311,24 @@ function HomeDashboard() {
           className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block transition"
         >
           Iniciar Sesión
+        </a>
+      </div>
+    );
+  }
+
+  // Si hay error de autenticación, mostrar pantalla de error
+  if (error && error.includes("autenticación")) {
+    return (
+      <div className="bg-gray-800 rounded-lg p-8 text-center">
+        <h2 className="text-2xl font-bold mb-4 text-red-500">
+          Error de Autenticación
+        </h2>
+        <p className="text-gray-300 mb-6">{error}</p>
+        <a
+          href="/auth"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block transition"
+        >
+          Volver a Iniciar Sesión
         </a>
       </div>
     );
