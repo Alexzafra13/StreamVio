@@ -65,19 +65,19 @@ const WatchHistory = () => {
   // Manejar borrado del historial
   const handleClearHistory = () => {
     showConfirmation(
-      'Borrar historial',
-      <p>{"¿Estás seguro de que deseas borrar todo tu historial de visualización? Esta acción no se puede deshacer."}</p>,
-      async () => {
-        try {
-          await clearWatchHistory();
-          setHistory([]);
-          showSuccess('Historial borrado correctamente');
-        } catch (error) {
-          console.error('Error al borrar historial:', error);
-          showError('No se pudo borrar el historial');
-        }
-      }
-    );
+  'Borrar historial',
+  '¿Estás seguro de que deseas borrar todo tu historial de visualización? Esta acción no se puede deshacer.',
+  async () => {
+    try {
+      await clearWatchHistory();
+      setHistory([]);
+      showSuccess('Historial borrado correctamente');
+    } catch (error) {
+      console.error('Error al borrar historial:', error);
+      showError('No se pudo borrar el historial');
+    }
+  }
+);
   };
 
   // Formatear fecha para mostrar
