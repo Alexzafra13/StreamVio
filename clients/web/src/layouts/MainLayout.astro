@@ -1,0 +1,95 @@
+---
+// src/layouts/MainLayout.astro
+// Layout principal para la mayoría de las páginas de la aplicación
+
+// Importar componentes de React
+import { AuthProvider } from '../context/AuthContext';
+import { UIProvider } from '../context/UIContext';
+import { MediaProvider } from '../context/MediaContext';
+import Header from '../components/layout/Header';
+import Sidebar from '../components/layout/Sidebar';
+import NotificationContainer from '../components/ui/NotificationContainer';
+import ModalContainer from '../components/ui/ModalContainer';
+
+// Importar estilos globales
+import '../styles/global.css';
+
+// Props que puede recibir el layout
+interface Props {
+  title: string;
+  description?: string;
+  requiresAuth?: boolean;
+}
+
+// Extraer props con valores por defecto
+const { 
+  title, 
+  description = "StreamVio - Tu plataforma de streaming personal",
+  requiresAuth = true
+} = Astro.props;
+
+// Información para el menú de navegación
+const navItems = [
+  { name: 'Inicio', path: '/', icon: 'home' },
+  { name: 'Bibliotecas', path: '/libraries', icon: 'folder' },
+  { name: 'Películas', path: '/media?type=movie', icon: 'film' },
+  { name: 'Series', path: '/media?type=series', icon: 'tv' },
+  { name: 'Historial', path: '/history', icon: 'history' },
+];
+
+// Información para el menú de administración
+const adminItems = [
+  { name: 'Usuarios', path: '/admin/users', icon: 'users' },
+  { name: 'Configuración', path: '/admin/settings', icon: 'settings' },
+];
+---
+
+<!DOCTYPE html>
+<html lang="es" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <title>{title} | StreamVio</title>
+  </head>
+  <body class="bg-background-dark text-text-primary">
+    <AuthProvider client:load>
+      <UIProvider client:load>
+        <MediaProvider client:load>
+          <div class="flex h-screen overflow-hidden">
+            {/* Barra lateral */}
+            <Sidebar 
+              navItems={navItems} 
+              adminItems={adminItems} 
+              client:load 
+            />
+            
+            {/* Contenido principal */}
+            <div class="flex-1 flex flex-col overflow-hidden">
+              <Header title={title} client:load />
+              
+              <main class="flex-1 overflow-y-auto p-4 md:p-6">
+                <slot />
+              </main>
+            </div>
+          </div>
+          
+          {/* Notificaciones y modales */}
+          <NotificationContainer client:load />
+          <ModalContainer client:load />
+        </MediaProvider>
+      </UIProvider>
+    </AuthProvider>
+
+    {/* Script para verificar autenticación */}
+    {requiresAuth && (
+      <script>
+        // Redirigir a login si no hay usuario autenticado
+        if (!localStorage.getItem('user') && window.location.pathname !== '/login') {
+          window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+        }
+      </script>
+    )}
+  </body>
+</html>

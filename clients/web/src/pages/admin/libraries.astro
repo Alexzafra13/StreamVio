@@ -1,0 +1,13 @@
+---
+// src/pages/admin/libraries.astro
+// Página de administración de bibliotecas
+
+// Importar layout y componentes
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import LibraryBrowser from '../../components/library/LibraryBrowser';
+---
+
+<AdminLayout title="Administración de bibliotecas">
+  {/* Usando el mismo componente que la vista normal pero dentro del AdminLayout */}
+  <LibraryBrowser client:load isAdmin={true} />
+</AdminLayout>

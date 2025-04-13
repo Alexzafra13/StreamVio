@@ -513,3 +513,136 @@ Caché local para mejorar rendimiento
 (Anotacion)
 En algunos lugares hay dependencias circulares potenciales (p. ej., algunos servicios se importan mutuamente), pero Node.js puede manejarlas adecuadamente en la mayoría de los casos.
 Algunos servicios como streamingService.js hacen referencias directas a db en lugar de usar siempre los repositorios correspondientes, lo que sería más consistente con la arquitectura general.
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+                                                                        Frontend
+
+
+
+Próximos pasos que podrías considerar:
+
+Implementar pruebas para validar la integración React-Astro
+Añadir animaciones y transiciones para mejorar la experiencia de usuario
+Optimizar SEO para las páginas públicas
+Implementar precarga de datos para mejorar la velocidad de carga
+Añadir soporte para PWA para que la aplicación funcione offline
+
+
+-------------------------------------------------------------------------------
+
+Estructura de la Aplicación StreamVio
+Componentes (src/components)
+UI (/ui)
+
+Button.jsx: Componente botón reutilizable con diferentes variantes y estados
+Card.jsx: Tarjeta para mostrar contenidos con diferentes estilos
+Modal.jsx: Ventana modal personalizable para diálogos y confirmaciones
+
+Layout (/layout)
+
+Sidebar.jsx: Barra lateral de navegación principal
+Header.jsx: Encabezado superior con búsqueda y acciones de usuario
+
+Auth (/auth)
+
+LoginForm.jsx: Formulario de inicio de sesión
+RegisterForm.jsx: Formulario de registro de nuevos usuarios
+
+Media (/media)
+
+/browser
+
+MediaGrid.jsx: Cuadrícula para mostrar elementos multimedia
+
+
+/player
+
+VideoPlayer.jsx: Reproductor de video con soporte para HLS
+
+
+/details
+
+MediaDetails.jsx: Muestra información detallada de un elemento
+
+
+
+Library (/library)
+
+LibraryBrowser.jsx: Navegador de bibliotecas disponibles
+LibrarySetup.jsx: Formulario para crear/editar bibliotecas
+
+Admin (/admin)
+
+UserManagement.jsx: Gestión de usuarios del sistema
+SystemSettings.jsx: Configuración general del sistema
+
+Páginas (src/pages)
+
+index.astro: Dashboard principal con recomendaciones
+login.astro: Página de inicio de sesión
+register.astro: Página de registro
+dashboard.astro: Alternativa para el dashboard
+/libraries
+
+index.astro: Lista de todas las bibliotecas
+[id].astro: Detalles de una biblioteca específica
+
+
+/media
+
+index.astro: Explorador de contenido multimedia
+[id].astro: Visualización y reproducción de un elemento
+
+
+/admin
+
+users.astro: Administración de usuarios
+settings.astro: Configuración del sistema
+libraries.astro: Gestión avanzada de bibliotecas
+
+
+
+Layouts (src/layouts)
+
+MainLayout.astro: Layout principal con barra lateral
+AdminLayout.astro: Layout para sección administrativa
+AuthLayout.astro: Layout para páginas de autenticación
+
+Hooks (src/hooks)
+
+useAuth.js: Acceso a funcionalidades de autenticación
+useMedia.js: Interacción con contenido multimedia
+
+Contextos (src/context)
+
+AuthContext.jsx: Gestión de autenticación y sesiones
+MediaContext.jsx: Estado global para contenido multimedia
+UIContext.jsx: Gestión de notificaciones y modales
+
+Servicios (src/services)
+
+api.js: Cliente HTTP base para comunicación con backend
+authService.js: Operaciones relacionadas con autenticación
+mediaService.js: Gestión de contenido multimedia
+libraryService.js: Operaciones con bibliotecas
+userService.js: Gestión de usuarios
+socketService.js: Comunicación en tiempo real
+
+Utilidades (src/utils)
+
+formatters.js: Funciones para formatear datos
+validators.js: Validación de formularios
+storage.js: Gestión de almacenamiento local
+
+Estilos (src/styles)
+
+global.css: Estilos globales
+tailwind.css: Configuración de Tailwind CSS
+
+Archivos Compartidos (shared)
+
+/types: Definiciones de tipos TypeScript
+/constants: Valores constantes reutilizables
+/utils: Utilidades compartidas entre frontend y backend

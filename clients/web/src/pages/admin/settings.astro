@@ -1,0 +1,12 @@
+---
+// src/pages/admin/settings.astro
+// Página de configuración del sistema
+
+// Importar layout y componentes
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import SystemSettings from '../../components/admin/SystemSettings';
+---
+
+<AdminLayout title="Configuración del sistema">
+  <SystemSettings client:load />
+</AdminLayout>

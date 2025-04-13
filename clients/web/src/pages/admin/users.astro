@@ -1,0 +1,12 @@
+---
+// src/pages/admin/users.astro
+// Página de administración de usuarios
+
+// Importar layout y componentes
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import UserManagement from '../../components/admin/UserManagement';
+---
+
+<AdminLayout title="Gestión de usuarios">
+  <UserManagement client:load />
+</AdminLayout>

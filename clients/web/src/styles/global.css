@@ -1,76 +1,161 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* src/styles/global.css */
 
-@layer base {
-  html {
-    @apply font-sans;
+/* Importar el archivo de Tailwind CSS */
+@import "./tailwind.css";
+
+/* Estilos adicionales globales */
+
+/* Scroll suave */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Eliminar el outline azul en elementos focusables en Safari */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Sobreescribir autofill en inputs */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px rgb(var(--color-background-dark)) inset !important;
+  -webkit-text-fill-color: rgb(var(--color-text-primary-dark)) !important;
+}
+
+/* Personalización de scroll */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(107, 114, 128, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.8);
+}
+
+/* Estilo para selección de texto */
+::selection {
+  background-color: rgba(var(--color-primary), 0.3);
+}
+
+/* Ocultar spinners en inputs numéricos */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Estilos para el reproductor de video */
+video:focus {
+  outline: none;
+}
+
+.video-container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%; /* 16:9 */
+  overflow: hidden;
+}
+
+.video-container video,
+.video-container iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Estilo para placeholder en tono oscuro */
+::placeholder {
+  color: rgba(156, 163, 175, 0.6) !important;
+  opacity: 1;
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
   }
-
-  body {
-    @apply bg-background-dark text-text-primary m-0 p-0 min-h-screen;
-  }
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    @apply font-bold text-text-primary;
-  }
-
-  h1 {
-    @apply text-3xl mb-4;
-  }
-
-  h2 {
-    @apply text-2xl mb-3;
-  }
-
-  h3 {
-    @apply text-xl mb-2;
-  }
-
-  a {
-    @apply text-primary hover:text-primary-hover transition-colors duration-200;
+  to {
+    opacity: 1;
   }
 }
 
-@layer components {
-  .btn {
-    @apply px-4 py-2 rounded font-medium transition-all duration-200 inline-flex items-center justify-center;
+@keyframes slideUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-in-out;
+}
+
+.animate-pulse-custom {
+  animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Estilos para dispositivos móviles */
+@media (max-width: 640px) {
+  .hide-on-mobile {
+    display: none !important;
   }
 
-  .btn-primary {
-    @apply bg-primary text-white hover:bg-primary-hover;
+  h1 {
+    font-size: 1.5rem !important;
   }
 
-  .btn-secondary {
-    @apply bg-secondary text-white hover:bg-secondary-hover;
+  h2 {
+    font-size: 1.25rem !important;
   }
+}
 
-  .btn-success {
-    @apply bg-success text-white hover:bg-success-hover;
-  }
+/* Tema claro */
+html:not(.dark) {
+  --color-background: var(--color-background-light);
+  --color-background-card: var(--color-background-card-light);
+  --color-text-primary: var(--color-text-primary-light);
+  --color-text-secondary: var(--color-text-secondary-light);
+}
 
-  .card {
-    @apply bg-background-card rounded-lg p-6 shadow-card transition-all duration-200;
-  }
-
-  .stat-card {
-    @apply card flex flex-col p-6 cursor-pointer hover:scale-[1.02];
-  }
-
-  .media-card {
-    @apply relative overflow-hidden rounded-lg shadow-lg transition-transform duration-300 hover:scale-105;
-  }
-
-  .sidebar-link {
-    @apply flex items-center p-3 text-text-secondary hover:text-text-primary hover:bg-background-card rounded-md transition-colors duration-200;
-  }
-
-  .sidebar-link.active {
-    @apply bg-background-card text-text-primary;
-  }
+/* Tema oscuro */
+html.dark {
+  --color-background: var(--color-background-dark);
+  --color-background-card: var(--color-background-card-dark);
+  --color-text-primary: var(--color-text-primary-dark);
+  --color-text-secondary: var(--color-text-secondary-dark);
 }

@@ -1,0 +1,12 @@
+---
+// src/pages/libraries/index.astro
+// Página para listar y gestionar bibliotecas
+
+// Importar layout y componentes
+import MainLayout from '../../layouts/MainLayout.astro';
+import LibraryBrowser from '../../components/library/LibraryBrowser';
+---
+
+<MainLayout title="Bibliotecas">
+  <LibraryBrowser client:load />
+</MainLayout>

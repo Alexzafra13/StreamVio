@@ -1,0 +1,167 @@
+/* src/styles/tailwind.css */
+
+/* Importación de los estilos de Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variables CSS para el tema */
+:root {
+  /* Colores base */
+  --color-primary: 59, 130, 246; /* blue-500 */
+  --color-primary-hover: 37, 99, 235; /* blue-600 */
+  --color-secondary: 139, 92, 246; /* purple-500 */
+  --color-secondary-hover: 124, 58, 237; /* purple-600 */
+  --color-success: 34, 197, 94; /* green-500 */
+  --color-success-hover: 22, 163, 74; /* green-600 */
+
+  /* Tema claro */
+  --color-background-light: 255, 255, 255;
+  --color-background-card-light: 249, 250, 251;
+  --color-text-primary-light: 17, 24, 39;
+  --color-text-secondary-light: 107, 114, 128;
+}
+
+/* Tema oscuro */
+html.dark {
+  --color-background-dark: 17, 24, 39; /* gray-900 */
+  --color-background-card-dark: 31, 41, 55; /* gray-800 */
+  --color-text-primary-dark: 249, 250, 251; /* gray-50 */
+  --color-text-secondary-dark: 156, 163, 175; /* gray-400 */
+}
+
+/* Estilos globales base */
+@layer base {
+  body {
+    @apply bg-background-dark text-text-primary font-sans antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-bold text-text-primary;
+  }
+
+  h1 {
+    @apply text-3xl mb-4;
+  }
+
+  h2 {
+    @apply text-2xl mb-3;
+  }
+
+  h3 {
+    @apply text-xl mb-2;
+  }
+
+  a {
+    @apply text-primary hover:text-primary-hover transition-colors duration-200;
+  }
+
+  input,
+  select,
+  textarea {
+    @apply bg-background-dark border border-gray-700 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary;
+  }
+}
+
+/* Componentes personalizados */
+@layer components {
+  /* Botones */
+  .btn {
+    @apply px-4 py-2 rounded font-medium transition-all duration-200 inline-flex items-center justify-center;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-hover;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-white hover:bg-secondary-hover;
+  }
+
+  .btn-success {
+    @apply bg-success text-white hover:bg-success-hover;
+  }
+
+  /* Tarjetas */
+  .card {
+    @apply bg-background-card rounded-lg p-6 shadow-card transition-all duration-200;
+  }
+
+  .stat-card {
+    @apply card flex flex-col p-6 cursor-pointer hover:scale-[1.02];
+  }
+
+  /* Elementos multimedia */
+  .media-card {
+    @apply relative overflow-hidden rounded-lg shadow-lg transition-transform duration-300 hover:scale-105;
+  }
+
+  /* Barra lateral */
+  .sidebar-link {
+    @apply flex items-center p-3 text-text-secondary hover:text-text-primary hover:bg-background-card rounded-md transition-colors duration-200;
+  }
+
+  .sidebar-link.active {
+    @apply bg-background-card text-text-primary;
+  }
+
+  /* Animaciones */
+  .fade-in {
+    @apply transition duration-300 ease-in-out opacity-100;
+  }
+
+  .fade-out {
+    @apply transition duration-300 ease-in-out opacity-0;
+  }
+
+  /* Notificaciones */
+  .notification {
+    @apply p-3 rounded-md border shadow-md transition-all duration-300 transform;
+  }
+
+  /* Barras de progreso */
+  .progress-bar {
+    @apply w-full h-1.5 bg-gray-700 rounded-full overflow-hidden;
+  }
+
+  .progress-bar-fill {
+    @apply h-full bg-primary transition-all duration-300;
+  }
+}
+
+/* Utilidades personalizadas */
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .text-shadow-lg {
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  }
+
+  .bg-blur {
+    backdrop-filter: blur(8px);
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gradient-overlay-bottom {
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+  }
+
+  .gradient-overlay-top {
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), transparent);
+  }
+}

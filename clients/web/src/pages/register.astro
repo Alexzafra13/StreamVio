@@ -1,0 +1,38 @@
+---
+// src/pages/register.astro
+// Página de registro de usuario
+
+// Importar layout y componentes
+import AuthLayout from '../layouts/AuthLayout.astro';
+import RegisterForm from '../components/auth/RegisterForm';
+import { AuthProvider } from '../context/AuthContext';
+import { UIProvider } from '../context/UIContext';
+
+// Obtener código de invitación de la URL si existe
+const { searchParams } = Astro.url;
+const inviteCode = searchParams.get('code') || '';
+---
+
+<AuthLayout title="Registro de usuario">
+  <UIProvider client:load>
+    <AuthProvider client:load>
+      {/* Mensaje informativo */}
+      <div class="p-3 mb-4 bg-gray-800 rounded-md text-sm text-text-secondary">
+        Para crear una cuenta, necesitas un código de invitación proporcionado por un administrador.
+      </div>
+      
+      <RegisterForm client:visible invitationCode={inviteCode} />
+    </AuthProvider>
+  </UIProvider>
+
+  {/* Script para redirigir si ya está autenticado */}
+  <script>
+    // Verificar si hay un usuario autenticado
+    const userStr = localStorage.getItem('user');
+    
+    if (userStr) {
+      // Si el usuario está autenticado, redirigir al dashboard
+      window.location.href = '/';
+    }
+  </script>
+</AuthLayout>

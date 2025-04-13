@@ -1,0 +1,51 @@
+---
+// src/pages/login.astro
+// Página de inicio de sesión
+
+// Importar layout y componentes
+import AuthLayout from '../layouts/AuthLayout.astro';
+import LoginForm from '../components/auth/LoginForm';
+import { AuthProvider } from '../context/AuthContext';
+import { UIProvider } from '../context/UIContext';
+
+// Obtener parámetros de la URL
+const { searchParams } = Astro.url;
+const redirect = searchParams.get('redirect') || '/';
+const sessionExpired = searchParams.get('session') === 'expired';
+---
+
+<AuthLayout title="Iniciar sesión">
+  <UIProvider client:load>
+    <AuthProvider client:load>
+      {/* Mensaje de sesión expirada */}
+      {sessionExpired && (
+        <div class="p-3 mb-4 bg-blue-900/30 border border-blue-700 rounded-md text-sm text-blue-300">
+          Tu sesión ha expirado. Por favor, inicia sesión nuevamente.
+        </div>
+      )}
+
+      <LoginForm client:visible />
+      
+      {/* Enlace para primer inicio */}
+      <div class="mt-6 pt-6 border-t border-gray-700 text-center">
+        <p class="text-sm text-text-secondary">
+          ¿Primera vez en StreamVio? 
+          <a href="/setup" class="text-primary hover:text-primary-hover">
+            Configurar sistema
+          </a>
+        </p>
+      </div>
+    </AuthProvider>
+  </UIProvider>
+
+  {/* Script para redirigir si ya está autenticado */}
+  <script define:vars={{ redirect }}>
+    // Verificar si hay un usuario autenticado
+    const userStr = localStorage.getItem('user');
+    
+    if (userStr) {
+      // Si el usuario está autenticado, redirigir
+      window.location.href = redirect || '/';
+    }
+  </script>
+</AuthLayout>

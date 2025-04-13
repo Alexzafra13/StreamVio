@@ -1,0 +1,76 @@
+---
+// src/layouts/AdminLayout.astro
+// Layout para las páginas de administración
+
+// Importar el layout principal
+import MainLayout from './MainLayout.astro';
+
+// Props que puede recibir el layout
+interface Props {
+  title: string;
+  description?: string;
+}
+
+// Extraer props con valores por defecto
+const { 
+  title, 
+  description = "Panel de administración - StreamVio" 
+} = Astro.props;
+
+// Lista de elementos de navegación del panel de administración
+const adminNavItems = [
+  { name: 'Usuarios', path: '/admin/users', icon: 'users' },
+  { name: 'Bibliotecas', path: '/admin/libraries', icon: 'folder' },
+  { name: 'Configuración', path: '/admin/settings', icon: 'settings' },
+  { name: 'Sistema', path: '/admin/system', icon: 'server' },
+];
+---
+
+<MainLayout title={title} description={description} requiresAuth={true}>
+  <div class="container mx-auto max-w-7xl">
+    {/* Encabezado de la sección admin */}
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold">{title}</h1>
+      <p class="text-text-secondary">Panel de Administración</p>
+    </div>
+
+    {/* Navegación de pestañas admin */}
+    <div class="mb-6 border-b border-gray-700">
+      <nav class="flex space-x-1 overflow-x-auto pb-1" aria-label="Pestañas de administración">
+        {adminNavItems.map((item) => (
+          <a 
+            href={item.path}
+            class:list={[
+              'px-4 py-2 text-sm font-medium rounded-t-md whitespace-nowrap transition-colors',
+              { 
+                'bg-background-card text-primary border-b-2 border-primary': 
+                  Astro.url.pathname === item.path,
+                'text-text-secondary hover:text-text-primary hover:bg-background-card/50': 
+                  Astro.url.pathname !== item.path,
+              }
+            ]}
+          >
+            {item.name}
+          </a>
+        ))}
+      </nav>
+    </div>
+
+    {/* Contenido principal */}
+    <div class="bg-background-card rounded-lg shadow-card p-6">
+      <slot />
+    </div>
+  </div>
+
+  {/* Script para verificar permisos de administrador */}
+  <script>
+    // Redirigir si el usuario no es administrador
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (!user.isAdmin) {
+        window.location.href = '/';
+      }
+    }
+  </script>
+</MainLayout>

@@ -1,0 +1,12 @@
+---
+// src/pages/libraries/new.astro
+// Página para crear una nueva biblioteca
+
+// Importar layout y componentes
+import MainLayout from '../../layouts/MainLayout.astro';
+import LibrarySetup from '../../components/library/LibrarySetup';
+---
+
+<MainLayout title="Añadir biblioteca">
+  <LibrarySetup client:load />
+</MainLayout>
