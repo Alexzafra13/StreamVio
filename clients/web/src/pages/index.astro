@@ -1,335 +1,166 @@
 ---
-// src/pages/media/index.astro
-// Página para explorar y buscar contenido multimedia
+// src/pages/index.astro
+// Página principal/dashboard
 
 // Importar layout y componentes
-import MainLayout from '../../layouts/MainLayout.astro';
-import MediaGrid from '../../components/media/browser/MediaGrid';
-import Card from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
+import MainLayout from '../layouts/MainLayout.astro';
+import MediaGrid from '../components/media/browser/MediaGrid';
+import StatCard from '../components/dashboard/StatCard';
 
-// Componentes React y hooks
-import { useState, useEffect, useContext } from 'react';
-import { UIContext } from '../../context/UIContext';
-import mediaService from '../../services/mediaService';
-import libraryService from '../../services/libraryService';
+// Importar componentes para React
+import { useEffect, useState } from 'react';
+import { useContext } from 'react';
+import { MediaContext } from '../context/MediaContext';
 
-// Obtener parámetros de búsqueda de la URL
-const { searchParams } = Astro.url;
-const initialQuery = searchParams.get('q') || '';
-const initialType = searchParams.get('type') || '';
-const initialLibrary = searchParams.get('library') || '';
-
-// Componente React para el contenido dinámico
-const MediaBrowser = ({ initialQuery, initialType, initialLibrary }) => {
-  // Estados
-  const [libraries, setLibraries] = useState([]);
-  const [mediaItems, setMediaItems] = useState([]);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 24,
-    total: 0,
-    totalPages: 0
-  });
-  const [searchParams, setSearchParams] = useState({
-    query: initialQuery,
-    type: initialType,
-    library: initialLibrary,
-    sort: 'title',
-    order: 'asc'
-  });
-  const [isSearching, setIsSearching] = useState(false);
+// Componente React para contenido dinámico del dashboard
+const DashboardContent = () => {
+  const { 
+    refreshRecentItems, 
+    refreshInProgressItems, 
+    getRecommendations, 
+    getPopularItems 
+  } = useContext(MediaContext);
+  
+  const [recentItems, setRecentItems] = useState([]);
+  const [inProgressItems, setInProgressItems] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+  const [popularItems, setPopularItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { showError } = useContext(UIContext);
 
-  // Cargar bibliotecas disponibles
   useEffect(() => {
-    const loadLibraries = async () => {
+    const loadDashboardData = async () => {
+      setLoading(true);
       try {
-        const data = await libraryService.getAllLibraries();
-        setLibraries(data || []);
-      } catch (error) {
-        console.error('Error al cargar bibliotecas:', error);
-      }
-    };
+        // Cargar datos del dashboard en paralelo
+        const [recent, inProgress, recommended, popular] = await Promise.all([
+          refreshRecentItems(8),
+          refreshInProgressItems(8),
+          getRecommendations(8),
+          getPopularItems(8)
+        ]);
 
-    loadLibraries();
-  }, []);
-
-  // Cargar contenido multimedia con los parámetros actuales
-  useEffect(() => {
-    const loadMedia = async () => {
-      try {
-        setLoading(true);
-        
-        // Preparar parámetros de búsqueda
-        const params = {
-          ...searchParams,
-          page: pagination.page,
-          limit: pagination.limit
-        };
-        
-        // Eliminar parámetros vacíos
-        Object.keys(params).forEach(key => 
-          (params[key] === '' || params[key] === null) && delete params[key]
-        );
-        
-        // Realizar búsqueda
-        const results = await mediaService.searchMedia(params);
-        
-        // Actualizar estado
-        setMediaItems(results.items || []);
-        setPagination({
-          ...pagination,
-          total: results.pagination?.total || 0,
-          totalPages: results.pagination?.totalPages || 0
-        });
-        
-        // Actualizar URL con parámetros de búsqueda
-        updateUrl();
+        setRecentItems(recent || []);
+        setInProgressItems(inProgress || []);
+        setRecommendations(recommended || []);
+        setPopularItems(popular || []);
       } catch (error) {
-        console.error('Error al buscar contenido:', error);
-        showError('Error al buscar contenido multimedia');
+        console.error('Error al cargar datos del dashboard:', error);
       } finally {
         setLoading(false);
-        setIsSearching(false);
       }
     };
 
-    loadMedia();
-  }, [searchParams, pagination.page, pagination.limit]);
-
-  // Actualizar la URL con los parámetros de búsqueda
-  const updateUrl = () => {
-    const url = new URL(window.location);
-    
-    // Añadir/actualizar parámetros en la URL
-    Object.entries(searchParams).forEach(([key, value]) => {
-      if (value) {
-        url.searchParams.set(key, value);
-      } else {
-        url.searchParams.delete(key);
-      }
-    });
-    
-    // Actualizar la URL sin recargar la página
-    window.history.replaceState({}, '', url);
-  };
-
-  // Manejar cambios en el formulario de búsqueda
-  const handleSearchChange = (e) => {
-    const { name, value } = e.target;
-    setSearchParams(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  // Manejar envío del formulario de búsqueda
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setIsSearching(true);
-    
-    // Resetear a primera página al realizar una nueva búsqueda
-    setPagination(prev => ({
-      ...prev,
-      page: 1
-    }));
-  };
-
-  // Manejar cambio de página
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= pagination.totalPages) {
-      setPagination(prev => ({
-        ...prev,
-        page: newPage
-      }));
-    }
-  };
-
-  // Manejar cambio de ordenación
-  const handleSortChange = (sort, order) => {
-    setSearchParams(prev => ({
-      ...prev,
-      sort,
-      order
-    }));
-  };
-
-  // Obtener título de la página según los filtros
-  const getPageTitle = () => {
-    if (searchParams.query) {
-      return `Búsqueda: "${searchParams.query}"`;
-    }
-    
-    if (searchParams.type) {
-      const typeLabels = {
-        'movie': 'Películas',
-        'series': 'Series',
-        'episode': 'Episodios',
-        'music': 'Música',
-        'photo': 'Fotos'
-      };
-      return typeLabels[searchParams.type] || 'Contenido multimedia';
-    }
-    
-    return 'Todo el contenido';
-  };
+    loadDashboardData();
+  }, []);
 
   return (
-    <div className="space-y-6">
-      {/* Encabezado y filtros */}
-      <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
-        <h1 className="text-2xl font-bold">{getPageTitle()}</h1>
-        
-        <Card className="w-full lg:w-auto p-4">
-          <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
-            {/* Campo de búsqueda */}
-            <div className="w-full md:w-auto flex-1">
-              <input
-                type="text"
-                name="query"
-                value={searchParams.query}
-                onChange={handleSearchChange}
-                placeholder="Buscar título, actor, director..."
-                className="w-full px-4 py-2 bg-background-dark border border-gray-700 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            
-            {/* Selector de tipo */}
-            <div className="w-full sm:w-auto">
-              <select
-                name="type"
-                value={searchParams.type}
-                onChange={handleSearchChange}
-                className="w-full px-4 py-2 bg-background-dark border border-gray-700 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Todos los tipos</option>
-                <option value="movie">Películas</option>
-                <option value="series">Series</option>
-                <option value="episode">Episodios</option>
-                <option value="music">Música</option>
-                <option value="photo">Fotos</option>
-              </select>
-            </div>
-            
-            {/* Selector de biblioteca */}
-            <div className="w-full sm:w-auto">
-              <select
-                name="library"
-                value={searchParams.library}
-                onChange={handleSearchChange}
-                className="w-full px-4 py-2 bg-background-dark border border-gray-700 rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Todas las bibliotecas</option>
-                {libraries.map(lib => (
-                  <option key={lib.id} value={lib.id}>{lib.name}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Botón de búsqueda */}
-            <Button 
-              type="submit" 
-              variant="primary"
-              isLoading={isSearching}
-            >
-              Buscar
-            </Button>
-          </form>
-        </Card>
+    <div className="space-y-8">
+      {/* Estadísticas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard 
+          title="Películas" 
+          count="--" 
+          icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /></svg>}
+          bgColor="bg-primary/10" 
+          textColor="text-primary" 
+          linkText="Ver películas" 
+          linkTo="/media?type=movie" 
+        />
+        <StatCard 
+          title="Series" 
+          count="--" 
+          icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>}
+          bgColor="bg-secondary/10" 
+          textColor="text-secondary" 
+          linkText="Ver series" 
+          linkTo="/media?type=series" 
+        />
+        <StatCard 
+          title="Bibliotecas" 
+          count="--" 
+          icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>}
+          bgColor="bg-green-800/10" 
+          textColor="text-green-500" 
+          linkText="Ver bibliotecas" 
+          linkTo="/libraries" 
+        />
+        <StatCard 
+          title="Elementos" 
+          count="--" 
+          icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
+          bgColor="bg-yellow-800/10" 
+          textColor="text-yellow-500" 
+          linkText="Ver todo" 
+          linkTo="/media" 
+        />
       </div>
 
-      {/* Ordenación */}
-      <div className="flex justify-between items-center mb-4">
-        <div className="text-sm text-text-secondary">
-          {pagination.total > 0 ? (
-            <span>Mostrando {Math.min(pagination.limit, pagination.total)} de {pagination.total} elementos</span>
-          ) : (
-            <span>No se encontraron elementos</span>
-          )}
-        </div>
-        
-        <div className="flex space-x-2 text-sm">
-          <span className="text-text-secondary">Ordenar:</span>
-          <button 
-            className={`${searchParams.sort === 'title' ? 'text-primary' : 'text-text-secondary hover:text-text-primary'}`}
-            onClick={() => handleSortChange('title', searchParams.sort === 'title' && searchParams.order === 'asc' ? 'desc' : 'asc')}
-          >
-            Título {searchParams.sort === 'title' && (searchParams.order === 'asc' ? '↑' : '↓')}
-          </button>
-          <span className="text-text-secondary">|</span>
-          <button 
-            className={`${searchParams.sort === 'year' ? 'text-primary' : 'text-text-secondary hover:text-text-primary'}`}
-            onClick={() => handleSortChange('year', searchParams.sort === 'year' && searchParams.order === 'asc' ? 'desc' : 'asc')}
-          >
-            Año {searchParams.sort === 'year' && (searchParams.order === 'asc' ? '↑' : '↓')}
-          </button>
-          <span className="text-text-secondary">|</span>
-          <button 
-            className={`${searchParams.sort === 'created_at' ? 'text-primary' : 'text-text-secondary hover:text-text-primary'}`}
-            onClick={() => handleSortChange('created_at', searchParams.sort === 'created_at' && searchParams.order === 'asc' ? 'desc' : 'asc')}
-          >
-            Añadido {searchParams.sort === 'created_at' && (searchParams.order === 'asc' ? '↑' : '↓')}
-          </button>
-        </div>
-      </div>
+      {/* Continuar viendo */}
+      {inProgressItems.length > 0 && (
+        <section>
+          <h2 className="text-xl font-bold mb-4">Continuar viendo</h2>
+          <MediaGrid 
+            items={inProgressItems} 
+            loading={loading} 
+            showEmpty={false} 
+            aspectRatio="16/9" 
+          />
+        </section>
+      )}
 
-      {/* Resultados */}
-      <MediaGrid 
-        items={mediaItems} 
-        loading={loading} 
-        showEmpty={true}
-        emptyMessage="No se encontraron elementos que coincidan con tu búsqueda"
-        columns={5}
-      />
+      {/* Vistos recientemente */}
+      {recentItems.length > 0 && (
+        <section>
+          <h2 className="text-xl font-bold mb-4">Vistos recientemente</h2>
+          <MediaGrid 
+            items={recentItems} 
+            loading={loading} 
+            showEmpty={false} 
+          />
+        </section>
+      )}
 
-      {/* Paginación */}
-      {pagination.totalPages > 1 && (
-        <div className="flex justify-center mt-6">
-          <div className="flex space-x-1">
-            <Button 
-              variant="ghost" 
-              onClick={() => handlePageChange(pagination.page - 1)}
-              disabled={pagination.page <= 1}
-              size="sm"
-            >
-              Anterior
-            </Button>
-            
-            {[...Array(Math.min(5, pagination.totalPages))].map((_, i) => {
-              // Mostrar 5 páginas centradas en la actual
-              let pageToShow;
-              if (pagination.totalPages <= 5) {
-                pageToShow = i + 1;
-              } else {
-                const start = Math.max(1, pagination.page - 2);
-                const end = Math.min(pagination.totalPages, start + 4);
-                pageToShow = start + i;
-                if (pageToShow > end) return null;
-              }
-              
-              return (
-                <Button 
-                  key={pageToShow}
-                  variant={pagination.page === pageToShow ? "primary" : "ghost"}
-                  onClick={() => handlePageChange(pageToShow)}
-                  size="sm"
-                >
-                  {pageToShow}
-                </Button>
-              );
-            })}
-            
-            <Button 
-              variant="ghost" 
-              onClick={() => handlePageChange(pagination.page + 1)}
-              disabled={pagination.page >= pagination.totalPages}
-              size="sm"
-            >
-              Siguiente
-            </Button>
-          </div>
+      {/* Populares en StreamVio */}
+      {popularItems.length > 0 && (
+        <section>
+          <h2 className="text-xl font-bold mb-4">Populares en StreamVio</h2>
+          <MediaGrid 
+            items={popularItems} 
+            loading={loading} 
+            showEmpty={false} 
+          />
+        </section>
+      )}
+
+      {/* Recomendaciones */}
+      {recommendations.length > 0 && (
+        <section>
+          <h2 className="text-xl font-bold mb-4">Recomendados para ti</h2>
+          <MediaGrid 
+            items={recommendations} 
+            loading={loading} 
+            showEmpty={false} 
+          />
+        </section>
+      )}
+
+      {/* Mensaje cuando no hay contenido */}
+      {!loading && 
+       inProgressItems.length === 0 && 
+       recentItems.length === 0 && 
+       popularItems.length === 0 && 
+       recommendations.length === 0 && (
+        <div className="text-center py-10">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-text-secondary mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+          </svg>
+          <h3 className="text-xl font-bold mb-2">No hay contenido todavía</h3>
+          <p className="text-text-secondary mb-6">
+            Parece que aún no tienes bibliotecas o contenido multimedia. Comienza añadiendo una biblioteca.
+          </p>
+          <a href="/libraries/new" className="btn btn-primary">
+            Añadir biblioteca
+          </a>
         </div>
       )}
     </div>
@@ -337,6 +168,6 @@ const MediaBrowser = ({ initialQuery, initialType, initialLibrary }) => {
 };
 ---
 
-<MainLayout title="Buscar contenido">
-  <MediaBrowser client:load initialQuery={initialQuery} initialType={initialType} initialLibrary={initialLibrary} />
+<MainLayout title="Dashboard">
+  <DashboardContent client:load />
 </MainLayout>
