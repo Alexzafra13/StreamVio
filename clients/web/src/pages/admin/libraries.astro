@@ -4,10 +4,10 @@
 
 // Importar layout y componentes
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import LibraryBrowser from '../../components/library/LibraryBrowser';
+import LibraryBrowserComponent from '../../components/library/LibraryBrowserComponent.jsx';
 ---
 
 <AdminLayout title="Administración de bibliotecas">
   {/* Usando el mismo componente que la vista normal pero dentro del AdminLayout */}
-  <LibraryBrowser client:load isAdmin={true} />
+  <LibraryBrowserComponent client:load isAdmin={true} />
 </AdminLayout>
