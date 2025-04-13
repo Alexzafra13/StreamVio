@@ -1,16 +1,10 @@
 ---
-// src/pages/media/[id].astro
-// Página de detalle y reproducción de un elemento multimedia
-
-// Importar layout y componentes
 import MainLayout from '../../layouts/MainLayout.astro';
-import { MediaViewerComponent } from '../../components/media/MediaViewerComponent';
-
-// Obtener el ID del medio de los parámetros de la URL
-const { id } = Astro.params;
-const mediaId = parseInt(id);
 ---
 
 <MainLayout title="Detalles del contenido">
-  <MediaViewerComponent client:load mediaId={mediaId} />
+  <div class="p-4">
+    <h1 class="text-2xl font-bold">Detalles del contenido</h1>
+    <p>Cargando...</p>
+  </div>
 </MainLayout>
