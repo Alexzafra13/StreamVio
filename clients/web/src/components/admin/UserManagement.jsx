@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useContext } from "react";
-import Card from "../ui/Card";
-import Button from "../ui/Button";
-import Modal from "../ui/Modal";
-import { UIContext } from "../../context/UIContext";
-import userService from "../../services/userService";
-
+import Card from "../ui/Card.jsx";
+import Button from "../ui/Button.jsx";
+import Modal from "../ui/Modal.jsx";
+import { UIContext } from "../../context/UIContext.jsx";
+import userService from "../../services/usersService.js";
 /**
  * Componente para gestionar usuarios (solo para administradores)
  */
