@@ -1,0 +1,256 @@
+Análisis del Backend de StreamVio
+StreamVio parece ser una plataforma de streaming de medios (video, audio, fotos) con funcionalidades similares a Plex o Jellyfin, pero desarrollada en Node.js y con una arquitectura moderna.
+Estructura General del Servidor
+El proyecto sigue una arquitectura de capas bien definida:
+
+API Layer: Rutas, controladores y middlewares
+Service Layer: Lógica de negocio central
+Data Layer: Modelos, repositorios y acceso a datos
+Utility Layer: Funciones de utilidad y configuración
+
+Análisis de Componentes Principales
+Sistema de Autenticación y Autorización
+El sistema de autenticación está implementado con JWT (JSON Web Tokens) y incluye:
+
+authMiddleware.js: Middleware para verificar tokens desde múltiples fuentes (headers, cookies, query params)
+authController.js: Maneja endpoints para login, registro y verificación
+authService.js: Lógica de autenticación, generación de tokens, y verificación
+
+La implementación es sólida, con buenas prácticas como:
+
+Almacenamiento de sesiones en base de datos
+Verificación de caducidad de tokens
+Sistema de invitaciones para nuevos usuarios
+Hashing seguro de contraseñas (usando bcrypt)
+
+Sistema de Bibliotecas de Medios
+El proyecto permite organizar contenido en bibliotecas:
+
+libraryRepository.js: CRUD para bibliotecas en la base de datos
+libraryService.js: Lógica de gestión de bibliotecas
+libraryController.js: Endpoints para operaciones CRUD de bibliotecas
+libraryAccessMiddleware.js: Control de acceso a bibliotecas por usuario
+
+Características destacables:
+
+Control de acceso granular por usuario a cada biblioteca
+Escaneo automatizado de directorios para encontrar medios
+Categorización de bibliotecas por tipo (películas, series, música, fotos)
+
+Gestión de Medios
+Implementa un sistema completo para gestionar archivos multimedia:
+
+mediaRepository.js: Persistencia de metadatos de archivos
+mediaService.js: Lógica para manejo de archivos
+mediaController.js: Endpoints para operaciones con medios
+
+Funcionalidades notables:
+
+Búsqueda de contenido por título, tipo, año, etc.
+Sistema de historial de visualización
+Manejo de miniaturas y metadatos
+Organización jerárquica para series de TV (series > temporadas > episodios)
+
+Sistema de Streaming
+Implementa streaming adaptativo con diferentes calidades:
+
+streamingService.js: Lógica para streaming HTTP y HLS
+streamingController.js: Endpoints para streaming y opciones
+streamingRoutes.js: Definición de rutas para streaming
+
+Características destacables:
+
+Soporte para streaming parcial (ranges HTTP)
+Streaming adaptativo HLS (HTTP Live Streaming) multi-calidad
+Control de progreso de visualización
+
+Sistema de Transcodificación
+Proporciona capacidades para convertir medios a diferentes formatos:
+
+transcodingService.js: Lógica para convertir formatos de medios
+transcodingController.js: Endpoints para operaciones de transcodificación
+transcoderInterface.js: Wrapper para FFmpeg
+formatConverter.js: Convertidor específico de formatos
+
+Características notables:
+
+Cola de trabajos para gestionar procesamiento
+Soporte para aceleración por hardware (NVENC, QSV, VAAPI)
+Perfiles de transcodificación configurables
+Generación automática de miniaturas
+
+Metadatos y Búsqueda
+Sistema para obtener y gestionar metadatos de películas y series:
+
+metadataService.js: Lógica para obtener y aplicar metadatos
+tmdbProvider.js: Proveedor de metadatos desde TMDb
+localMetadataManager.js: Gestor de metadatos locales
+
+Características:
+
+Integración con TMDB (The Movie Database)
+Caché local de metadatos
+Exportación/importación de metadatos (formato NFO)
+Detección automática de series de TV basada en patrones de archivos
+
+Escaneado y Análisis de Archivos
+Sistema para escanear y analizar medios en el filesystem:
+
+scannerService.js: Servicio para escanear directorios
+directoryScanner.js: Componente para recorrer directorios
+fileAnalyzer.js: Componente para extraer metadatos de archivos
+
+Funcionalidades:
+
+Detección recursiva de archivos multimedia
+Análisis de metadatos con FFprobe
+Detección inteligente de series de TV
+Escaneo programable automático
+
+Base de Datos y Migraciones
+Sistema de persistencia con SQLite y migraciones:
+
+db.js: Configuración de conexión a SQLite
+migrations/: Sistema de migraciones
+models/: Modelos de datos
+
+Características notables:
+
+Promisificación de operaciones de base de datos
+Sistema de migraciones versionado
+Transacciones para operaciones críticas
+Patrones repository para acceso a datos
+
+Seguridad
+El proyecto implementa buenas prácticas de seguridad:
+
+Control de acceso basado en roles (admin/usuario)
+Tokens JWT con expiración
+Hashing seguro de contraseñas
+Validación de entradas mediante middleware
+Manejo adecuado de errores y excepciones
+
+Evaluación General de la Parte Backend
+
+Arquitectura: El proyecto implementa una arquitectura en capas limpia y bien definida, lo que facilita el mantenimiento y la extensibilidad.
+Seguridad: Implementa buenas prácticas de seguridad, incluyendo autenticación, autorización, y validación de entrada.
+Modularidad: Alta modularidad con servicios y componentes bien definidos y con responsabilidades únicas.
+Patrones de Diseño: Utiliza patrones como Repository, Service, Singleton, y Factory apropiadamente.
+Manejo de Errores: Sistema consistente de manejo de errores con middleware específico.
+Internacionalización: Soporte para múltiples idiomas en metadatos.
+Configuración: Sistema flexible de configuración con valores por defecto y variables de entorno.
+Logging: Sistema de logging organizado por módulos.
+Testing: No se ve evidencia explícita de tests automatizados, lo cual sería un área de mejora.
+Documentación: Los componentes están bien documentados con comentarios JSDoc.
+
+
+
+Análisis del Frontend de StreamVio
+El frontend de StreamVio está desarrollado principalmente con React, Astro y Tailwind CSS. Voy a analizar su estructura, funcionalidad y cómo se integra con el backend.
+Estructura General del Frontend
+El proyecto sigue una arquitectura organizada y moderna:
+
+Componentes: Separados por funcionalidad y reutilizables
+Páginas: Implementadas con Astro para SSR/SSG
+Layouts: Plantillas reutilizables para diferentes secciones
+Contextos: Para estado global (autenticación, UI, medios)
+Servicios: Comunicación con la API
+Hooks: Funcionalidad común reutilizable
+Utilidades: Funciones auxiliares (formateo, validación)
+Estilos: Sistema de diseño con Tailwind CSS
+
+Análisis de Componentes Principales
+Sistema de Autenticación y Usuarios
+
+AuthContext.jsx: Estado global para la autenticación del usuario
+LoginForm.jsx y RegisterForm.jsx: Formularios de acceso
+authService.js: Comunicación con los endpoints de autenticación
+UserManagement.jsx: Gestión de usuarios (admin)
+useAuth.js: Hook para acceder al contexto de autenticación
+
+La implementación incluye:
+
+Almacenamiento de token JWT en localStorage
+Redirección automática a login cuando se intenta acceder sin autenticación
+Sistema de invitaciones para nuevos usuarios
+Perfiles de usuario y roles (administrador/usuario)
+Recuperación de contraseña y cambio forzado en primer inicio
+
+Sistema de Bibliotecas
+
+LibraryBrowser.jsx: Explorador de bibliotecas
+LibrarySetup.jsx: Creación y edición de bibliotecas
+libraryService.js: Comunicación con endpoints de bibliotecas
+
+Funcionalidades:
+
+Creación/edición/eliminación de bibliotecas
+Selección de tipo (películas, series, música, fotos)
+Escaneo de contenido desde la interfaz
+Enriquecimiento de metadatos
+Visualización por categorías
+
+Gestión y Reproducción de Medios
+
+MediaContext.jsx: Contexto global para contenido multimedia
+MediaGrid.jsx: Cuadrícula para mostrar contenido
+MediaDetails.jsx: Detalles del elemento seleccionado
+VideoPlayer.jsx: Reproductor de video personalizado
+mediaService.js: Comunicación con endpoints de medios
+
+Características destacables:
+
+Reproductor con soporte HLS
+Controles personalizados (volumen, progreso, pantalla completa)
+Guardado automático de progreso de visualización
+Miniaturas e información detallada
+Sistema de búsqueda avanzada
+Recomendaciones basadas en historial
+
+Interfaz de Usuario
+
+UIContext.jsx: Gestión centralizada del estado de la UI
+NotificationContainer.jsx: Sistema de notificaciones
+ModalContainer.jsx: Sistema de modales
+Button.jsx, Card.jsx: Componentes UI reutilizables
+useUI.js: Hook para interactuar con el contexto UI
+
+Características:
+
+Sistema de notificaciones (success, error, info, warning)
+Modales personalizables
+Tema oscuro/claro con toggle
+Componentes UI consistentes
+Layout responsive
+
+Sistema de Rutas y Navegación
+
+Páginas Astro: Implementación de rutas con Astro
+MainLayout.astro, AdminLayout.astro, AuthLayout.astro: Layouts principales
+Header.jsx y Sidebar.jsx: Componentes de navegación
+
+Características:
+
+Navegación por categorías
+Secciones de administración protegidas
+Layouts específicos según tipo de contenido
+Navegación responsive para móvil/desktop
+
+Integración con Backend
+
+api.js: Cliente centralizado para comunicación con la API
+Servicios específicos por dominio (auth, media, library, etc.)
+Gestión de tokens de autenticación
+Manejo de errores de API
+Cancelación de peticiones
+Reintentos automáticos
+
+Evaluación de la Integración Frontend-Backend
+La integración entre frontend y backend está bien implementada:
+
+APIs coherentes: Los servicios del frontend mapean directamente a los endpoints del backend
+Autenticación: Correcto manejo de tokens JWT entre peticiones
+Modelo de datos: Consistencia en la estructura de datos entre cliente y servidor
+Manejo de errores: Proceso adecuado para errores de API y visualización al usuario
+Formato de mensajes: Estándar coherente para comunicación (JSON)
+Cacheo: Estrategias para reducir llamadas innecesarias al backend
