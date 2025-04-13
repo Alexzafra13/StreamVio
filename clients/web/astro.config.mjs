@@ -32,5 +32,5 @@ export default defineConfig({
       }
     }
   },
-  output: 'static', // SSG por defecto
+  output: 'hybrid', // Cambiado de 'static' a 'hybrid' para permitir rutas dinámicas
 });
