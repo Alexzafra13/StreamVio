@@ -1,11 +1,10 @@
 ---
 // src/pages/history.astro
 // Página del historial de visualización
-
 import MainLayout from '../layouts/MainLayout.astro';
 import WatchHistoryComponent from '../components/history/WatchHistoryComponent';
 ---
 
 <MainLayout title="Historial de visualización">
-  <WatchHistoryComponent client:load />
+  <WatchHistoryComponent client:only="react" />
 </MainLayout>

@@ -14,5 +14,10 @@ const initialLibrary = searchParams.get('library') || '';
 ---
 
 <MainLayout title="Buscar contenido">
-  <MediaBrowserComponent client:load initialQuery={initialQuery} initialType={initialType} initialLibrary={initialLibrary} />
+  <MediaBrowserComponent 
+    client:only="react" 
+    initialQuery={initialQuery} 
+    initialType={initialType} 
+    initialLibrary={initialLibrary} 
+  />
 </MainLayout>

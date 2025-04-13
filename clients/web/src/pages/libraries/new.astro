@@ -4,9 +4,9 @@
 
 // Importar layout y componentes
 import MainLayout from '../../layouts/MainLayout.astro';
-import LibrarySetup from '../../components/library/LibrarySetup';
+import LibrarySetup from '../../components/library/LibrarySetup.jsx';
 ---
 
 <MainLayout title="Añadir biblioteca">
-  <LibrarySetup client:load />
+  <LibrarySetup client:only="react" />
 </MainLayout>

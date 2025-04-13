@@ -14,14 +14,14 @@ const inviteCode = searchParams.get('code') || '';
 ---
 
 <AuthLayout title="Registro de usuario">
-  <UIProvider client:load>
-    <AuthProvider client:load>
+  <UIProvider client:only="react">
+    <AuthProvider client:only="react">
       {/* Mensaje informativo */}
       <div class="p-3 mb-4 bg-gray-800 rounded-md text-sm text-text-secondary">
         Para crear una cuenta, necesitas un código de invitación proporcionado por un administrador.
       </div>
       
-      <RegisterForm client:visible invitationCode={inviteCode} />
+      <RegisterForm client:only="react" invitationCode={inviteCode} />
     </AuthProvider>
   </UIProvider>
 

@@ -1,7 +1,6 @@
 ---
 // src/pages/media/index.astro
 // ...
-
 // Si el componente está en otra carpeta:
 import MediaBrowserComponent from '../../components/media/MediaBrowserComponent.jsx';
 // o si necesitas usar otro componente:
@@ -9,6 +8,6 @@ import MediaGrid from '../../components/media/browser/MediaGrid.jsx';
 ---
 
 <MainLayout title="Explorar contenido">
-  <MediaBrowserComponent client:load />
+  <MediaBrowserComponent client:only="react" />
   <!-- o el componente que corresponda -->
 </MainLayout>

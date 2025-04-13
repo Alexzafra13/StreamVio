@@ -12,5 +12,5 @@ const libraryId = parseInt(id);
 ---
 
 <MainLayout title="Detalles de biblioteca">
-  <LibraryDetailComponent client:load libraryId={libraryId} />
+  <LibraryDetailComponent client:only="react" libraryId={libraryId} />
 </MainLayout>

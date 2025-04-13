@@ -15,16 +15,16 @@ const sessionExpired = searchParams.get('session') === 'expired';
 ---
 
 <AuthLayout title="Iniciar sesión">
-  <UIProvider client:load>
-    <AuthProvider client:load>
+  <UIProvider client:only="react">
+    <AuthProvider client:only="react">
       {/* Mensaje de sesión expirada */}
       {sessionExpired && (
         <div class="p-3 mb-4 bg-blue-900/30 border border-blue-700 rounded-md text-sm text-blue-300">
           Tu sesión ha expirado. Por favor, inicia sesión nuevamente.
         </div>
       )}
-
-      <LoginForm client:visible />
+      
+      <LoginForm client:only="react" />
       
       {/* Enlace para primer inicio */}
       <div class="mt-6 pt-6 border-t border-gray-700 text-center">
