@@ -18,7 +18,7 @@ STREAMVIO_USER="streamvio"  # Usuario específico para el servicio
 STREAMVIO_GROUP="streamvio"  # Grupo específico para el servicio
 VERBOSE=0                # Modo detallado (0=normal, 1=detallado)
 FORCE_REINSTALL=0        # Forzar reinstalación
-REPO_URL="https://github.com/tu-usuario/streamvio.git"  # URL del repositorio
+REPO_URL="https://github.com/Alexzafra13/StreamVio.git"  # URL del repositorio
 
 # Crear o limpiar archivos de log
 > "$INSTALL_LOG"
