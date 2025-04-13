@@ -10,6 +10,9 @@ const metadataRoutes = require("./routes/metadataRoutes");
 const streamingRoutes = require("./routes/streamingRoutes");
 const transcodingRoutes = require("./routes/transcodingRoutes");
 const userRoutes = require("./routes/userRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
+const watchHistoryRoutes = require("./routes/watchHistoryRoutes");
+const migrationRoutes = require("./routes/migrationRoutes");
 
 // Ruta API básica
 router.get("/", (req, res) => {
@@ -37,5 +40,8 @@ router.use("/metadata", metadataRoutes);
 router.use("/streaming", streamingRoutes);
 router.use("/transcoding", transcodingRoutes);
 router.use("/users", userRoutes);
+router.use("/settings", settingsRoutes);
+router.use("/history", watchHistoryRoutes);
+router.use("/migrations", migrationRoutes);
 
 module.exports = router;

@@ -104,4 +104,41 @@ router.post(
   authController.createInvitation
 );
 
+/**
+ * @route   POST /api/auth/register
+ * @desc    Registro con código de invitación
+ * @access  Public
+ */
+router.post(
+  "/register",
+  validateSchema({
+    required: ["username", "email", "password", "invitationCode"],
+    types: {
+      username: "string",
+      email: "string",
+      password: "string",
+      invitationCode: "string",
+    },
+    custom: {
+      email: (value) => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(value) || "El formato del email no es válido";
+      },
+      password: (value) => {
+        return (
+          value.length >= 6 || "La contraseña debe tener al menos 6 caracteres"
+        );
+      },
+    },
+  }),
+  authController.registerWithInvitation
+);
+
+/**
+ * @route   POST /api/auth/logout
+ * @desc    Cerrar sesión
+ * @access  Private
+ */
+router.post("/logout", authenticate, authController.logout);
+
 module.exports = router;

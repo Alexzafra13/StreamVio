@@ -139,6 +139,10 @@ context/
 │   │   │   ├── streamingController.js
 │   │   │   ├── transcodingController.js
 │   │   │   └── userController.js
+│   │       ├── settingsController.js
+│   │       ├── watchHistoryController.js
+│   │       ├── migrationController.js
+
 │   │   ├── routes/
 │   │   │   ├── authRoutes.js
 │   │   │   ├── libraryRoutes.js
@@ -147,6 +151,10 @@ context/
 │   │   │   ├── streamingRoutes.js
 │   │   │   ├── transcodingRoutes.js
 │   │   │   └── userRoutes.js
+        │   ├── settingsRoutes.js
+        │   ├── watchHistoryRoutes.js
+        │   ├── migrationRoutes.js
+
 │   │   ├── middlewares/
 │   │   │   ├── authMiddleware.js
 │   │   │   ├── errorMiddleware.js
@@ -181,9 +189,14 @@ context/
 │   │   ├── migrations/
 │   │   │   ├── 001_initial_schema.js
 │   │   │   └── 002_add_streaming_settings.js
+        │   │--- index.js
 │   │   ├── seeds/
 │   │   │   └── defaultSettings.js
 │   │   └── db.js
+
+|   ├── scripts/
+│   │   ├── migrate.js
+│   │   
 │   ├── config/
 │   │   ├── environment.js
 │   │   ├── constants.js
@@ -349,3 +362,5 @@ context/
 ├── .env.example
 ├── package.json
 └── README.md
+
+ ahora estos que faltan, y si tiene cambio en rutas damelos tambien completo
