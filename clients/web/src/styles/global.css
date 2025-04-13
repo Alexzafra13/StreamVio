@@ -1,3 +1,76 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-background-dark text-text-primary m-0 p-0 min-h-screen;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-bold text-text-primary;
+  }
+
+  h1 {
+    @apply text-3xl mb-4;
+  }
+
+  h2 {
+    @apply text-2xl mb-3;
+  }
+
+  h3 {
+    @apply text-xl mb-2;
+  }
+
+  a {
+    @apply text-primary hover:text-primary-hover transition-colors duration-200;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded font-medium transition-all duration-200 inline-flex items-center justify-center;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-hover;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-white hover:bg-secondary-hover;
+  }
+
+  .btn-success {
+    @apply bg-success text-white hover:bg-success-hover;
+  }
+
+  .card {
+    @apply bg-background-card rounded-lg p-6 shadow-card transition-all duration-200;
+  }
+
+  .stat-card {
+    @apply card flex flex-col p-6 cursor-pointer hover:scale-[1.02];
+  }
+
+  .media-card {
+    @apply relative overflow-hidden rounded-lg shadow-lg transition-transform duration-300 hover:scale-105;
+  }
+
+  .sidebar-link {
+    @apply flex items-center p-3 text-text-secondary hover:text-text-primary hover:bg-background-card rounded-md transition-colors duration-200;
+  }
+
+  .sidebar-link.active {
+    @apply bg-background-card text-text-primary;
+  }
+}

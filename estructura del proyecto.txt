@@ -363,4 +363,153 @@ context/
 ├── package.json
 └── README.md
 
- ahora estos que faltan, y si tiene cambio en rutas damelos tambien completo
+-----------------------------------------------------------------------------------------------------------------------------
+
+                                               PARTE Backend
+
+server/
+│
+├── api/                          # Capa de API/HTTP
+│   ├── controllers/              # Controladores para manejar requests HTTP
+│   │   ├── authController.js     # Autenticación y manejo de usuarios
+│   │   ├── libraryController.js  # Gestión de bibliotecas multimedia
+│   │   ├── mediaController.js    # Elementos multimedia (películas, series, etc.)
+│   │   ├── metadataController.js # Gestión de metadatos (TMDb, info de películas)
+│   │   ├── migrationController.js # Control de migraciones de DB
+│   │   ├── settingsController.js # Configuración del sistema
+│   │   ├── streamingController.js # Streaming de contenido multimedia
+│   │   ├── transcodingController.js # Transcodificación de medios
+│   │   └── watchHistoryController.js # Historial de visualización
+│   │
+│   ├── middlewares/              # Middlewares para Express
+│   │   ├── authMiddleware.js     # Autenticación JWT
+│   │   ├── errorMiddleware.js    # Manejo centralizado de errores
+│   │   ├── libraryAccessMiddleware.js # Control de acceso a bibliotecas
+│   │   ├── requestLogger.js      # Logging de peticiones HTTP
+│   │   └── validator.js          # Validación de peticiones
+│   │
+│   ├── routes/                   # Definición de rutas HTTP
+│   │   ├── authRoutes.js         # Rutas de autenticación
+│   │   ├── libraryRoutes.js      # Rutas de bibliotecas
+│   │   ├── mediaRoutes.js        # Rutas de contenido multimedia
+│   │   ├── metadataRoutes.js     # Rutas de metadatos
+│   │   ├── migrationRoutes.js    # Rutas de migraciones
+│   │   ├── settingsRoutes.js     # Rutas de configuración
+│   │   ├── streamingRoutes.js    # Rutas de streaming
+│   │   ├── transcodingRoutes.js  # Rutas de transcodificación
+│   │   ├── userRoutes.js         # Rutas de usuarios
+│   │   └── watchHistoryRoutes.js # Rutas de historial
+│   │
+│   └── index.js                  # Punto de entrada y configuración de la API
+│
+├── config/                       # Configuración de la aplicación
+│   ├── constants.js              # Constantes globales
+│   ├── environment.js            # Variables de entorno
+│   └── paths.js                  # Rutas de archivos y directorios
+│
+├── data/                         # Capa de datos
+│   ├── db.js                     # Configuración de base de datos SQLite
+│   │
+│   ├── migrations/               # Migraciones de base de datos
+│   │   ├── 001_initial_schema.js # Esquema inicial
+│   │   ├── 002_add_streaming_settings.js # Añade configuración streaming
+│   │   └── 003_add_extended_media_metadata.js # Extiende metadatos
+│   │
+│   ├── models/                   # Modelos de datos
+│   │   ├── Library.js            # Modelo de biblioteca
+│   │   ├── MediaItem.js          # Modelo de elemento multimedia
+│   │   ├── Session.js            # Modelo de sesión de usuario
+│   │   ├── Setting.js            # Modelo de configuración
+│   │   ├── User.js               # Modelo de usuario
+│   │   └── WatchHistory.js       # Modelo de historial
+│   │
+│   ├── repositories/             # Lógica de acceso a datos
+│   │   ├── libraryRepository.js  # Operaciones de bibliotecas
+│   │   ├── mediaRepository.js    # Operaciones de multimedia
+│   │   ├── settingRepository.js  # Operaciones de configuración
+│   │   ├── userRepository.js     # Operaciones de usuarios
+│   │   └── watchHistoryRepository.js # Operaciones de historial
+│   │
+│   └── seeds/                    # Datos iniciales
+│       └── defaultSettings.js    # Configuración inicial
+│
+├── media/                        # Funcionalidades multimedia
+│   ├── scanner/                  # Escaneo de directorios multimedia
+│   │   ├── directoryScanner.js   # Escanea directorios de medios
+│   │   └── fileAnalizer.js       # Analiza metadatos de archivos
+│   │
+│   └── transcoder/               # Transcodificación multimedia
+│       ├── formatConverter.js    # Convierte formatos de archivos
+│       └── transcoderInterface.js # Interfaz con FFmpeg
+│
+├── scripts/                      # Scripts de utilidad
+│   └── migrate.js                # Herramienta de migraciones
+│
+├── services/                     # Capa de servicios (lógica de negocio)
+│   ├── authService.js            # Autenticación y autorización
+│   ├── eventBus.js               # Bus de eventos interno
+│   ├── libraryService.js         # Gestión de bibliotecas
+│   ├── mediaService.js           # Gestión de contenido multimedia
+│   ├── metadataService.js        # Obtención y manejo de metadatos
+│   ├── scannerService.js         # Escaneo de bibliotecas
+│   ├── streamingService.js       # Streaming de contenido
+│   ├── transcodingService.js     # Transcodificación de medios
+│   └── userService.js            # Gestión de usuarios
+│
+├── utils/                        # Utilidades generales
+│   ├── errors.js                 # Clases de error personalizadas
+│   ├── filesystem.js             # Operaciones de sistema de archivos
+│   ├── logger.js                 # Sistema de logging
+│   └── security.js               # Utilidades de seguridad
+│
+├── app.js                        # Configuración de la aplicación Express
+├── init.js                       # Inicialización del sistema
+└── server.js                     # Punto de entrada principal
+
+Detalle de componentes principales
+Componentes core
+
+Servidor HTTP (app.js, server.js)
+
+Configura Express con middlewares esenciales
+Maneja rutas API y archivos estáticos
+Configura CORS, logging y manejo de errores
+
+
+Base de datos (data/db.js)
+
+Utiliza SQLite con promisificación de métodos
+Implementa patrones para consultas asíncronas
+Soporta migraciones para evolución del esquema
+
+
+Sistema de usuarios
+
+Autenticación basada en JWT
+Control de permisos para acceso a bibliotecas
+Gestión de sesiones y códigos de invitación
+
+
+Gestión de bibliotecas
+
+Escaneo de directorios para encontrar multimedia
+Categorización automática de películas y series
+Control de acceso granular a nivel de usuario
+
+
+Streaming y transcodificación
+
+Soporte para streaming directo y adaptativo (HLS)
+Transcodificación bajo demanda con FFmpeg
+Generación de miniaturas y vistas previas
+
+
+Sistema de metadatos
+
+Integración con TMDb para metadatos de películas
+Enriquecimiento automático del contenido
+Caché local para mejorar rendimiento
+
+(Anotacion)
+En algunos lugares hay dependencias circulares potenciales (p. ej., algunos servicios se importan mutuamente), pero Node.js puede manejarlas adecuadamente en la mayoría de los casos.
+Algunos servicios como streamingService.js hacen referencias directas a db en lugar de usar siempre los repositorios correspondientes, lo que sería más consistente con la arquitectura general.
