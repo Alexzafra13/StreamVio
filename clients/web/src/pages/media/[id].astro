@@ -1,10 +1,18 @@
 ---
+// src/pages/media/index.astro
+// Página para explorar y buscar contenido multimedia
+
+// Importar layout y componentes
 import MainLayout from '../../layouts/MainLayout.astro';
+import MediaBrowserComponent from '../../components/media/MediaBrowserComponent';
+
+// Obtener parámetros de búsqueda de la URL
+const { searchParams } = Astro.url;
+const initialQuery = searchParams.get('q') || '';
+const initialType = searchParams.get('type') || '';
+const initialLibrary = searchParams.get('library') || '';
 ---
 
-<MainLayout title="Detalles del contenido">
-  <div class="p-4">
-    <h1 class="text-2xl font-bold">Detalles del contenido</h1>
-    <p>Cargando...</p>
-  </div>
+<MainLayout title="Buscar contenido">
+  <MediaBrowserComponent client:load initialQuery={initialQuery} initialType={initialType} initialLibrary={initialLibrary} />
 </MainLayout>

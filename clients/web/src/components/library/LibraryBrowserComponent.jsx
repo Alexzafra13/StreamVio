@@ -8,7 +8,7 @@ import libraryService from "../../services/libraryService";
 /**
  * Componente para explorar y gestionar bibliotecas
  */
-const LibraryBrowser = () => {
+const LibraryBrowserComponent = () => {
   const [libraries, setLibraries] = useState([]);
   const [loading, setLoading] = useState(true);
   const { showError, showSuccess } = useContext(UIContext);
@@ -258,4 +258,4 @@ const LibraryBrowser = () => {
   );
 };
 
-export default LibraryBrowser;
+export default LibraryBrowserComponent;
