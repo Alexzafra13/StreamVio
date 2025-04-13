@@ -9,5 +9,5 @@ import LibraryBrowserComponent from '../../components/library/LibraryBrowserComp
 
 <AdminLayout title="Administración de bibliotecas">
   {/* Usando el mismo componente que la vista normal pero dentro del AdminLayout */}
-  <LibraryBrowserComponent client:load isAdmin={true} />
+  <LibraryBrowserComponent client:only="react" isAdmin={true} />
 </AdminLayout>
