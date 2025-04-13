@@ -1,6 +1,6 @@
 // src/services/settingsService.js
 import axios from "axios";
-import authService from "./authService";
+import authService from "./authService.js";
 
 // URL base de la API
 const API_URL = import.meta.env.PUBLIC_API_URL || "http://localhost:3000/api";

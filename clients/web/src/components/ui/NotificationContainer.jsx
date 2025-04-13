@@ -1,6 +1,6 @@
 // src/components/ui/NotificationContainer.jsx
 import React, { useContext, useEffect, useState } from "react";
-import { UIContext } from "../../context/UIContext";
+import { UIContext } from "../../context/UIContext.jsx";
 
 /**
  * Componente para mostrar una notificación individual

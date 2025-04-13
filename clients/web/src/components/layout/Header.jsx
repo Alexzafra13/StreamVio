@@ -1,8 +1,8 @@
 // src/components/layout/Header.jsx
 import React, { useState, useContext, useRef, useEffect } from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { useUI } from '../../hooks/useUI';
-import { useMedia } from '../../hooks/useMedia';
+import { useAuth } from '../../hooks/useAuth.js';
+import { useUI } from '../../hooks/useUI.js';
+import { useMedia } from '../../hooks/useMedia.js';
 
 /**
  * Componente de encabezado principal con navegación y búsqueda

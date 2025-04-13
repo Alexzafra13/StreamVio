@@ -1,9 +1,9 @@
 import React, { useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import Button from "../../ui/Button";
+import Button from "../../ui/Button.jsx";
 import Card from "../../ui/Card";
-import { MediaContext } from "../../../context/MediaContext";
-import { UIContext } from "../../../context/UIContext";
+import { MediaContext } from "../../../context/MediaContext.jsx";
+import { UIContext } from "../../../context/UIContext.jsx";
 
 /**
  * Componente para mostrar los detalles de un elemento multimedia

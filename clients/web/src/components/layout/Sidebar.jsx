@@ -1,7 +1,7 @@
 // src/components/layout/Sidebar.jsx
 import React, { useState, useEffect, useContext } from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { useUI } from '../../hooks/useUI';
+import { useAuth } from '../../hooks/useAuth.js';
+import { useUI } from '../../hooks/useUI.js';
 
 /**
  * Componente de barra lateral para navegación principal

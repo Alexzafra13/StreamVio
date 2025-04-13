@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useContext } from "react";
-import Card from "../ui/Card";
-import Button from "../ui/Button";
-import { UIContext } from "../../context/UIContext";
-import settingsService from "../../services/settingsService";
+import Card from "../ui/Card.jsx";
+import Button from "../ui/Button.jsx";
+import { UIContext } from "../../context/UIContext.jsx";
+import settingsService from "../../services/settingsService.js";
 
 /**
  * Componente para configurar ajustes del sistema (solo para administradores)

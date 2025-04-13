@@ -1,6 +1,6 @@
 // src/context/AuthContext.jsx
 import React, { createContext, useState, useEffect, useCallback } from "react";
-import authService from "../services/authService";
+import authService from "../services/authService.js";
 
 // Crear el contexto con un valor inicial vacío
 export const AuthContext = createContext();

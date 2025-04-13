@@ -1,6 +1,6 @@
 // src/hooks/useUI.js
 import { useContext } from "react";
-import { UIContext } from "../context/UIContext";
+import { UIContext } from "../context/UIContext.jsx";
 
 /**
  * Hook personalizado para acceder al contexto de interfaz de usuario

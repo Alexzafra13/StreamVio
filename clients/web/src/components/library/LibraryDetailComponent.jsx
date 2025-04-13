@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { UIContext } from '../../context/UIContext';
-import libraryService from '../../services/libraryService';
-import MediaGrid from '../media/browser/MediaGrid';
-import Card from '../ui/Card';
-import Button from '../ui/Button';
+import { UIContext } from '../../context/UIContext.jsx';
+import libraryService from '../../services/libraryService.js';
+import MediaGrid from '../media/browser/MediaGrid.jsx';
+import Card from '../ui/Card.jsx';
+import Button from '../ui/Button.jsx';
 
 /**
  * Componente para mostrar detalles de una biblioteca específica

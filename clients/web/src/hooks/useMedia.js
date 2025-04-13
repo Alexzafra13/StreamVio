@@ -1,6 +1,6 @@
 // src/hooks/useMedia.js
 import { useContext } from "react";
-import { MediaContext } from "../context/MediaContext";
+import { MediaContext } from "../context/MediaContext.jsx";
 
 /**
  * Hook personalizado para acceder al contexto de contenido multimedia

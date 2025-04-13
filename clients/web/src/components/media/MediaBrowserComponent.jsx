@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { UIContext } from '../../context/UIContext';
-import MediaGrid from './browser/MediaGrid';
-import Card from '../ui/Card';
-import Button from '../ui/Button';
-import mediaService from '../../services/mediaService';
-import libraryService from '../../services/libraryService';
+import { UIContext } from '../../context/UIContext.jsx';
+import MediaGrid from './browser/MediaGrid.jsx';
+import Card from '../ui/Card.jsx';
+import Button from '../ui/Button.jsx';
+import mediaService from '../../services/mediaService.js';
+import libraryService from '../../services/libraryService.js';
 
 /**
  * Componente para explorar y buscar contenido multimedia

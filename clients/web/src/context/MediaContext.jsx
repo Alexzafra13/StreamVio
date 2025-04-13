@@ -1,7 +1,7 @@
 // src/context/MediaContext.jsx
 import React, { createContext, useState, useCallback, useContext } from "react";
-import mediaService from "../services/mediaService";
-import { UIContext } from "./UIContext";
+import mediaService from "../services/mediaService.js";
+import { UIContext } from "./UIContext.jsx";
 
 // Crear el contexto con un valor inicial vacío
 export const MediaContext = createContext();

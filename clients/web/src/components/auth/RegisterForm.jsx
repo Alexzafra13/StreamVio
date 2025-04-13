@@ -1,8 +1,8 @@
 import React, { useState, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Button from "../ui/Button";
-import { AuthContext } from "../../context/AuthContext";
-import { UIContext } from "../../context/UIContext";
+import { AuthContext } from "../../context/AuthContext.jsx";
+import { UIContext } from "../../context/UIContext.jsx";
 
 const RegisterForm = () => {
   const [formData, setFormData] = useState({

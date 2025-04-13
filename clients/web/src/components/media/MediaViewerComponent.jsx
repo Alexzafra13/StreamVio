@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { UIContext } from '../../context/UIContext';
-import { MediaContext } from '../../context/MediaContext';
-import mediaService from '../../services/mediaService';
-import MediaDetails from './details/MediaDetails';
-import VideoPlayer from './player/VideoPlayer';
-import Card from '../ui/Card';
-import Button from '../ui/Button';
+import { UIContext } from '../../context/UIContext.jsx';
+import { MediaContext } from '../../context/MediaContext.jsx';
+import mediaService from '../../services/mediaService.js';
+import MediaDetails from './details/MediaDetails.jsx';
+import VideoPlayer from './player/VideoPlayer.jsx';
+import Card from '../ui/Card.jsx';
+import Button from '../ui/Button.jsx';
 
 /**
  * Componente para visualizar y reproducir detalles de un elemento multimedia

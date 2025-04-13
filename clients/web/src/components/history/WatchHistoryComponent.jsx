@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { UIContext } from '../../context/UIContext';
-import { MediaContext } from '../../context/MediaContext';
-import Card from '../ui/Card';
-import Button from '../ui/Button';
-import MediaGrid from '../media/browser/MediaGrid';
+import { UIContext } from '../../context/UIContext.jsx';
+import { MediaContext } from '../../context/MediaContext.jsx';
+import Card from '../ui/Card.jsx';
+import Button from '../ui/Button.jsx';
+import MediaGrid from '../media/browser/MediaGrid.jsx';
 
 /**
  * Componente para mostrar el historial de visualización

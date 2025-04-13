@@ -1,5 +1,5 @@
 import React from "react";
-import MediaCard from "../../ui/MediaCard";
+import MediaCard from "../../ui/MediaCard.jsx";
 
 /**
  * Componente para mostrar una cuadrícula de elementos multimedia

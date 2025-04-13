@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { MediaContext } from '../../context/MediaContext';
-import MediaGrid from '../media/browser/MediaGrid';
-import StatCard from './StatCard';
+import { MediaContext } from '../../context/MediaContext.jsx';
+import MediaGrid from '../media/browser/MediaGrid.jsx';
+import StatCard from './StatCard.jsx';
 
 /**
  * Componente principal para el dashboard

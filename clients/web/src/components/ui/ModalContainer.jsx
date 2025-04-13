@@ -1,7 +1,7 @@
 // src/components/ui/ModalContainer.jsx
 import React, { useContext, useEffect } from "react";
-import { UIContext } from "../../context/UIContext";
-import Button from "./Button";
+import { UIContext } from "../../context/UIContext.jsx";
+import Button from "./Button.jsx";
 
 /**
  * Contenedor para mostrar modales del sistema

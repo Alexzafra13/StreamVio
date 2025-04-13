@@ -1,10 +1,10 @@
 import React, { useState, useContext, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Card from "../ui/Card";
-import Button from "../ui/Button";
-import Modal from "../ui/Modal";
-import { UIContext } from "../../context/UIContext";
-import libraryService from "../../services/libraryService";
+import Card from "../ui/Card.jsx";
+import Button from "../ui/Button.jsx";
+import Modal from "../ui/Modal.jsx";
+import { UIContext } from "../../context/UIContext.jsx";
+import libraryService from "../../services/libraryService.js";
 
 /**
  * Componente para crear o editar una biblioteca
