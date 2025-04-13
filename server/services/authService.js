@@ -1,10 +1,14 @@
 // server/services/authService.js
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
-const crypto = require("crypto");
 const userRepository = require("../data/repositories/userRepository");
 const environment = require("../config/environment");
 const eventBus = require("./eventBus");
+const SecurityUtils = require("../utils/security");
+const logger = require("../utils/logger");
+
+// Obtener logger específico para este módulo
+const log = logger.getModuleLogger("AuthService");
 
 /**
  * Servicio para gestión de autenticación y autorización
@@ -32,9 +36,18 @@ class AuthService {
       throw new Error("Ya existe al menos un usuario en el sistema");
     }
 
+    // Validar fortaleza de la contraseña
+    const passwordValidation = SecurityUtils.validatePasswordStrength(
+      userData.password
+    );
+    if (!passwordValidation.isValid && passwordValidation.score < 3) {
+      log.warn("Contraseña débil utilizada para el usuario administrador", {
+        score: passwordValidation.score,
+      });
+    }
+
     // Hash de la contraseña
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(userData.password, salt);
+    const hashedPassword = await SecurityUtils.hashPassword(userData.password);
 
     // Crear usuario administrador
     const newUser = await userRepository.create({
@@ -77,13 +90,26 @@ class AuthService {
     const user = await userRepository.findByEmail(email);
 
     if (!user) {
+      log.info(`Intento de inicio de sesión fallido para email: ${email}`, {
+        reason: "user_not_found",
+      });
       throw new Error("Credenciales inválidas");
     }
 
     // Verificar contraseña
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = await SecurityUtils.comparePassword(
+      password,
+      user.password
+    );
 
     if (!isPasswordValid) {
+      log.info(
+        `Intento de inicio de sesión fallido para usuario: ${user.username}`,
+        {
+          userId: user.id,
+          reason: "invalid_password",
+        }
+      );
       throw new Error("Credenciales inválidas");
     }
 
@@ -97,6 +123,10 @@ class AuthService {
     eventBus.emitEvent("user:login", {
       userId: user.id,
       username: user.username,
+    });
+
+    log.info(`Inicio de sesión exitoso para: ${user.username}`, {
+      userId: user.id,
     });
 
     return {
@@ -117,16 +147,16 @@ class AuthService {
    * @returns {string} - Token JWT
    */
   generateToken(user) {
-    return jwt.sign(
-      {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        isAdmin: user.is_admin === 1,
-      },
-      environment.JWT_SECRET,
-      { expiresIn: environment.JWT_EXPIRY }
-    );
+    const payload = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.is_admin === 1,
+    };
+
+    return SecurityUtils.generateJWT(payload, {
+      expiresIn: environment.JWT_EXPIRY,
+    });
   }
 
   /**
@@ -181,7 +211,7 @@ class AuthService {
         ]
       );
     } catch (error) {
-      console.error("Error al crear sesión:", error);
+      log.error("Error al crear sesión:", { error, userId });
       // Si falla, continuar sin problema, no es crítico
     }
 
@@ -199,13 +229,16 @@ class AuthService {
    */
   async verifyToken(token) {
     try {
-      // Verificar firma del token
-      const decoded = jwt.verify(token, environment.JWT_SECRET);
+      // Verificar firma del token usando SecurityUtils
+      const decoded = SecurityUtils.verifyJWT(token);
 
       // Verificar que el usuario existe en la base de datos
       const user = await userRepository.findById(decoded.id);
 
       if (!user) {
+        log.info("Token válido pero el usuario no existe", {
+          userId: decoded.id,
+        });
         return null;
       }
 
@@ -217,6 +250,9 @@ class AuthService {
       );
 
       if (!session) {
+        log.info("Token revocado o expirado en base de datos", {
+          userId: user.id,
+        });
         return null;
       }
 
@@ -227,6 +263,13 @@ class AuthService {
         isAdmin: user.is_admin === 1,
       };
     } catch (error) {
+      if (error.code === "TOKEN_EXPIRED") {
+        log.info("Token expirado", { error: error.message });
+      } else if (error.code === "INVALID_TOKEN") {
+        log.info("Token inválido", { error: error.message });
+      } else {
+        log.warn("Error al verificar token", { error });
+      }
       return null;
     }
   }
@@ -241,11 +284,21 @@ class AuthService {
       const db = require("../data/db");
 
       // Eliminar el token de la base de datos
-      await db.asyncRun("DELETE FROM sessions WHERE token = ?", [token]);
+      const result = await db.asyncRun("DELETE FROM sessions WHERE token = ?", [
+        token,
+      ]);
+
+      if (result && result.changes > 0) {
+        log.info("Sesión cerrada correctamente", {
+          tokensRemoved: result.changes,
+        });
+      } else {
+        log.info("Intento de cerrar sesión con token no encontrado");
+      }
 
       return true;
     } catch (error) {
-      console.error("Error al cerrar sesión:", error);
+      log.error("Error al cerrar sesión:", { error });
       return false;
     }
   }
@@ -266,7 +319,7 @@ class AuthService {
     }
 
     // Verificar contraseña actual
-    const isPasswordValid = await bcrypt.compare(
+    const isPasswordValid = await SecurityUtils.comparePassword(
       currentPassword,
       user.password
     );
@@ -275,9 +328,26 @@ class AuthService {
       throw new Error("Contraseña actual incorrecta");
     }
 
+    // Validar fortaleza de la nueva contraseña
+    const passwordValidation =
+      SecurityUtils.validatePasswordStrength(newPassword);
+    if (!passwordValidation.isValid) {
+      log.warn("Se intentó establecer una contraseña débil", {
+        userId,
+        errors: passwordValidation.errors,
+      });
+
+      if (passwordValidation.score < 2) {
+        // Si la contraseña es muy débil, rechazarla
+        throw new Error(
+          "La contraseña es demasiado débil. " +
+            passwordValidation.errors.join(" ")
+        );
+      }
+    }
+
     // Hash de la nueva contraseña
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
+    const hashedPassword = await SecurityUtils.hashPassword(newPassword);
 
     // Actualizar contraseña y quitar flag de forzar cambio
     await userRepository.update(userId, {
@@ -291,6 +361,8 @@ class AuthService {
       forcedChange: user.force_password_change === 1,
     });
 
+    log.info("Contraseña cambiada exitosamente", { userId });
+
     return true;
   }
 
@@ -303,8 +375,8 @@ class AuthService {
   async createInvitationCode(createdBy, options = {}) {
     const { expiresInHours = 24 } = options;
 
-    // Generar código aleatorio
-    const code = crypto.randomBytes(4).toString("hex").toUpperCase();
+    // Generar código aleatorio usando SecurityUtils
+    const code = SecurityUtils.generateInvitationCode(8);
 
     // Calcular fecha de expiración
     const expiresAt = new Date();
@@ -320,6 +392,12 @@ class AuthService {
 
     // Emitir evento de creación de invitación
     eventBus.emitEvent("invitation:created", {
+      code,
+      createdBy,
+      expiresAt: expiresAt.toISOString(),
+    });
+
+    log.info("Código de invitación creado", {
       code,
       createdBy,
       expiresAt: expiresAt.toISOString(),
@@ -345,6 +423,17 @@ class AuthService {
       [code]
     );
 
+    if (invitation) {
+      log.info("Código de invitación válido verificado", {
+        code,
+        invitationId: invitation.id,
+      });
+    } else {
+      log.info("Intento de verificación de código de invitación inválido", {
+        code,
+      });
+    }
+
     return !!invitation;
   }
 
@@ -364,6 +453,10 @@ class AuthService {
     );
 
     if (!invitation) {
+      log.warn("Intento de registro con código de invitación inválido", {
+        code: invitationCode,
+        email: userData.email,
+      });
       throw new Error("Código de invitación inválido o expirado");
     }
 
@@ -380,9 +473,22 @@ class AuthService {
       throw new Error("Este nombre de usuario ya está en uso");
     }
 
+    // Validar fortaleza de la contraseña
+    const passwordValidation = SecurityUtils.validatePasswordStrength(
+      userData.password
+    );
+    if (!passwordValidation.isValid && passwordValidation.score < 2) {
+      log.warn("Intento de registro con contraseña débil", {
+        score: passwordValidation.score,
+      });
+      throw new Error(
+        "La contraseña es demasiado débil. " +
+          passwordValidation.errors.join(" ")
+      );
+    }
+
     // Hash de la contraseña
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(userData.password, salt);
+    const hashedPassword = await SecurityUtils.hashPassword(userData.password);
 
     // Crear usuario
     const newUser = await userRepository.create({
@@ -406,6 +512,12 @@ class AuthService {
       userId: newUser.id,
       username: newUser.username,
       invitationCode,
+      invitedBy: invitation.created_by,
+    });
+
+    log.info("Nuevo usuario registrado con invitación", {
+      userId: newUser.id,
+      username: newUser.username,
       invitedBy: invitation.created_by,
     });
 

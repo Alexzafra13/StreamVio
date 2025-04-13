@@ -1,61 +1,62 @@
 // server/services/scannerService.js
-const fs = require("fs");
 const path = require("path");
-const { promisify } = require("util");
-const { exec } = require("child_process");
 const libraryRepository = require("../data/repositories/libraryRepository");
 const mediaRepository = require("../data/repositories/mediaRepository");
 const metadataService = require("./metadataService");
 const eventBus = require("./eventBus");
-const { THUMBNAILS_DIR } = require("../config/paths");
 const environment = require("../config/environment");
+const filesystem = require("../utils/filesystem");
+const logger = require("../utils/logger");
+const DirectoryScanner = require("../media/scanner/directoryScanner");
+const FileAnalyzer = require("../media/scanner/fileAnalyzer");
 
-// Promisificar operaciones
-const readdir = promisify(fs.readdir);
-const stat = promisify(fs.stat);
-const execPromise = promisify(exec);
+// Obtener logger específico para este módulo
+const log = logger.getModuleLogger("ScannerService");
 
 /**
  * Servicio para escanear directorios en busca de archivos multimedia
  */
 class ScannerService {
   constructor() {
-    // Extensiones de archivos multimedia soportadas
-    this.SUPPORTED_VIDEO_EXTENSIONS = [
-      ".mp4",
-      ".mkv",
-      ".avi",
-      ".mov",
-      ".wmv",
-      ".m4v",
-      ".webm",
-      ".mpg",
-      ".mpeg",
-      ".3gp",
-      ".flv",
-    ];
+    // Inicializar componentes especializados
+    this.directoryScanner = new DirectoryScanner({
+      maxDepth: 15,
+      followSymlinks: false,
+      includeHidden: false,
+      recursiveScanning: true,
+    });
 
-    this.SUPPORTED_AUDIO_EXTENSIONS = [
-      ".mp3",
-      ".wav",
-      ".flac",
-      ".aac",
-      ".ogg",
-      ".m4a",
-      ".wma",
-    ];
+    this.fileAnalyzer = new FileAnalyzer({
+      ffmpegPath: environment.FFMPEG_PATH || "ffmpeg",
+      ffprobePath: environment.FFPROBE_PATH || "ffprobe",
+      generateThumbnails: environment.AUTO_GENERATE_THUMBNAILS !== false,
+      thumbnailTimePosition: 10,
+      thumbnailSize: "320:-1",
+    });
 
-    this.SUPPORTED_IMAGE_EXTENSIONS = [
-      ".jpg",
-      ".jpeg",
-      ".png",
-      ".gif",
-      ".webp",
-      ".bmp",
-    ];
+    // Verificar herramientas al iniciar
+    this.verifyTools();
 
-    // Escuchadores de eventos
+    // Registrar escuchadores de eventos
     this.registerEventListeners();
+  }
+
+  /**
+   * Verificar disponibilidad de herramientas
+   */
+  async verifyTools() {
+    try {
+      const toolsAvailable = await this.fileAnalyzer.checkTools();
+      if (toolsAvailable) {
+        log.info("Herramientas de análisis multimedia disponibles");
+      } else {
+        log.warn(
+          "Algunas herramientas de análisis multimedia no están disponibles. La generación de miniaturas y extracción de metadatos pueden estar limitadas."
+        );
+      }
+    } catch (error) {
+      log.error("Error al verificar herramientas:", { error: error.message });
+    }
   }
 
   /**
@@ -68,313 +69,17 @@ class ScannerService {
       const library = await libraryRepository.findById(libraryId);
 
       if (library && library.scan_automatically) {
-        console.log(
-          `Escaneando automáticamente nueva biblioteca: ${library.name}`
+        log.info(
+          `Escaneando automáticamente nueva biblioteca: ${library.name}`,
+          { libraryId }
         );
         this.scanLibrary(libraryId).catch((err) => {
-          console.error(`Error al escanear biblioteca ${libraryId}:`, err);
+          log.error(`Error al escanear biblioteca ${libraryId}:`, {
+            error: err.message,
+          });
         });
       }
     });
-  }
-
-  /**
-   * Verifica si un archivo es un archivo multimedia soportado
-   * @param {string} filePath - Ruta del archivo
-   * @returns {boolean} - true si es un archivo multimedia soportado
-   */
-  isMediaFile(filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-    return (
-      this.SUPPORTED_VIDEO_EXTENSIONS.includes(ext) ||
-      this.SUPPORTED_AUDIO_EXTENSIONS.includes(ext) ||
-      this.SUPPORTED_IMAGE_EXTENSIONS.includes(ext)
-    );
-  }
-
-  /**
-   * Determina el tipo de archivo multimedia
-   * @param {string} filePath - Ruta del archivo
-   * @returns {string} - Tipo de archivo ('movie', 'music', 'photo', 'unknown')
-   */
-  getMediaType(filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-
-    if (this.SUPPORTED_VIDEO_EXTENSIONS.includes(ext)) {
-      return "movie"; // Por defecto asumimos película
-    } else if (this.SUPPORTED_AUDIO_EXTENSIONS.includes(ext)) {
-      return "music";
-    } else if (this.SUPPORTED_IMAGE_EXTENSIONS.includes(ext)) {
-      return "photo";
-    }
-
-    return "unknown";
-  }
-
-  /**
-   * Normaliza una ruta para usar siempre barras diagonales (/)
-   * @param {string} filePath - Ruta a normalizar
-   * @returns {string} - Ruta normalizada
-   */
-  normalizePath(filePath) {
-    return filePath.replace(/\\/g, "/");
-  }
-
-  /**
-   * Extrae metadatos básicos de un archivo utilizando ffprobe
-   * @param {string} filePath - Ruta del archivo
-   * @returns {Promise<Object>} - Objeto con metadatos
-   */
-  async extractMetadata(filePath) {
-    // Metadatos por defecto
-    const metadata = {
-      title: path.basename(filePath, path.extname(filePath)),
-      duration: null,
-      size: 0,
-      width: null,
-      height: null,
-      codec: null,
-      bitrate: null,
-    };
-
-    try {
-      // Obtener tamaño del archivo
-      const stats = await stat(filePath);
-      metadata.size = stats.size;
-
-      const type = this.getMediaType(filePath);
-
-      // Para archivos de video o audio, usar ffprobe para extraer metadatos
-      if (type === "movie" || type === "music") {
-        try {
-          // Verificar si ffprobe está disponible
-          await execPromise("ffprobe -version");
-
-          // Extraer duración, resolución, etc.
-          const { stdout } = await execPromise(
-            `ffprobe -v error -select_streams v:0 -show_entries format=duration,bit_rate:stream=width,height,codec_name -of json "${filePath}"`
-          );
-
-          const probeData = JSON.parse(stdout);
-
-          if (probeData.format) {
-            metadata.duration = parseFloat(probeData.format.duration) || null;
-            metadata.bitrate = probeData.format.bit_rate
-              ? parseInt(probeData.format.bit_rate)
-              : null;
-          }
-
-          if (probeData.streams && probeData.streams.length > 0) {
-            const videoStream = probeData.streams[0];
-            metadata.width = videoStream.width || null;
-            metadata.height = videoStream.height || null;
-            metadata.codec = videoStream.codec_name || null;
-          }
-        } catch (error) {
-          console.warn(
-            `FFprobe no disponible o error al procesar ${filePath}:`,
-            error.message
-          );
-        }
-      }
-
-      return metadata;
-    } catch (error) {
-      console.error(`Error al extraer metadatos de ${filePath}:`, error);
-      return metadata;
-    }
-  }
-
-  /**
-   * Genera una miniatura para un archivo de video
-   * @param {string} videoPath - Ruta del archivo de video
-   * @returns {Promise<string|null>} - Ruta de la miniatura generada o null si falla
-   */
-  async generateThumbnail(videoPath) {
-    const type = this.getMediaType(videoPath);
-    if (type !== "movie") return null;
-
-    try {
-      // Verificar si ffmpeg está disponible
-      await execPromise("ffmpeg -version");
-
-      // Crear directorio de miniaturas si no existe
-      if (!fs.existsSync(THUMBNAILS_DIR)) {
-        fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
-      }
-
-      const fileName = path.basename(videoPath, path.extname(videoPath));
-      const thumbnailPath = path.join(THUMBNAILS_DIR, `${fileName}_thumb.jpg`);
-      const normalizedThumbnailPath = this.normalizePath(thumbnailPath);
-
-      // Generar miniatura al 20% del video (o a los 10 segundos)
-      await execPromise(
-        `ffmpeg -y -i "${videoPath}" -ss 00:00:10 -vframes 1 -vf "scale=320:-1" "${thumbnailPath}"`
-      );
-
-      return normalizedThumbnailPath;
-    } catch (error) {
-      console.warn(
-        `FFmpeg no disponible o error al generar miniatura para ${videoPath}:`,
-        error.message
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Escanea recursivamente un directorio en busca de archivos multimedia
-   * @param {string} directory - Directorio a escanear
-   * @param {number} libraryId - ID de la biblioteca
-   * @returns {Promise<Array>} - Array de archivos encontrados con sus metadatos
-   */
-  async scanDirectory(directory, libraryId) {
-    const mediaFiles = [];
-
-    try {
-      // Emitir evento de progreso
-      eventBus.emitEvent("library:scan-progress", {
-        libraryId,
-        status: "scanning",
-        currentDirectory: directory,
-      });
-
-      const entries = await readdir(directory, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const fullPath = path.join(directory, entry.name);
-        // Normalizar la ruta para consistencia entre sistemas operativos
-        const normalizedPath = this.normalizePath(fullPath);
-
-        if (entry.isDirectory()) {
-          // Recursivamente escanear subdirectorios
-          const subDirFiles = await this.scanDirectory(
-            normalizedPath,
-            libraryId
-          );
-          mediaFiles.push(...subDirFiles);
-        } else if (entry.isFile() && this.isMediaFile(normalizedPath)) {
-          // Extraer metadatos si es un archivo multimedia
-          console.log(`Escaneando archivo: ${normalizedPath}`);
-          const metadata = await this.extractMetadata(normalizedPath);
-          const type = this.getMediaType(normalizedPath);
-
-          // Generar miniatura para videos
-          let thumbnailPath = null;
-          if (type === "movie") {
-            thumbnailPath = await this.generateThumbnail(normalizedPath);
-          }
-
-          mediaFiles.push({
-            path: normalizedPath,
-            type,
-            libraryId,
-            ...metadata,
-            thumbnailPath,
-          });
-        }
-      }
-
-      return mediaFiles;
-    } catch (error) {
-      console.error(`Error al escanear directorio ${directory}:`, error);
-
-      // Emitir evento de error
-      eventBus.emitEvent("library:scan-error", {
-        libraryId,
-        directory,
-        error: error.message,
-      });
-
-      return mediaFiles;
-    }
-  }
-
-  /**
-   * Guarda un archivo multimedia en la base de datos
-   * @param {Object} mediaFile - Información del archivo
-   * @returns {Promise<number>} - ID del archivo en la base de datos
-   */
-  async saveMediaFileToDB(mediaFile) {
-    try {
-      // Normalizar la ruta antes de verificar si existe en la BD
-      const normalizedPath = this.normalizePath(mediaFile.path);
-
-      // Verificar si el archivo ya existe en la base de datos
-      const existingMedia = await mediaRepository.findByPath(normalizedPath);
-
-      let mediaId;
-
-      if (existingMedia) {
-        // Actualizar el archivo existente
-        const updatedMedia = await mediaRepository.update(existingMedia.id, {
-          title: mediaFile.title,
-          description: mediaFile.description || null,
-          type: mediaFile.type,
-          duration: mediaFile.duration,
-          size: mediaFile.size,
-          thumbnail_path: mediaFile.thumbnailPath,
-        });
-
-        console.log(
-          `Archivo actualizado en la base de datos: ${normalizedPath}`
-        );
-        mediaId = existingMedia.id;
-
-        // Emitir evento de actualización
-        eventBus.emitEvent("media:updated", { mediaId });
-      } else {
-        // Insertar nuevo archivo
-        const newMedia = await mediaRepository.create({
-          library_id: mediaFile.libraryId,
-          title: mediaFile.title,
-          type: mediaFile.type,
-          file_path: normalizedPath,
-          duration: mediaFile.duration,
-          size: mediaFile.size,
-          thumbnail_path: mediaFile.thumbnailPath,
-        });
-
-        console.log(
-          `Nuevo archivo añadido a la base de datos: ${normalizedPath}`
-        );
-        mediaId = newMedia.id;
-
-        // Emitir evento de creación
-        eventBus.emitEvent("media:created", { mediaId });
-      }
-
-      // Intentar obtener metadatos de TMDb si es una película y está activado en configuración
-      if (mediaFile.type === "movie" && environment.AUTO_FETCH_METADATA) {
-        try {
-          // Ejecutar en segundo plano para no bloquear el escaneo
-          setTimeout(async () => {
-            try {
-              console.log(`Buscando metadatos para: ${mediaFile.title}`);
-              await metadataService.enrichMediaItem(mediaId);
-            } catch (metadataError) {
-              console.error(
-                `Error al obtener metadatos para ${mediaId}:`,
-                metadataError
-              );
-            }
-          }, 0);
-        } catch (err) {
-          console.error(
-            `Error al configurar búsqueda de metadatos para ${mediaFile.title}:`,
-            err
-          );
-        }
-      }
-
-      return mediaId;
-    } catch (error) {
-      console.error(
-        `Error al guardar archivo ${mediaFile.path} en la base de datos:`,
-        error
-      );
-      throw error;
-    }
   }
 
   /**
@@ -401,7 +106,7 @@ class ScannerService {
         throw new Error(`No se encontró una biblioteca con ID ${libraryId}`);
       }
 
-      console.log(`Escaneando biblioteca: ${library.name} (${library.path})`);
+      log.info(`Escaneando biblioteca: ${library.name} (${library.path})`);
 
       // Emitir evento de inicio de escaneo
       eventBus.emitEvent("library:scan-started", {
@@ -410,42 +115,45 @@ class ScannerService {
         path: library.path,
       });
 
-      // Normalizar ruta de la biblioteca
-      const normalizedLibraryPath = this.normalizePath(library.path);
-
       // Verificar que la ruta existe
-      if (!fs.existsSync(normalizedLibraryPath)) {
-        throw new Error(
-          `La ruta de la biblioteca no existe: ${normalizedLibraryPath}`
-        );
+      const pathExists = await filesystem.exists(library.path);
+      if (!pathExists) {
+        throw new Error(`La ruta de la biblioteca no existe: ${library.path}`);
       }
 
-      // Escanear la biblioteca
-      const mediaFiles = await this.scanDirectory(
-        normalizedLibraryPath,
-        libraryId
+      // Escanear la biblioteca con el nuevo componente especializado
+      const scanResults = await this.directoryScanner.scanLibrary(library);
+      const mediaFiles = scanResults.mediaFiles;
+
+      // Obtener metadatos detallados para cada archivo
+      const totalFiles = mediaFiles.length;
+      log.info(
+        `Encontrados ${totalFiles} archivos multimedia para analizar en biblioteca ${library.name}`
       );
 
-      for (const mediaFile of mediaFiles) {
-        try {
-          // Verificar si el archivo ya existe en la base de datos
-          const existingMedia = await mediaRepository.findByPath(
-            mediaFile.path
-          );
+      // Procesar archivos en lotes para mejorar rendimiento
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < mediaFiles.length; i += BATCH_SIZE) {
+        const batch = mediaFiles.slice(i, i + BATCH_SIZE);
 
-          const mediaId = await this.saveMediaFileToDB(mediaFile);
+        // Analizar el lote actual
+        const analyzedBatch = await this.processMediaBatch(batch, library);
 
-          results.totalScanned++;
+        // Actualizar contadores de resultados
+        results.totalScanned += analyzedBatch.totalProcessed;
+        results.newFiles += analyzedBatch.newFiles;
+        results.updatedFiles += analyzedBatch.updatedFiles;
+        results.failedFiles += analyzedBatch.failedFiles;
 
-          if (existingMedia) {
-            results.updatedFiles++;
-          } else {
-            results.newFiles++;
-          }
-        } catch (error) {
-          console.error(`Error al procesar archivo ${mediaFile.path}:`, error);
-          results.failedFiles++;
-        }
+        // Emitir evento de progreso
+        const progress = Math.floor((results.totalScanned / totalFiles) * 100);
+        eventBus.emitEvent("library:scan-progress", {
+          libraryId,
+          status: "analyzing",
+          progress,
+          totalScanned: results.totalScanned,
+          totalFiles,
+        });
       }
 
       results.endTime = new Date();
@@ -456,7 +164,7 @@ class ScannerService {
         updated_at: new Date().toISOString(),
       });
 
-      console.log(
+      log.info(
         `Escaneo de biblioteca ${library.name} completo. ` +
           `Total archivos: ${results.totalScanned}, ` +
           `Nuevos: ${results.newFiles}, ` +
@@ -470,12 +178,23 @@ class ScannerService {
         ...results,
       });
 
+      // Agrupar episodios de series si es una biblioteca de series/películas
+      if (library.type === "movies" || library.type === "series") {
+        setTimeout(() => {
+          this.detectAndProcessTVShows(libraryId).catch((err) => {
+            log.error(`Error al procesar series en biblioteca ${libraryId}:`, {
+              error: err.message,
+            });
+          });
+        }, 1000);
+      }
+
       return results;
     } catch (error) {
-      console.error(
-        `Error durante el escaneo de la biblioteca ${libraryId}:`,
-        error
-      );
+      log.error(`Error durante el escaneo de la biblioteca ${libraryId}:`, {
+        error: error.message,
+        stack: error.stack,
+      });
 
       results.endTime = new Date();
       results.duration = (results.endTime - results.startTime) / 1000;
@@ -488,6 +207,252 @@ class ScannerService {
         results,
       });
 
+      throw error;
+    }
+  }
+
+  /**
+   * Procesa un lote de archivos multimedia
+   * @param {Array} mediaFiles - Lote de archivos a procesar
+   * @param {Object} library - Información de la biblioteca
+   * @returns {Promise<Object>} - Resultados del procesamiento
+   */
+  async processMediaBatch(mediaFiles, library) {
+    const results = {
+      totalProcessed: 0,
+      newFiles: 0,
+      updatedFiles: 0,
+      failedFiles: 0,
+    };
+
+    // Extraer solo las rutas de los archivos
+    const filePaths = mediaFiles.map((file) => file.path);
+
+    // Analizar archivos para obtener metadatos detallados
+    const analyzedFiles = await this.fileAnalyzer.analyzeBatch(filePaths, {
+      concurrency: 3,
+    });
+
+    // Procesar cada archivo analizado
+    for (const mediaFile of analyzedFiles) {
+      try {
+        // Buscar el item original para obtener el tipo correcto de medios
+        const originalItem = mediaFiles.find(
+          (item) => item.path === mediaFile.path
+        );
+
+        if (!originalItem) {
+          results.failedFiles++;
+          continue;
+        }
+
+        // Verificar si el archivo ya existe en la base de datos
+        const existingMedia = await mediaRepository.findByPath(mediaFile.path);
+
+        // Preparar datos para la base de datos
+        const mediaData = {
+          library_id: library.id,
+          title: mediaFile.title,
+          type: originalItem.type,
+          file_path: mediaFile.path,
+          duration: mediaFile.duration,
+          size: mediaFile.size,
+          thumbnail_path: mediaFile.thumbnailPath,
+          year: mediaFile.year || null,
+          genre: mediaFile.genre || null,
+          // Datos adicionales específicos por tipo
+          ...(mediaFile.type === "movie"
+            ? {
+                width: mediaFile.width,
+                height: mediaFile.height,
+                codec: mediaFile.codec,
+              }
+            : {}),
+          ...(mediaFile.type === "music"
+            ? {
+                artist: mediaFile.artist,
+                album: mediaFile.album,
+                audioCodec: mediaFile.audioCodec,
+                channels: mediaFile.channels,
+              }
+            : {}),
+        };
+
+        if (existingMedia) {
+          // Actualizar archivo existente
+          await mediaRepository.update(existingMedia.id, mediaData);
+          results.updatedFiles++;
+
+          // Emitir evento de actualización
+          eventBus.emitEvent("media:updated", { mediaId: existingMedia.id });
+        } else {
+          // Insertar nuevo archivo
+          const newMedia = await mediaRepository.create(mediaData);
+          results.newFiles++;
+
+          // Emitir evento de creación
+          eventBus.emitEvent("media:created", { mediaId: newMedia.id });
+
+          // Buscar metadatos para películas si está habilitado
+          if (mediaData.type === "movie" && environment.AUTO_FETCH_METADATA) {
+            setTimeout(async () => {
+              try {
+                await metadataService.enrichMediaItem(newMedia.id);
+              } catch (error) {
+                log.error(`Error al obtener metadatos para ${newMedia.id}:`, {
+                  error: error.message,
+                });
+              }
+            }, 0);
+          }
+        }
+
+        results.totalProcessed++;
+      } catch (error) {
+        log.error(`Error al procesar archivo ${mediaFile.path}:`, {
+          error: error.message,
+        });
+        results.failedFiles++;
+        results.totalProcessed++;
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Detectar y procesar series de TV basadas en patrones de archivos
+   * @param {number} libraryId - ID de la biblioteca
+   * @returns {Promise<Object>} - Resultado del procesamiento
+   */
+  async detectAndProcessTVShows(libraryId) {
+    try {
+      // Obtener todos los archivos de video de la biblioteca
+      const mediaItems = await mediaRepository.findByLibrary(libraryId, {
+        type: "movie", // Esto obtiene todos los videos inicialmente marcados como películas
+        limit: 10000, // Un límite alto para incluir toda la biblioteca
+      });
+
+      if (!mediaItems || mediaItems.length === 0) {
+        log.info(
+          `No se encontraron elementos de video en biblioteca ${libraryId}`
+        );
+        return { processed: 0 };
+      }
+
+      log.info(
+        `Analizando ${mediaItems.length} elementos de video para detectar series de TV en biblioteca ${libraryId}`
+      );
+
+      // Detectar series utilizando el analizador de archivos
+      const { processedItems, shows } =
+        this.fileAnalyzer.detectTVShows(mediaItems);
+
+      if (shows.length === 0) {
+        log.info(`No se detectaron series de TV en biblioteca ${libraryId}`);
+        return { processed: 0 };
+      }
+
+      log.info(
+        `Detectadas ${shows.length} series de TV en biblioteca ${libraryId}`
+      );
+
+      // Actualizar elementos en la base de datos para marcarlos como episodios
+      let processed = 0;
+
+      for (const show of shows) {
+        log.info(
+          `Procesando serie "${show.title}" con ${show.episodeCount} episodios`
+        );
+
+        // Crear o actualizar entrada de serie principal
+        let seriesId = null;
+
+        // Buscar si la serie ya existe
+        const existingSeries = await mediaRepository.findByTitleAndType(
+          show.title,
+          "series"
+        );
+
+        if (existingSeries) {
+          seriesId = existingSeries.id;
+          log.debug(`Serie "${show.title}" ya existe con ID ${seriesId}`);
+        } else {
+          // Crear nueva entrada para la serie
+          const newSeries = await mediaRepository.create({
+            library_id: libraryId,
+            title: show.title,
+            type: "series",
+            season_count: show.seasons,
+            episode_count: show.episodeCount,
+          });
+
+          seriesId = newSeries.id;
+          log.debug(`Creada nueva serie "${show.title}" con ID ${seriesId}`);
+
+          // Buscar metadatos para la serie
+          if (environment.AUTO_FETCH_METADATA) {
+            setTimeout(async () => {
+              try {
+                await metadataService.enrichMediaItem(seriesId);
+              } catch (error) {
+                log.error(
+                  `Error al obtener metadatos para serie ${seriesId}:`,
+                  { error: error.message }
+                );
+              }
+            }, 0);
+          }
+        }
+
+        // Actualizar cada episodio
+        for (const episode of show.episodes) {
+          try {
+            const existingEpisode = await mediaRepository.findByPath(
+              episode.path
+            );
+
+            if (existingEpisode) {
+              // Actualizar episodio existente
+              await mediaRepository.update(existingEpisode.id, {
+                type: "episode",
+                parent_id: seriesId,
+                season_number: episode.seasonNumber,
+                episode_number: episode.episodeNumber,
+                title: episode.title,
+              });
+
+              processed++;
+              log.debug(`Actualizado episodio ${episode.title}`);
+            }
+          } catch (error) {
+            log.error(`Error al actualizar episodio ${episode.title}:`, {
+              error: error.message,
+            });
+          }
+        }
+      }
+
+      log.info(
+        `Procesamiento de series completado. ${processed} episodios actualizados en biblioteca ${libraryId}`
+      );
+
+      // Emitir evento de procesamiento de series
+      eventBus.emitEvent("library:series-processed", {
+        libraryId,
+        seriesCount: shows.length,
+        episodesProcessed: processed,
+      });
+
+      return {
+        processed,
+        seriesCount: shows.length,
+        library: libraryId,
+      };
+    } catch (error) {
+      log.error(`Error al procesar series en biblioteca ${libraryId}:`, {
+        error: error.message,
+      });
       throw error;
     }
   }
@@ -516,7 +481,7 @@ class ScannerService {
       const libraries = await libraryRepository.findAll();
 
       if (libraries.length === 0) {
-        console.log("No hay bibliotecas configuradas para escanear");
+        log.info("No hay bibliotecas configuradas para escanear");
 
         results.endTime = new Date();
         results.duration = 0;
@@ -533,7 +498,7 @@ class ScannerService {
       for (const library of libraries) {
         // Solo escanear bibliotecas con escaneo automático habilitado
         if (!library.scan_automatically) {
-          console.log(
+          log.info(
             `Omitiendo biblioteca ${library.name} (escaneo automático deshabilitado)`
           );
           continue;
@@ -555,7 +520,9 @@ class ScannerService {
 
           results.librariesScanned++;
         } catch (error) {
-          console.error(`Error al escanear biblioteca ${library.name}:`, error);
+          log.error(`Error al escanear biblioteca ${library.name}:`, {
+            error: error.message,
+          });
 
           results.libraries.push({
             id: library.id,
@@ -568,7 +535,7 @@ class ScannerService {
       results.endTime = new Date();
       results.duration = (results.endTime - results.startTime) / 1000; // en segundos
 
-      console.log(
+      log.info(
         `Escaneo completo. Total archivos: ${results.totalScanned}, ` +
           `Nuevos: ${results.newFiles}, Actualizados: ${results.updatedFiles}, ` +
           `Fallidos: ${results.failedFiles}`
@@ -579,7 +546,9 @@ class ScannerService {
 
       return results;
     } catch (error) {
-      console.error("Error durante el escaneo de bibliotecas:", error);
+      log.error("Error durante el escaneo de bibliotecas:", {
+        error: error.message,
+      });
 
       results.endTime = new Date();
       results.duration = (results.endTime - results.startTime) / 1000;
@@ -596,25 +565,57 @@ class ScannerService {
   }
 
   /**
+   * Buscar directorios potenciales para usar como bibliotecas
+   * @param {string} rootPath - Directorio raíz para buscar
+   * @param {Object} options - Opciones adicionales
+   * @returns {Promise<Array>} - Lista de directorios potenciales
+   */
+  async findPotentialLibraryDirectories(rootPath, options = {}) {
+    try {
+      log.info(
+        `Buscando directorios potenciales para bibliotecas en: ${rootPath}`
+      );
+
+      const results =
+        await this.directoryScanner.findPotentialLibraryDirectories(
+          rootPath,
+          options
+        );
+
+      log.info(
+        `Encontrados ${results.length} directorios potenciales para bibliotecas`
+      );
+
+      return results;
+    } catch (error) {
+      log.error(
+        `Error al buscar directorios para bibliotecas en ${rootPath}:`,
+        { error: error.message }
+      );
+      return [];
+    }
+  }
+
+  /**
    * Programa un escaneo automático de todas las bibliotecas
    * @param {number} intervalMinutes - Intervalo en minutos entre escaneos
    * @returns {Object} - Objeto con método para detener los escaneos automáticos
    */
   scheduleAutomaticScans(intervalMinutes = 60) {
-    console.log(
+    const interval = Math.max(10, intervalMinutes) * 60 * 1000; // Mínimo 10 minutos
+    log.info(
       `Programando escaneos automáticos cada ${intervalMinutes} minutos`
     );
 
-    // Convertir minutos a milisegundos
-    const interval = intervalMinutes * 60 * 1000;
-
     // Iniciar temporizador
     const timer = setInterval(async () => {
-      console.log("Iniciando escaneo automático programado...");
+      log.info("Iniciando escaneo automático programado...");
       try {
         await this.scanAllLibraries();
       } catch (error) {
-        console.error("Error durante el escaneo automático:", error);
+        log.error("Error durante el escaneo automático:", {
+          error: error.message,
+        });
       }
     }, interval);
 
@@ -622,7 +623,7 @@ class ScannerService {
     return {
       stop: () => {
         clearInterval(timer);
-        console.log("Escaneos automáticos detenidos");
+        log.info("Escaneos automáticos detenidos");
       },
     };
   }
