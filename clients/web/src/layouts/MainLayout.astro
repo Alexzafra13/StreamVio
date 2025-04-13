@@ -62,12 +62,12 @@ const adminItems = [
             <Sidebar 
               navItems={navItems} 
               adminItems={adminItems} 
-              client:load 
+              client:only="react"
             />
             
             {/* Contenido principal */}
             <div class="flex-1 flex flex-col overflow-hidden">
-              <Header title={title} client:load />
+              <Header title={title} client:only="react" />
               
               <main class="flex-1 overflow-y-auto p-4 md:p-6">
                 <slot />
@@ -76,8 +76,8 @@ const adminItems = [
           </div>
           
           {/* Notificaciones y modales */}
-          <NotificationContainer client:load />
-          <ModalContainer client:load />
+          <NotificationContainer client:only="react" />
+          <ModalContainer client:only="react" />
         </MediaProvider>
       </UIProvider>
     </AuthProvider>
