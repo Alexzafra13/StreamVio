@@ -1,12 +1,14 @@
 ---
-// src/pages/index.astro
-// Página principal/dashboard
+// src/pages/media/index.astro
+// ...
 
-// Importar layout y componentes
-import MainLayout from '../layouts/MainLayout.astro';
-import DashboardComponent from '../components/dashboard/DashboardComponent';
+// Si el componente está en otra carpeta:
+import MediaBrowserComponent from '../../components/media/MediaBrowserComponent.jsx';
+// o si necesitas usar otro componente:
+import MediaGrid from '../../components/media/browser/MediaGrid.jsx';
 ---
 
-<MainLayout title="Dashboard">
-  <DashboardComponent client:load />
+<MainLayout title="Explorar contenido">
+  <MediaBrowserComponent client:load />
+  <!-- o el componente que corresponda -->
 </MainLayout>
