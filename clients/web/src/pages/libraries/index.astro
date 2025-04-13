@@ -4,9 +4,9 @@
 
 // Importar layout y componentes
 import MainLayout from '../../layouts/MainLayout.astro';
-import LibraryBrowser from '../../components/library/LibraryBrowser';
+import LibraryBrowserComponent from '../../components/library/LibraryBrowserComponent.jsx';
 ---
 
 <MainLayout title="Bibliotecas">
-  <LibraryBrowser client:load />
+  <LibraryBrowserComponent client:load />
 </MainLayout>
