@@ -2,6 +2,7 @@
 
 # StreamVio - Script de instalación (v1.0)
 # Este script instala y configura StreamVio en sistemas Linux
+# Asume que los archivos ya están presentes en el directorio de instalación
 
 # Colores para mejor legibilidad
 GREEN='\033[0;32m'
@@ -18,7 +19,6 @@ STREAMVIO_USER="streamvio"  # Usuario específico para el servicio
 STREAMVIO_GROUP="streamvio"  # Grupo específico para el servicio
 VERBOSE=0                # Modo detallado (0=normal, 1=detallado)
 FORCE_REINSTALL=0        # Forzar reinstalación
-REPO_URL="https://github.com/Alexzafra13/StreamVio.git"  # URL del repositorio
 
 # Crear o limpiar archivos de log
 > "$INSTALL_LOG"
@@ -115,7 +115,8 @@ configure_folder_permissions() {
     
     if [ ! -d "$folder" ]; then
         log_error "El directorio $folder no existe."
-        return 1
+        mkdir -p "$folder"
+        log "Creado directorio $folder."
     fi
     
     # Cambiar propietario
@@ -170,7 +171,7 @@ cleanup_on_error() {
         systemctl stop streamvio.service
     fi
     
-    if [ -f "/etc/systemd/system/streamvio.service" ]; then
+    if [ -f "/etc/systemd/system/streamvio.service" ] && [ $FORCE_REINSTALL -eq 1 ]; then
         log "Eliminando servicio systemd..."
         rm -f "/etc/systemd/system/streamvio.service"
         systemctl daemon-reload
@@ -189,15 +190,15 @@ echo -e "${BLUE}         StreamVio - Instalación v1.0                          
 echo -e "${BLUE}================================================================${NC}\n"
 
 # Procesar argumentos
-while getopts "hvfp:r:" opt; do
+while getopts "hvfp:d:" opt; do
     case ${opt} in
         h )
-            echo "Uso: $0 [-h] [-v] [-f] [-p puerto] [-r repositorio]"
+            echo "Uso: $0 [-h] [-v] [-f] [-p puerto] [-d directorio]"
             echo "  -h  Muestra esta ayuda"
             echo "  -v  Modo detallado"
             echo "  -f  Forzar reinstalación incluso si está instalado"
             echo "  -p  Especificar puerto personalizado (por defecto: 45000)"
-            echo "  -r  URL del repositorio Git (opcional)"
+            echo "  -d  Especificar directorio de instalación (por defecto: directorio actual)"
             exit 0
             ;;
         v )
@@ -212,9 +213,9 @@ while getopts "hvfp:r:" opt; do
             STREAMVIO_PORT=$OPTARG
             echo "Puerto personalizado: $STREAMVIO_PORT"
             ;;
-        r )
-            REPO_URL=$OPTARG
-            echo "Repositorio Git: $REPO_URL"
+        d )
+            CUSTOM_DIR=$OPTARG
+            echo "Directorio personalizado: $CUSTOM_DIR"
             ;;
         \? )
             echo "Opción inválida: -$OPTARG" >&2
@@ -248,9 +249,24 @@ fi
 SERVER_IP=$(get_server_ip)
 log "Dirección IP detectada: $SERVER_IP"
 
+# Determinar el directorio de instalación
+if [ -n "$CUSTOM_DIR" ]; then
+    INSTALL_DIR="$CUSTOM_DIR"
+else
+    INSTALL_DIR=$(pwd)
+fi
+log "Directorio de instalación: $INSTALL_DIR"
+
+# Verificar que los archivos necesarios existen
+if [ ! -d "$INSTALL_DIR/server" ] || [ ! -d "$INSTALL_DIR/clients/web" ]; then
+    log_error "No se encontraron los directorios de StreamVio en $INSTALL_DIR"
+    log_error "Por favor, ejecuta este script desde la carpeta raíz del proyecto StreamVio."
+    exit 1
+fi
+
 # ===== Paso 1: Verificar requisitos del sistema =====
-log "Paso 1/10: ${YELLOW}Verificando requisitos del sistema...${NC}"
-show_progress 1 10 "Verificando requisitos"
+log "Paso 1/9: ${YELLOW}Verificando requisitos del sistema...${NC}"
+show_progress 1 9 "Verificando requisitos"
 
 # Verificar Node.js
 if command -v node &> /dev/null; then
@@ -302,8 +318,8 @@ if lsof -Pi :$STREAMVIO_PORT -sTCP:LISTEN -t >/dev/null ; then
 fi
 
 # ===== Paso 2: Instalar dependencias del sistema =====
-log "Paso 2/10: ${YELLOW}Instalando dependencias del sistema...${NC}"
-show_progress 2 10 "Instalando dependencias"
+log "Paso 2/9: ${YELLOW}Instalando dependencias del sistema...${NC}"
+show_progress 2 9 "Instalando dependencias"
 
 if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     # Actualizando repositorios
@@ -409,36 +425,9 @@ else
     log "Intentando continuar de todos modos..."
 fi
 
-# ===== Paso 3: Clonar el repositorio =====
-log "Paso 3/10: ${YELLOW}Clonando el repositorio StreamVio...${NC}"
-show_progress 3 10 "Clonando repositorio"
-
-# Determinar el directorio de instalación
-INSTALL_DIR="/opt/streamvio"
-log "Directorio de instalación: $INSTALL_DIR"
-
-# Crear o vaciar el directorio de instalación
-if [ -d "$INSTALL_DIR" ]; then
-    if [ $FORCE_REINSTALL -eq 1 ]; then
-        log "Limpiando directorio de instalación existente..."
-        rm -rf "$INSTALL_DIR"
-        mkdir -p "$INSTALL_DIR"
-    else
-        log_error "El directorio $INSTALL_DIR ya existe. Use -f para forzar reinstalación."
-        exit 1
-    fi
-else
-    mkdir -p "$INSTALL_DIR"
-fi
-
-# Clonar el repositorio
-log "Clonando repositorio desde $REPO_URL..."
-git clone "$REPO_URL" "$INSTALL_DIR" >> "$INSTALL_LOG" 2>&1
-check_result "Clonación del repositorio" "fatal"
-
-# ===== Paso 4: Preparar la estructura de directorios =====
-log "Paso 4/10: ${YELLOW}Preparando estructura de directorios...${NC}"
-show_progress 4 10 "Preparando directorios"
+# ===== Paso 3: Preparar la estructura de directorios =====
+log "Paso 3/9: ${YELLOW}Preparando estructura de directorios...${NC}"
+show_progress 3 9 "Preparando directorios"
 
 # Crear directorios necesarios
 log "Creando directorios de datos..."
@@ -447,9 +436,9 @@ mkdir -p "$INSTALL_DIR/server/data-storage/thumbnails" \
          "$INSTALL_DIR/server/data-storage/metadata" >> "$INSTALL_LOG" 2>&1
 check_result "Creación de directorios para datos"
 
-# ===== Paso 5: Crear usuario y grupo para StreamVio =====
-log "Paso 5/10: ${YELLOW}Creando usuario y grupo para StreamVio...${NC}"
-show_progress 5 10 "Creando usuario"
+# ===== Paso 4: Crear usuario y grupo para StreamVio =====
+log "Paso 4/9: ${YELLOW}Creando usuario y grupo para StreamVio...${NC}"
+show_progress 4 9 "Creando usuario"
 
 # Comprobar si el usuario ya existe
 if id "$STREAMVIO_USER" &>/dev/null; then
@@ -481,9 +470,9 @@ if [ "$EUID" -eq 0 ]; then
     fi
 fi
 
-# ===== Paso 6: Instalar dependencias de Node.js (NPM) =====
-log "Paso 6/10: ${YELLOW}Instalando dependencias de Node.js...${NC}"
-show_progress 6 10 "Instalando dependencias npm"
+# ===== Paso 5: Instalar dependencias de Node.js (NPM) =====
+log "Paso 5/9: ${YELLOW}Instalando dependencias de Node.js...${NC}"
+show_progress 5 9 "Instalando dependencias npm"
 
 # Instalar dependencias del servidor
 cd "$INSTALL_DIR/server"
@@ -523,9 +512,9 @@ if [ -d "$INSTALL_DIR/core" ] && [ -f "$INSTALL_DIR/core/package.json" ]; then
     fi
 fi
 
-# ===== Paso 7: Compilar cliente web =====
-log "Paso 7/10: ${YELLOW}Compilando cliente web...${NC}"
-show_progress 7 10 "Compilando cliente web"
+# ===== Paso 6: Compilar cliente web =====
+log "Paso 6/9: ${YELLOW}Compilando cliente web...${NC}"
+show_progress 6 9 "Compilando cliente web"
 
 cd "$INSTALL_DIR/clients/web"
 log "Ejecutando compilación del cliente web..."
@@ -557,9 +546,9 @@ else
     log "${GREEN}✓ Compilación del cliente web completada exitosamente${NC}"
 fi
 
-# ===== Paso 8: Configurar archivos de entorno =====
-log "Paso 8/10: ${YELLOW}Configurando archivos de entorno...${NC}"
-show_progress 8 10 "Configurando archivos"
+# ===== Paso 7: Configurar archivos de entorno =====
+log "Paso 7/9: ${YELLOW}Configurando archivos de entorno...${NC}"
+show_progress 7 9 "Configurando archivos"
 
 # Crear archivo .env para el servidor
 cd "$INSTALL_DIR/server"
@@ -573,9 +562,9 @@ API_URL=http://$SERVER_IP:$STREAMVIO_PORT/api
 EOF
 check_result "Creación de archivo .env del servidor"
 
-# ===== Paso 9: Configurar permisos adecuados =====
-log "Paso 9/10: ${YELLOW}Configurando permisos...${NC}"
-show_progress 9 10 "Configurando permisos"
+# ===== Paso 8: Configurar permisos adecuados =====
+log "Paso 8/9: ${YELLOW}Configurando permisos...${NC}"
+show_progress 8 9 "Configurando permisos"
 
 # 1. Directorio de datos
 configure_folder_permissions "$INSTALL_DIR/server/data-storage" "$STREAMVIO_USER" "$STREAMVIO_GROUP" "664" "775"
@@ -593,9 +582,9 @@ chmod -R 750 "$INSTALL_DIR/server"  # rwxr-x---
 chmod 640 "$INSTALL_DIR/server/.env"  # rw-r-----
 check_result "Configuración de permisos para servidor"
 
-# ===== Paso 10: Crear servicio e inicializarlo =====
-log "Paso 10/10: ${YELLOW}Configurando servicio systemd...${NC}"
-show_progress 10 10 "Configurando servicio"
+# ===== Paso 9: Crear servicio e inicializarlo =====
+log "Paso 9/9: ${YELLOW}Configurando servicio systemd...${NC}"
+show_progress 9 9 "Configurando servicio"
 
 # Crear subdirectorio para la base de datos si no existe
 mkdir -p "$INSTALL_DIR/server/data"
@@ -633,6 +622,29 @@ check_result "Creación del servicio systemd"
 # Verificar permisos para el archivo de servicio
 chmod 644 "/etc/systemd/system/streamvio.service"
 check_result "Configuración de permisos para archivo de servicio"
+
+# Inicializar base de datos si no existe
+if [ ! -f "$INSTALL_DIR/server/data/streamvio.db" ]; then
+    log "Inicializando la base de datos..."
+    cd "$INSTALL_DIR/server"
+    
+    # Verificar si existe un script de inicialización específico
+    if [ -f "$INSTALL_DIR/server/scripts/initialize.js" ]; then
+        sudo -u "$STREAMVIO_USER" node scripts/initialize.js >> "$INSTALL_LOG" 2>&1
+        check_result "Inicialización de la base de datos"
+    else
+        # Aplicar migraciones si no hay un script de inicialización específico
+        log "No se encontró scripts/initialize.js, intentando aplicar migraciones..."
+        if [ -f "$INSTALL_DIR/server/scripts/migrate.js" ]; then
+            sudo -u "$STREAMVIO_USER" node scripts/migrate.js >> "$INSTALL_LOG" 2>&1
+            check_result "Aplicación de migraciones"
+        else
+            log_error "No se encontraron scripts de inicialización o migración. La base de datos se creará automáticamente al iniciar el servicio."
+        fi
+    fi
+else
+    log "Base de datos ya existe, omitiendo inicialización."
+fi
 
 # Recargar systemd
 systemctl daemon-reload
